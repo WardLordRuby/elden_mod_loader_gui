@@ -12,3 +12,6 @@ Work in progress
 * Check if .ini file exists, if not create .ini  
 * If directory valid match against .ini  
 * If doesn't match write directory path to .ini  
+* Write todo() code
+* Clean up rust split into orginized files
+* check if "common_dir" is valid when reading from ini
