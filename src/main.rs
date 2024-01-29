@@ -64,6 +64,7 @@ impl IniProperty {
                     "path" => Value::AsPath(Value::str_to_path(ini.get_from(section, key))),
                     _ => panic!("Unsupported type"),
                 };
+                info!("Sucessfuly read \"{}\" from ini", key);
                 Ok(IniProperty {
                     section: Some(section.unwrap().into()),
                     key: key.into(),
@@ -110,42 +111,37 @@ impl IniProperty {
     }
 }
 
+const CONFIG_DIR: &str = "tests\\cfg.ini";
+const DEFAULT_COMMON_DIR: [&str; 4] = ["Program Files (x86)", "Steam", "steamapps", "common"];
+const REQUIRED_GAME_FILES: [&str; 1] = ["test_config.ini"];
+
 fn main() -> Result<(), slint::PlatformError> {
     let ui = AppWindow::new()?;
     env_logger::init();
 
-    let mut config = match get_cgf("tests\\cfg.ini") {
+    let mut config = match get_cgf(CONFIG_DIR) {
         Some(ini) => ini,
         None => {
             warn!("Ini not found. Creating new Ini");
-            let default_path =
-                attempt_locate_dir(&["Program Files (x86)", "Steam", "steamapps", "common"])
-                    .unwrap_or_else(|| "\\".into());
-            let mut new_ini = Ini::new();
-            new_ini
-                .with_section(Some("paths"))
-                .set("game_dir", &default_path.to_string_lossy().to_string());
-            new_ini.write_to_file("tests\\cfg.ini").unwrap();
-            info!("default directory wrote to cfg file");
-            new_ini
+            let new_ini = Ini::new();
+            new_ini.write_to_file(CONFIG_DIR).unwrap();
+            attempt_locate_common(CONFIG_DIR);
+            get_cgf(CONFIG_DIR).unwrap()
         }
     };
 
     let game_dir: PathBuf = match IniProperty::new(&config, Some("paths"), "game_dir", "path") {
         Ok(ini_property) => {
-            info!("Sucessfuly read {} from cfg.ini", ini_property.key);
             let test_path = Value::unwrap_path(ini_property.value);
-            if does_dir_contain(&test_path, &["test_config.ini"]) {
+            if does_dir_contain(&test_path, &REQUIRED_GAME_FILES) {
                 test_path
             } else {
-                attempt_locate_dir(&["Program Files (x86)", "Steam", "steamapps", "common"])
-                    .unwrap_or_else(|| "\\".into())
+                attempt_locate_common(CONFIG_DIR)
             }
         }
         Err(err) => {
             error!("{}", err);
-            attempt_locate_dir(&["Program Files (x86)", "Steam", "steamapps", "common"])
-                .unwrap_or_else(|| "\\".into())
+            attempt_locate_common(CONFIG_DIR)
         }
     };
 
@@ -166,13 +162,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             info!("User Selected Path: {}", &user_path);
-            match does_dir_contain(Path::new(&user_path), &["test_config.ini"]) {
+            match does_dir_contain(Path::new(&user_path), &REQUIRED_GAME_FILES) {
                 true => {
                     info!("Sucess: Files found, saving diretory");
                     config
                         .with_section(Some("paths"))
                         .set("game_dir", &user_path);
-                    config.write_to_file("tests\\cfg.ini").unwrap();
+                    config.write_to_file(CONFIG_DIR).unwrap();
                 }
                 false => warn!("Failure: Files not found"),
             };
@@ -207,7 +203,7 @@ fn get_cgf(input_file: &str) -> Option<Ini> {
     let path = Path::new(input_file);
     match Ini::load_from_file(path) {
         Ok(ini) => {
-            info!("Config file found at {:?}", &input_file);
+            info!("Config file found at \"{}\"", &input_file);
             Some(ini)
         }
         Err(err) => {
@@ -238,16 +234,33 @@ fn does_dir_contain(path: &Path, list: &[&str]) -> bool {
                 }
             }
             if counter == list.len() {
-                info!("All files found in selected directory");
+                info!("All files found in \"{}\"", path.to_string_lossy());
                 true
             } else {
-                warn!("All files were not found in selected directory");
+                warn!("All files were not found in \"{}\"", path.to_string_lossy());
                 false
             }
         }
         Err(err) => {
-            error!("{}: on reading directory", err);
+            error!("Error::{} on reading directory", err);
             false
+        }
+    }
+}
+
+fn attempt_locate_common(input_file: &str) -> PathBuf {
+    let mut config = get_cgf(input_file).unwrap();
+    match IniProperty::new(&config, Some("paths"), "common_dir", "path") {
+        Ok(ini_property) => Value::unwrap_path(ini_property.value),
+        Err(err) => {
+            error!("{}", err);
+            let common_dir = attempt_locate_dir(&DEFAULT_COMMON_DIR).unwrap_or_else(|| "\\".into());
+            config
+                .with_section(Some("paths"))
+                .set("common_dir", &common_dir.to_string_lossy().to_string());
+            config.write_to_file(CONFIG_DIR).unwrap();
+            info!("default \"common_dir\" wrote to cfg file");
+            common_dir
         }
     }
 }
