@@ -8,70 +8,59 @@ use native_dialog::FileDialog;
 use std::path::{Path, PathBuf};
 use std::{env, fs::read_dir, rc::Rc, str::FromStr};
 
-struct IniProperty {
+struct IniProperty<T: ValueType> {
     section: Option<String>,
     key: String,
-    value: Value,
+    value: T,
 }
 
-enum Value {
-    AsBool(bool),
-    AsPath(PathBuf),
+trait ValueType: Sized {
+    fn parse_str(value: &str) -> Option<Self>;
 }
 
-impl Value {
-    fn str_to_bool(value: Option<&str>) -> bool {
-        bool::from_str(value.unwrap()).unwrap()
-    }
-
-    fn str_to_path(value: Option<&str>) -> PathBuf {
-        PathBuf::from(value.unwrap())
-    }
-
-    fn unwrap_bool(self) -> bool {
-        if let Value::AsBool(bool) = self {
-            bool
-        } else {
-            panic!("Unexpected variant");
-        }
-    }
-
-    fn unwrap_path(self) -> PathBuf {
-        if let Value::AsPath(path) = self {
-            path
-        } else {
-            panic!("Unexpected variant");
+impl ValueType for bool {
+    fn parse_str(ini_value: &str) -> Option<Self> {
+        match bool::from_str(ini_value) {
+            Ok(_) => Some(bool::from_str(ini_value).unwrap()),
+            Err(err) => {
+                error!("Error: {}", err);
+                None
+            }
         }
     }
 }
 
-impl IniProperty {
-    fn new(
-        ini: &Ini,
-        section: Option<&str>,
-        key: &str,
-        expected_type: &str,
-    ) -> Result<IniProperty, String> {
-        let result_type: ValFromIni = match expected_type {
-            "bool" => Ok(ValFromIni::IsBool(ini.get_from(section, key))),
-            "path" => Ok(ValFromIni::IsPath(ini.get_from(section, key))),
-            _ => Err("Not a valid type"),
-        }?;
-        match IniProperty::is_valid(ini, section, key, result_type) {
-            true => {
-                let value: Value = match expected_type {
-                    "bool" => Value::AsBool(Value::str_to_bool(ini.get_from(section, key))),
-                    "path" => Value::AsPath(Value::str_to_path(ini.get_from(section, key))),
-                    _ => panic!("Unsupported type"),
-                };
+impl ValueType for PathBuf {
+    fn parse_str(ini_value: &str) -> Option<Self> {
+        match Path::new(ini_value).try_exists() {
+            Ok(result) => {
+                if result {
+                    Some(PathBuf::from(ini_value))
+                } else {
+                    warn!("Path from ini can not be found on machine");
+                    None
+                }
+            }
+            Err(err) => {
+                error!("Error: {}", err);
+                None
+            }
+        }
+    }
+}
+
+impl<T: ValueType> IniProperty<T> {
+    fn new(ini: &Ini, section: Option<&str>, key: &str) -> Result<IniProperty<T>, String> {
+        match IniProperty::is_valid(ini, section, key) {
+            Some(value) => {
                 info!("Sucessfuly read \"{}\" from ini", key);
                 Ok(IniProperty {
-                    section: Some(section.unwrap().into()),
-                    key: key.into(),
+                    section: Some(section.unwrap().to_string()),
+                    key: key.to_string(),
                     value,
                 })
             }
-            false => Err(format!(
+            None => Err(format!(
                 "Value stored in Section: \"{}\", Key: \"{}\" is not valid",
                 section.unwrap(),
                 key
@@ -79,33 +68,18 @@ impl IniProperty {
         }
     }
 
-    fn is_valid(ini: &Ini, section: Option<&str>, key: &str, expected_type: ValFromIni) -> bool {
+    fn is_valid(ini: &Ini, section: Option<&str>, key: &str) -> Option<T> {
         match &ini.section(section) {
             Some(s) => match s.contains_key(key) {
-                true => match expected_type {
-                    ValFromIni::IsBool(_) => match expected_type.parse_bool() {
-                        Ok(_) => true,
-                        Err(err) => {
-                            error!("Error {}", err);
-                            false
-                        }
-                    },
-                    ValFromIni::IsPath(_) => match expected_type.parse_path() {
-                        Ok(_) => true,
-                        Err(err) => {
-                            error!("Error {}", err);
-                            false
-                        }
-                    },
-                },
+                true => T::parse_str(ini.get_from(section, key).unwrap()),
                 false => {
                     warn!("Key: \"{}\" not found in {:?}", key, ini);
-                    false
+                    None
                 }
             },
             None => {
                 warn!("Section: \"{}\" not found in {:?}", section.unwrap(), ini);
-                false
+                None
             }
         }
     }
@@ -123,25 +97,24 @@ fn main() -> Result<(), slint::PlatformError> {
         Some(ini) => ini,
         None => {
             warn!("Ini not found. Creating new Ini");
-            let new_ini = Ini::new();
+            let mut new_ini = Ini::new();
             new_ini.write_to_file(CONFIG_DIR).unwrap();
-            attempt_locate_common(CONFIG_DIR);
+            attempt_locate_common(&mut new_ini);
             get_cgf(CONFIG_DIR).unwrap()
         }
     };
 
-    let game_dir: PathBuf = match IniProperty::new(&config, Some("paths"), "game_dir", "path") {
+    let game_dir: PathBuf = match IniProperty::<PathBuf>::new(&config, Some("paths"), "game_dir") {
         Ok(ini_property) => {
-            let test_path = Value::unwrap_path(ini_property.value);
-            if does_dir_contain(&test_path, &REQUIRED_GAME_FILES) {
-                test_path
+            if does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
+                ini_property.value
             } else {
-                attempt_locate_common(CONFIG_DIR)
+                attempt_locate_common(&mut config)
             }
         }
         Err(err) => {
             error!("{}", err);
-            attempt_locate_common(CONFIG_DIR)
+            attempt_locate_common(&mut config)
         }
     };
 
@@ -176,27 +149,6 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
     ui.run()
-}
-
-enum ValFromIni<'a> {
-    IsBool(Option<&'a str>),
-    IsPath(Option<&'a str>),
-}
-
-impl<'a> ValFromIni<'a> {
-    fn parse_bool(&'a self) -> Result<ValFromIni, &'static str> {
-        todo!()
-    }
-
-    fn parse_path(&self) -> Result<ValFromIni, &'static str> {
-        match self {
-            ValFromIni::IsPath(Some(value)) => match Path::new(value).exists() {
-                true => Ok(ValFromIni::IsPath(Some(*value))),
-                false => Err("Read path not found"),
-            },
-            _ => Err("Path invalid"),
-        }
-    }
 }
 
 fn get_cgf(input_file: &str) -> Option<Ini> {
@@ -234,10 +186,13 @@ fn does_dir_contain(path: &Path, list: &[&str]) -> bool {
                 }
             }
             if counter == list.len() {
-                info!("All files found in \"{}\"", path.to_string_lossy());
+                info!("All files found in: \"{}\"", path.to_string_lossy());
                 true
             } else {
-                warn!("All files were not found in \"{}\"", path.to_string_lossy());
+                warn!(
+                    "All files were not found in: \"{}\"",
+                    path.to_string_lossy()
+                );
                 false
             }
         }
@@ -248,20 +203,38 @@ fn does_dir_contain(path: &Path, list: &[&str]) -> bool {
     }
 }
 
-fn attempt_locate_common(input_file: &str) -> PathBuf {
-    let mut config = get_cgf(input_file).unwrap();
-    match IniProperty::new(&config, Some("paths"), "common_dir", "path") {
-        Ok(ini_property) => Value::unwrap_path(ini_property.value),
-        Err(err) => {
-            error!("{}", err);
-            let common_dir = attempt_locate_dir(&DEFAULT_COMMON_DIR).unwrap_or_else(|| "\\".into());
-            config
-                .with_section(Some("paths"))
-                .set("common_dir", &common_dir.to_string_lossy().to_string());
-            config.write_to_file(CONFIG_DIR).unwrap();
-            info!("default \"common_dir\" wrote to cfg file");
-            common_dir
-        }
+fn attempt_locate_common(config: &mut Ini) -> PathBuf {
+    let read_common: Option<PathBuf> =
+        match IniProperty::<PathBuf>::new(config, Some("paths"), "common_dir") {
+            Ok(ini_property) => {
+                let mut test_file_read = ini_property.value.clone();
+                test_file_read.pop();
+                match test_path_buf(test_file_read, &["common"]) {
+                    Some(_) => {
+                        info!("path to \"common\" read from ini is valid");
+                        Some(ini_property.value)
+                    }
+                    None => {
+                        warn!("\"common\" not found in directory read from ini");
+                        None
+                    }
+                }
+            }
+            Err(err) => {
+                error!("{}", err);
+                None
+            }
+        };
+    if let Some(path) = read_common {
+        path
+    } else {
+        let common_dir = attempt_locate_dir(&DEFAULT_COMMON_DIR).unwrap_or_else(|| "".into());
+        config
+            .with_section(Some("paths"))
+            .set("common_dir", &common_dir.to_string_lossy().to_string());
+        config.write_to_file(CONFIG_DIR).unwrap();
+        info!("default \"common_dir\" wrote to cfg file");
+        common_dir
     }
 }
 
