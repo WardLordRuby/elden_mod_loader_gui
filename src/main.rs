@@ -2,88 +2,15 @@
 //#![windows_subsystem = "windows"]
 
 slint::include_modules!();
+
+mod ini_parser;
+
 use ini::Ini;
+use ini_parser::IniProperty;
 use log::{error, info, warn};
 use native_dialog::FileDialog;
 use std::path::{Path, PathBuf};
-use std::{env, fs::read_dir, rc::Rc, str::FromStr};
-
-struct IniProperty<T: ValueType> {
-    section: Option<String>,
-    key: String,
-    value: T,
-}
-
-trait ValueType: Sized {
-    fn parse_str(value: &str) -> Option<Self>;
-}
-
-impl ValueType for bool {
-    fn parse_str(ini_value: &str) -> Option<Self> {
-        match bool::from_str(ini_value) {
-            Ok(_) => Some(bool::from_str(ini_value).unwrap()),
-            Err(err) => {
-                error!("Error: {}", err);
-                None
-            }
-        }
-    }
-}
-
-impl ValueType for PathBuf {
-    fn parse_str(ini_value: &str) -> Option<Self> {
-        match Path::new(ini_value).try_exists() {
-            Ok(result) => {
-                if result {
-                    Some(PathBuf::from(ini_value))
-                } else {
-                    warn!("Path from ini can not be found on machine");
-                    None
-                }
-            }
-            Err(err) => {
-                error!("Error: {}", err);
-                None
-            }
-        }
-    }
-}
-
-impl<T: ValueType> IniProperty<T> {
-    fn new(ini: &Ini, section: Option<&str>, key: &str) -> Result<IniProperty<T>, String> {
-        match IniProperty::is_valid(ini, section, key) {
-            Some(value) => {
-                info!("Sucessfuly read \"{}\" from ini", key);
-                Ok(IniProperty {
-                    section: Some(section.unwrap().to_string()),
-                    key: key.to_string(),
-                    value,
-                })
-            }
-            None => Err(format!(
-                "Value stored in Section: \"{}\", Key: \"{}\" is not valid",
-                section.unwrap(),
-                key
-            )),
-        }
-    }
-
-    fn is_valid(ini: &Ini, section: Option<&str>, key: &str) -> Option<T> {
-        match &ini.section(section) {
-            Some(s) => match s.contains_key(key) {
-                true => T::parse_str(ini.get_from(section, key).unwrap()),
-                false => {
-                    warn!("Key: \"{}\" not found in {:?}", key, ini);
-                    None
-                }
-            },
-            None => {
-                warn!("Section: \"{}\" not found in {:?}", section.unwrap(), ini);
-                None
-            }
-        }
-    }
-}
+use std::{env, fs::read_dir, rc::Rc};
 
 const CONFIG_DIR: &str = "tests\\cfg.ini";
 const DEFAULT_COMMON_DIR: [&str; 4] = ["Program Files (x86)", "Steam", "steamapps", "common"];
@@ -124,28 +51,36 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move || {
             let ui = ui_handle.unwrap();
-            let user_path: String = match get_user_folder(game_dir.as_path()) {
+            let user_path: Result<String, &'static str> = match get_user_folder(game_dir.as_path())
+            {
                 Ok(opt) => match opt {
-                    Some(selected_path) => selected_path.to_string_lossy().to_string(),
-                    None => "No Path Selected".to_string(),
+                    Some(selected_path) => Ok(selected_path.to_string_lossy().to_string()),
+                    None => Err("No Path Selected"),
                 },
                 Err(err) => {
-                    error!("{:?}", err);
-                    "Error selecting path".to_string()
+                    error!("Error selecting path");
+                    error!("{}", err);
+                    Err("Error selecting path")
                 }
             };
-            info!("User Selected Path: {}", &user_path);
-            match does_dir_contain(Path::new(&user_path), &REQUIRED_GAME_FILES) {
-                true => {
-                    info!("Sucess: Files found, saving diretory");
-                    config
-                        .with_section(Some("paths"))
-                        .set("game_dir", &user_path);
-                    config.write_to_file(CONFIG_DIR).unwrap();
+            match user_path {
+                Ok(path) => {
+                    info!("User Selected Path: \"{}\"", &path);
+                    ui.set_filepath(path.clone().into());
+                    match does_dir_contain(Path::new(&path), &REQUIRED_GAME_FILES) {
+                        true => {
+                            info!("Sucess: Files found, saving diretory");
+                            config.with_section(Some("paths")).set("game_dir", path);
+                            config.write_to_file(CONFIG_DIR).unwrap();
+                        }
+                        false => warn!("Failure: Files not found"),
+                    };
                 }
-                false => warn!("Failure: Files not found"),
-            };
-            ui.set_filepath(user_path.clone().into());
+                Err(err) => {
+                    info!("{}", err);
+                    ui.set_filepath(err.into());
+                }
+            }
         }
     });
     ui.run()
