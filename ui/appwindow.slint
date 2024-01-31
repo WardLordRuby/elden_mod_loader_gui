@@ -3,6 +3,7 @@ import { Button, VerticalBox } from "std-widgets.slint";
 export component AppWindow inherits Window {
     in-out property<string> filepath: "\\";
     callback select_file_location();
+    callback select_files();
     VerticalBox {
         Text {
             text: "Path: \{root.filepath}";
@@ -11,6 +12,12 @@ export component AppWindow inherits Window {
             text: "Select Folder";
             clicked => {
                 root.select_file_location();
+            }
+        }
+        Button {
+            text: "Select Files";
+            clicked => {
+                root.select_files();
             }
         }
     }
