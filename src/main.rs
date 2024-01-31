@@ -13,14 +13,14 @@ use native_dialog::FileDialog;
 use std::{
     ffi::{OsStr, OsString},
     fs::{read_dir, rename},
-    path::{Path, PathBuf},
+    path::{self, Path, PathBuf},
     {env, rc::Rc},
 };
 
-const INI_WRITE_OPTIONS: WriteOption = WriteOption {
+const WRITE_OPTIONS: WriteOption = WriteOption {
     escape_policy: EscapePolicy::Nothing,
     line_separator: LineSeparator::SystemDefault,
-    kv_separator: " = ",
+    kv_separator: "=",
 };
 
 const CONFIG_DIR: &str = "tests\\cfg.ini";
@@ -34,99 +34,135 @@ const REQUIRED_GAME_FILES: [&str; 3] = [
 fn main() -> Result<(), slint::PlatformError> {
     let ui = AppWindow::new()?;
     env_logger::init();
-    let game_dir: PathBuf;
     {
         let mut config = match get_cgf(CONFIG_DIR) {
             Some(ini) => ini,
             None => {
                 warn!("Ini not found. Creating new Ini");
                 let mut new_ini = Ini::new();
-                //format with comments and placeholders in sections
+                //format with comments and placeholders in sections this can go into its own fn new_cfg
                 new_ini
-                    .write_to_file_opt(CONFIG_DIR, INI_WRITE_OPTIONS)
+                    .write_to_file_opt(CONFIG_DIR, WRITE_OPTIONS)
                     .unwrap();
                 attempt_locate_common(&mut new_ini);
                 get_cgf(CONFIG_DIR).unwrap()
             }
         };
 
-        game_dir = match IniProperty::<PathBuf>::new(&config, Some("paths"), "game_dir") {
-            Ok(ini_property) => {
-                if does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
-                    info!("Success: \"game_dir\" verified");
-                    ini_property.value
-                } else {
-                    attempt_locate_common(&mut config)
+        let game_dir: PathBuf =
+            match IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir") {
+                Ok(ini_property) => {
+                    if does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
+                        ini_property.value
+                    } else {
+                        attempt_locate_common(&mut config)
+                    }
                 }
-            }
-            Err(err) => {
-                error!("{}", err);
-                attempt_locate_common(&mut config)
-            }
-        };
-    }
-
-    ui.set_filepath(game_dir.to_string_lossy().to_string().into());
-
-    ui.on_select_file_location({
-        let ui_handle = ui.as_weak();
-        move || {
-            let mut config = get_cgf(CONFIG_DIR).unwrap();
-            let ui = ui_handle.unwrap();
-
-            let user_path: Result<String, &'static str> = match get_user_folder(game_dir.as_path())
-            {
-                Ok(opt) => match opt {
-                    Some(selected_path) => Ok(selected_path.to_string_lossy().to_string()),
-                    None => Err("No Path Selected"),
-                },
                 Err(err) => {
-                    error!("Error selecting path");
                     error!("{}", err);
-                    Err("Error selecting path")
+                    attempt_locate_common(&mut config)
                 }
             };
 
-            match user_path {
-                Ok(path) => {
-                    info!("User Selected Path: \"{}\"", &path);
-                    ui.set_filepath(path.clone().into());
-                    // include test for \Game\..Before REQUIRED_GAME_FILES
-                    match does_dir_contain(Path::new(&path), &REQUIRED_GAME_FILES) {
-                        true => {
-                            info!("Success: Files found, saving diretory");
-                            config.with_section(Some("paths")).set("game_dir", path);
-                            config
-                                .write_to_file_opt(CONFIG_DIR, INI_WRITE_OPTIONS)
-                                .unwrap();
+        ui.set_filepath(game_dir.to_string_lossy().to_string().into());
+
+        ui.on_select_game_dir({
+            let ui_handle = ui.as_weak();
+            move || {
+                // remember to handle unwrap errors like this one
+                let mut config = get_cgf(CONFIG_DIR).unwrap();
+                let ui = ui_handle.unwrap();
+
+                let user_path: Result<String, &'static str> =
+                    match get_user_folder(game_dir.as_path()) {
+                        Ok(opt) => match opt {
+                            Some(selected_path) => Ok(selected_path.to_string_lossy().to_string()),
+                            None => Err("No Path Selected"),
+                        },
+                        Err(err) => {
+                            error!("Error selecting path");
+                            error!("{}", err);
+                            Err("Error selecting path")
                         }
-                        false => warn!("Failure: Files not found"),
                     };
-                }
-                Err(err) => {
-                    info!("{}", err);
-                    ui.set_filepath(err.into());
+
+                match user_path {
+                    Ok(path) => {
+                        info!("User Selected Path: \"{}\"", &path);
+                        let try_path: String = if does_dir_contain(Path::new(&path), &["Game"]) {
+                            format!("{}\\Game", path)
+                        } else {
+                            path
+                        };
+                        match does_dir_contain(Path::new(&try_path), &REQUIRED_GAME_FILES) {
+                            true => {
+                                info!("Success: Files found, saving diretory");
+                                save_path(&mut config, Some("paths"), "game_dir", &try_path);
+                                ui.set_filepath(try_path.into());
+                            }
+                            false => {
+                                let msg: &str = "Failure: Files not found";
+                                warn!("{}", &msg);
+                                ui.set_filepath(try_path.into());
+                            }
+                        };
+                    }
+                    Err(err) => {
+                        info!("{}", err);
+                        ui.set_filepath(err.into());
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 
     ui.on_select_files({
         move || {
+            // remember to handle unwrap errors like this one
             let mut config = get_cgf(CONFIG_DIR).unwrap();
-            //only save if valid files are selected
-            let mod_files: Result<Vec<PathBuf>, &'static str> = match get_user_files(Path::new(""))
-            {
-                Ok(opt) => {
-                    save_path_bufs(&mut config, &opt);
-                    Ok(opt)
+            let game_dir: Result<PathBuf, String> =
+                match IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir") {
+                    Ok(ini_property) => {
+                        if does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
+                            Ok(ini_property.value)
+                        } else {
+                            Err("Error: Select game directory before adding mod files".to_string())
+                        }
+                    }
+                    Err(err) => Err(err),
+                };
+            match game_dir {
+                Ok(valid_dir) => {
+                    let mod_files: Result<Vec<PathBuf>, &'static str> =
+                        match get_user_files(Path::new(&valid_dir)) {
+                            Ok(opt) => match opt.len() {
+                                0 => Err("No files selected"),
+                                _ => Ok(opt),
+                            },
+                            Err(err) => {
+                                error!("{}", err);
+                                Err("Error selecting path")
+                            }
+                        };
+                    match mod_files {
+                        Ok(files) => match shorten_paths(files, &valid_dir) {
+                            //if files.len == 1 save_path
+                            Ok(paths) => match paths.len() {
+                                1 => save_path(
+                                    &mut config,
+                                    Some("mod-files"),
+                                    "test_files",
+                                    &paths[0].to_string_lossy().to_string(),
+                                ),
+                                _ => save_path_bufs(&mut config, &paths),
+                            },
+                            Err(err) => error!("Error: {}", err),
+                        },
+                        Err(err) => error!("{}", err),
+                    }
                 }
-                Err(err) => {
-                    error!("Error selecting path");
-                    error!("{}", err);
-                    Err("Error selecting path")
-                }
-            };
+                Err(err) => error!("Error: {}", err),
+            }
         }
     });
 
@@ -154,12 +190,24 @@ fn save_path_bufs(config: &mut Ini, files: &[PathBuf]) {
         .collect::<Vec<_>>()
         .join("\r\narray[]=");
     config
-        .with_section(Some("mod-paths"))
-        .set("test_files", format!("mod_files\r\narray[]={}", save_paths));
-    config
-        .write_to_file_opt(CONFIG_DIR, INI_WRITE_OPTIONS)
-        .unwrap();
-    //remove game dir from each path before save
+        .with_section(Some("mod-files"))
+        .set("test_files", format!("array\r\narray[]={}", save_paths));
+    config.write_to_file_opt(CONFIG_DIR, WRITE_OPTIONS).unwrap();
+}
+
+fn save_path(config: &mut Ini, section: Option<&str>, key: &str, path: &String) {
+    config.with_section(section).set(key, path);
+    config.write_to_file_opt(CONFIG_DIR, WRITE_OPTIONS).unwrap();
+}
+
+fn shorten_paths(
+    paths: Vec<PathBuf>,
+    remove: &PathBuf,
+) -> Result<Vec<PathBuf>, path::StripPrefixError> {
+    paths
+        .into_iter()
+        .map(|path| path.strip_prefix(remove).map(|p| p.to_path_buf()))
+        .collect()
 }
 
 fn toggle_files(file_paths: Vec<PathBuf>) -> Result<&'static str, String> {
@@ -212,7 +260,7 @@ fn get_cgf(input_file: &str) -> Option<Ini> {
     let path = Path::new(input_file);
     match Ini::load_from_file_noescape(path) {
         Ok(ini) => {
-            info!("Config file found at \"{}\"", &input_file);
+            info!("Success:Config file found at \"{}\"", &input_file);
             Some(ini)
         }
         Err(err) => {
@@ -249,10 +297,12 @@ fn does_dir_contain(path: &Path, list: &[&str]) -> bool {
                 }
             }
             if counter == list.len() {
+                info!("Success: Directory verified");
                 true
             } else {
                 warn!(
-                    "All files were not found in: \"{}\"",
+                    "Failure: {:?} not found in: \"{}\"",
+                    list,
                     path.to_string_lossy()
                 );
                 false
@@ -267,13 +317,13 @@ fn does_dir_contain(path: &Path, list: &[&str]) -> bool {
 
 fn attempt_locate_common(config: &mut Ini) -> PathBuf {
     let read_common: Option<PathBuf> =
-        match IniProperty::<PathBuf>::new(config, Some("paths"), "common_dir") {
+        match IniProperty::<PathBuf>::read(config, Some("paths"), "common_dir") {
             Ok(ini_property) => {
                 let mut test_file_read = ini_property.value.clone();
                 test_file_read.pop();
                 match test_path_buf(test_file_read, &["common"]) {
                     Some(_) => {
-                        info!("path to \"common\" read from ini is valid");
+                        info!("Success: \"common\" from ini is valid");
                         Some(ini_property.value)
                     }
                     None => {
@@ -291,12 +341,12 @@ fn attempt_locate_common(config: &mut Ini) -> PathBuf {
         path
     } else {
         let common_dir = attempt_locate_dir(&DEFAULT_COMMON_DIR).unwrap_or_else(|| "".into());
-        config
-            .with_section(Some("paths"))
-            .set("common_dir", &common_dir.to_string_lossy().to_string());
-        config
-            .write_to_file_opt(CONFIG_DIR, INI_WRITE_OPTIONS)
-            .unwrap();
+        save_path(
+            config,
+            Some("paths"),
+            "common_dir",
+            &common_dir.to_string_lossy().to_string(),
+        );
         info!("default \"common_dir\" wrote to cfg file");
         common_dir
     }
