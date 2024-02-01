@@ -2,13 +2,15 @@ use ini::Ini;
 use log::{error, info, warn};
 
 use std::{
+    fs::{self, File},
+    io::{self, BufRead, BufReader, Write},
     path::{Path, PathBuf},
     str::FromStr,
 };
 
 pub struct IniProperty<T: ValueType> {
-    pub section: Option<String>,
-    pub key: String,
+    //section: Option<String>,
+    //key: String,
     pub value: T,
 }
 
@@ -78,8 +80,8 @@ impl<T: ValueType> IniProperty<T> {
             Some(value) => {
                 info!("Success: read \"{}\" from ini", key);
                 Ok(IniProperty {
-                    section: Some(section.unwrap().to_string()),
-                    key: key.to_string(),
+                    //section: Some(section.unwrap().to_string()),
+                    //key: key.to_string(),
                     value,
                 })
             }
@@ -89,6 +91,41 @@ impl<T: ValueType> IniProperty<T> {
                 key
             )),
         }
+    }
+
+    pub fn remove_array(path: &str, key: &str) -> io::Result<()> {
+        let ini = File::open(path).unwrap();
+        let reader = BufReader::new(ini);
+
+        let temp_file_path = "test_files\\temp.ini";
+        let temp_file = File::create(temp_file_path)?;
+
+        let mut writer = io::BufWriter::new(temp_file);
+
+        let mut skip_next_line = false;
+        let mut key_found = false;
+
+        for line_result in reader.lines() {
+            let line = line_result?;
+
+            if key_found && !line.starts_with("array[]") {
+                key_found = false;
+                skip_next_line = false;
+            }
+
+            if line.starts_with(key) {
+                skip_next_line = true;
+                key_found = true;
+            }
+
+            if !skip_next_line {
+                writeln!(writer, "{}", line)?;
+            }
+        }
+
+        fs::rename(temp_file_path, path)?;
+
+        Ok(())
     }
 
     fn is_valid(ini: &Ini, section: Option<&str>, key: &str) -> Option<T> {
@@ -106,8 +143,6 @@ impl<T: ValueType> IniProperty<T> {
             }
         }
     }
-
-    //fn remove_array
 }
 
 fn validate_path(path: &Path) -> bool {
