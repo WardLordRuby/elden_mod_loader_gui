@@ -1,9 +1,14 @@
 use ini::{EscapePolicy, Ini, LineSeparator, WriteOption};
-use std::path::{Path, PathBuf};
 
-pub const WRITE_OPTIONS: WriteOption = WriteOption {
+use std::{
+    fs::File,
+    io::{self, Write},
+    path::{Path, PathBuf},
+};
+
+const WRITE_OPTIONS: WriteOption = WriteOption {
     escape_policy: EscapePolicy::Nothing,
-    line_separator: LineSeparator::SystemDefault,
+    line_separator: LineSeparator::CRLF,
     kv_separator: "=",
 };
 
@@ -31,4 +36,14 @@ pub fn save_bool(config: &mut Ini, file_name: &str, key: &str, value: bool) {
         .with_section(Some("registered-mods"))
         .set(key, value.to_string());
     config.write_to_file_opt(file_name, WRITE_OPTIONS).unwrap();
+}
+
+pub fn new_cfg(path: &str) -> io::Result<()> {
+    let mut new_ini = File::create(path)?;
+
+    writeln!(new_ini, "[paths]")?;
+    writeln!(new_ini, "[registerd-mods]")?;
+    writeln!(new_ini, "[mod-files]")?;
+
+    Ok(())
 }

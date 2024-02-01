@@ -25,13 +25,10 @@ fn main() -> Result<(), slint::PlatformError> {
             Some(ini) => ini,
             None => {
                 warn!("Ini not found. Creating new Ini");
-                let mut new_ini = Ini::new();
-                //format with comments and placeholders in sections this can go into its own fn new_cfg
-                new_ini
-                    .write_to_file_opt(CONFIG_DIR, WRITE_OPTIONS)
-                    .unwrap();
+                new_cfg(CONFIG_DIR);
+                let mut new_ini: Ini = get_cgf(CONFIG_DIR).unwrap();
                 attempt_locate_common(&mut new_ini);
-                get_cgf(CONFIG_DIR).unwrap()
+                new_ini
             }
         };
 

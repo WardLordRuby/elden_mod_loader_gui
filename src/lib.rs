@@ -4,7 +4,7 @@ pub mod ini_tools {
 }
 
 use ini::Ini;
-use ini_tools::{parser::IniProperty, writer::*};
+use ini_tools::{parser::IniProperty, writer::save_path};
 use log::{error, info, warn};
 
 use std::{
