@@ -218,7 +218,3 @@ impl RegMod {
         reg_mods
     }
 }
-// make sure keys in Some("registered-mods") are also in Some("mod-files")
-//      remove entry if doesnt match
-// replace _ with space in name
-// if value == array then multiple_files true
