@@ -7,9 +7,47 @@ mod tests {
 
     use elden_mod_loader_gui::{
         get_cgf,
-        ini_tools::{parser::RegMod, writer::*},
+        ini_tools::{parser::IniProperty, parser::RegMod, writer::*},
     };
     use ini::Ini;
+
+    #[test]
+    fn does_path_parse() {
+        let test_path_1 =
+            Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
+        let test_path_2 = Path::new("C:\\Windows\\System32");
+        let test_file = "test_files\\test_path.ini";
+        {
+            let mut test_ini = Ini::new();
+            save_path(
+                &mut test_ini,
+                test_file,
+                Some("paths"),
+                "game_dir",
+                test_path_1,
+            );
+            save_path(
+                &mut test_ini,
+                test_file,
+                Some("paths"),
+                "random_dir",
+                test_path_2,
+            );
+        }
+
+        let config = get_cgf(test_file).unwrap();
+        let parse_test_1 = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir")
+            .unwrap()
+            .value;
+        let parse_test_2 = IniProperty::<PathBuf>::read(&config, Some("paths"), "random_dir")
+            .unwrap()
+            .value;
+
+        // Tests if paths stored in Section "paths" will parse correctly | these are full length paths
+        assert_eq!(test_path_1, parse_test_1);
+        assert_eq!(test_path_2, parse_test_2);
+        let _ = remove_file(test_file);
+    }
 
     #[test]
     fn read_write_delete_from_ini() {
