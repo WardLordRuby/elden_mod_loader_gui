@@ -2,8 +2,8 @@ use ini::Ini;
 use log::{error, info, warn};
 
 use std::{
-    fs::{self, File},
-    io::{self, BufRead, BufReader, Write},
+    fs::{read_to_string, write},
+    io,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -94,36 +94,26 @@ impl<T: ValueType> IniProperty<T> {
     }
 
     pub fn remove_array(path: &str, key: &str) -> io::Result<()> {
-        let ini = File::open(path).unwrap();
-        let reader = BufReader::new(ini);
-
-        let temp_file_path = "test_files\\temp.ini";
-        let temp_file = File::create(temp_file_path)?;
-
-        let mut writer = io::BufWriter::new(temp_file);
+        let content = read_to_string(path)?;
 
         let mut skip_next_line = false;
         let mut key_found = false;
 
-        for line_result in reader.lines() {
-            let line = line_result?;
-
+        let mut filter_lines = |line: &str| {
             if key_found && !line.starts_with("array[]") {
-                key_found = false;
                 skip_next_line = false;
+                key_found = false;
             }
-
             if line.starts_with(key) {
                 skip_next_line = true;
                 key_found = true;
             }
+            !skip_next_line
+        };
 
-            if !skip_next_line {
-                writeln!(writer, "{}", line)?;
-            }
-        }
+        let lines: Vec<&str> = content.lines().filter(|&line| filter_lines(line)).collect();
 
-        fs::rename(temp_file_path, path)?;
+        write(path, lines.join("\r\n"))?;
 
         Ok(())
     }
