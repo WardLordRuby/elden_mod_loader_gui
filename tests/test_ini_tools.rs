@@ -43,7 +43,7 @@ mod tests {
             .unwrap()
             .value;
 
-        // Tests if paths stored in Section "paths" will parse correctly | these are full length paths
+        // Tests if paths stored in Section("paths") will parse correctly | these are full length paths
         assert_eq!(test_path_1, parse_test_1);
         assert_eq!(test_path_2, parse_test_2);
         let _ = remove_file(test_file);
@@ -72,9 +72,9 @@ mod tests {
             ];
             let invalid_format_2 = PathBuf::from("mods\\SkipTheIntro.dll");
 
-            // We must save a working game_dir to the same ini before we can parse entries in "mod-files"
-            // ---------------------parser is set up to only parse valid entries---------------------
-            // use case for entries in section "mod-files" is to keep track of files within game_dir
+            // We must save a working game_dir in the ini before we can parse entries in Section("mod-files")
+            // -----------------------parser is set up to only parse valid entries---------------------------
+            // ----use case for entries in Section("mod-files") is to keep track of files within game_dir----
             let game_path =
                 Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
 
@@ -128,7 +128,7 @@ mod tests {
             .find(|data| data.name == mod_2_key.trim())
             .unwrap();
 
-        // Tests if PathBuf and Vec<PathBuf> was parsed correctly
+        // Tests if PathBuf and Vec<PathBuf>'s from Section("mod-files") parse correctly | these are partial paths
         assert_eq!(mod_1, reg_mod_1.files);
         assert_eq!(mod_2, reg_mod_2.files[0]);
 
