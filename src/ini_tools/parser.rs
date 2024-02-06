@@ -38,7 +38,7 @@ impl ValueType for bool {
 impl ValueType for PathBuf {
     fn parse_str(ini: &Ini, section: Option<&str>, key: &str) -> Option<Self> {
         let ini_path = PathBuf::from(ini.get_from(section, key).unwrap());
-        if !ini_path.has_root() {
+        if section == Some("mod-files") {
             let game_dir = IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir")
                 .unwrap()
                 .value;
@@ -159,14 +159,14 @@ impl RegMod {
                 .filter_map(|(k, _)| if k != "array[]" { Some(k) } else { None })
                 .collect();
             for key in state_keys.iter().filter(|&&k| !file_keys.contains(&k)) {
-                remove_entry(&mut ini, path, Some("registered-mods"), key).unwrap()
+                remove_entry(&mut ini, path, Some("registered-mods"), key);
             }
             for key in file_keys.iter().filter(|&&k| !state_keys.contains(&k)) {
                 if ini.get_from(Some("mod-files"), key).unwrap() == "array" {
                     remove_array(path, key);
                     ini = get_cgf(path).unwrap();
                 } else {
-                    remove_entry(&mut ini, path, Some("mod-files"), key).unwrap()
+                    remove_entry(&mut ini, path, Some("mod-files"), key);
                 }
             }
         }
@@ -211,10 +211,9 @@ impl RegMod {
         let mut reg_mods = Vec::new();
 
         for (name, state) in state_data {
-            let files = file_data.get(&name).cloned().unwrap_or_default();
+            let files = file_data.get(&name).cloned().unwrap();
             reg_mods.push(RegMod { name, state, files });
         }
-
         reg_mods
     }
 }
