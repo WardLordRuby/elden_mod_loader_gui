@@ -24,10 +24,10 @@ mod tests {
         ];
 
         for path in test_files.iter() {
-            File::create(path.to_string_lossy().to_string());
+            let _ = File::create(path.to_string_lossy().to_string());
         }
 
-        toggle_files(test_files.clone());
+        let _ = toggle_files(test_files.clone());
 
         assert!(file_exists("test_files\\test1.txt.disabled"));
         assert!(file_exists("test_files\\test2.ini.disabled"));
@@ -43,7 +43,7 @@ mod tests {
             PathBuf::from("test_files\\test5.bin.disabled"),
         ];
 
-        toggle_files(test_files_2);
+        let _ = toggle_files(test_files_2);
 
         assert!(file_exists("test_files\\test1.txt"));
         assert!(file_exists("test_files\\test2.ini"));
@@ -52,7 +52,7 @@ mod tests {
         assert!(file_exists("test_files\\test5.bin"));
 
         for path in test_files.iter() {
-            remove_file(path.as_path());
+            let _ = remove_file(path.as_path());
         }
     }
 }
