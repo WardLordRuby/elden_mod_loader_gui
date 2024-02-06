@@ -1,24 +1,43 @@
-import { Button, VerticalBox } from "std-widgets.slint";
+import { Button, VerticalBox, StandardListView, StandardButton } from "std-widgets.slint";
+import { SettingsPage, Logic } from "settings.slint";
 
-export component AppWindow inherits Window {
-    in-out property<string> filepath: "\\";
-    callback select_game_dir();
-    callback select_files();
-    VerticalBox {
-        Text {
-            text: "Path: \{root.filepath}";
+export { Logic }
+
+export component App inherits Window {
+    height: 250px;
+    preferred-width: 460px;
+    min-width: 370px;
+    in-out property <int> focus_page;
+    in property <string> err-message;
+    
+    //in-out property<string> filepath: "\\"; ui_ref: {root.filepath} rs_ref: ui.set_filepath(ref)
+    background: #0f161d;
+    
+    if(root.focus_page == 1) : SettingsPage {}
+
+    callback show_error_popup;
+    show_error_popup => { err-popup.show(); }
+
+    err_popup := PopupWindow {
+        x: 40px;
+        y: 100px;
+        width: min(err_popup_layout.preferred-width, root.width - 80px);
+
+        Rectangle {
+            background: root.background;
+            border-color: err_popup_text.color;
+            border-width: 1px;
         }
-        Button {
-            text: "Select Folder";
-            clicked => {
-                root.select_game_dir();
+
+        err_popup_layout := Dialog {
+            height:100%; width: 100%;
+
+            err_popup_text := Text {
+                text: root.err-message;
+                wrap: word-wrap;
             }
-        }
-        Button {
-            text: "Select Files";
-            clicked => {
-                root.select_files();
-            }
+
+            StandardButton { kind: ok; clicked => { err-popup.close(); } }
         }
     }
 }

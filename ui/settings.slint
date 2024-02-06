@@ -1,0 +1,76 @@
+import { GroupBox, CheckBox, Button, HorizontalBox, LineEdit } from "std-widgets.slint";
+
+import { Page } from "page.slint";
+
+export global Logic  {
+    callback select_mod_files();
+    pure callback select_game_dir();
+    in property <string> game_path;
+    in-out property <bool> game_path_valid;
+    // You can collect other global properties here
+}
+
+export component SettingsPage inherits Page {
+    title: @tr("Settings");
+    description: @tr("Set path to eldenring.exe and register mods here");
+
+    VerticalLayout {
+        padding-left: 5px;
+        padding-right: 5px;
+        padding-bottom: 3px;
+        spacing: 0px;
+        preferred-width: 460px;
+        
+        GroupBox {
+            height: 95px;
+            title: @tr("Game Path");
+
+            HorizontalBox {
+                padding: 0px;
+
+                Text {
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                    wrap: word-wrap;
+                    text: Logic.game_path;
+                }
+    
+                select-game := Button {
+                    width: 105px;
+                    height: 35px;
+                    text: @tr("Set Path");
+                    clicked => {
+                        Logic.select_game_dir();
+                    }
+                }
+            }
+        }
+    
+        GroupBox {
+            height: 95px;
+            title: @tr("Add Mod");
+            enabled: Logic.game_path_valid;
+    
+            HorizontalBox {
+                padding: 2px;
+                
+                LineEdit {
+                    height: 36px;
+                    preferred-width: 100px;
+                    horizontal-alignment: left;
+                    placeholder-text: @tr("Mod Name");
+                    enabled: Logic.game_path_valid;
+                }
+                add-mod := Button {
+                    width: 105px;
+                    height: 36px;
+                    text: @tr("Select Files");
+                    enabled: Logic.game_path_valid;
+                    clicked => {
+                        Logic.select_mod_files();
+                    }
+                }
+            }
+        }
+    }
+}
