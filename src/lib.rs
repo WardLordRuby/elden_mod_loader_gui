@@ -14,7 +14,14 @@ use std::{
     {env, rc::Rc},
 };
 
-const DEFAULT_COMMON_DIR: [&str; 4] = ["Program Files (x86)", "Steam", "steamapps", "common"];
+pub const DEFAULT_GAME_DIR: [&str; 6] = [
+    "Program Files (x86)",
+    "Steam",
+    "steamapps",
+    "common",
+    "ELDEN RING",
+    "Game",
+];
 pub const CONFIG_DIR: &str = "test_files\\cfg.ini";
 pub const REQUIRED_GAME_FILES: [&str; 3] = [
     "eldenring.exe",
@@ -46,7 +53,7 @@ pub fn toggle_files(file_paths: Vec<PathBuf>) -> Result<&'static str, String> {
 
     let mut counter: usize = 0;
     let mut err_msg = String::new();
-    for (index, path) in file_paths.iter().enumerate() {
+    for path in file_paths.iter() {
         let path_clone = path.clone();
         let mut new_path = path.clone();
         if new_path.pop() {
@@ -62,12 +69,11 @@ pub fn toggle_files(file_paths: Vec<PathBuf>) -> Result<&'static str, String> {
             };
         } else {
             err_msg = format!(
-                "Error: Could not find parent directory at file_path array index: {}",
-                index
+                "Error: Could not find parent directory at file_path array path: {:?}|",
+                path
             );
         }
     }
-    // if array len == counter then Success output new array with modified names or output bool and save names to ini
     if counter == file_paths.len() {
         Ok("Success: All files in array have been renamed")
     } else {
@@ -79,7 +85,7 @@ pub fn toggle_files(file_paths: Vec<PathBuf>) -> Result<&'static str, String> {
 pub fn get_cgf(input_file: &str) -> Option<Ini> {
     match Ini::load_from_file_noescape(Path::new(input_file)) {
         Ok(ini) => {
-            info!("Success:Config file found at \"{}\"", &input_file);
+            info!("Success: Config file found at \"{}\"", &input_file);
             Some(ini)
         }
         Err(err) => {
@@ -122,45 +128,53 @@ pub fn does_dir_contain(path: &Path, list: &[&str]) -> bool {
     }
 }
 
-pub fn attempt_locate_common(config: &mut Ini) -> PathBuf {
-    let read_common: Option<PathBuf> =
-        match IniProperty::<PathBuf>::read(config, Some("paths"), "common_dir") {
-            Ok(ini_property) => {
-                let mut test_file_read = ini_property.value.clone();
-                test_file_read.pop();
-                match test_path_buf(test_file_read, &["common"]) {
-                    Some(_) => {
-                        info!("Success: \"common\" from ini is valid");
-                        Some(ini_property.value)
-                    }
-                    None => {
-                        warn!("\"common\" not found in directory read from ini");
-                        None
-                    }
+pub enum PathResult {
+    Full(PathBuf),
+    Partial(PathBuf),
+    None(PathBuf),
+}
+pub fn attempt_locate_game(config: &mut Ini) -> PathResult {
+    let try_read: Option<PathBuf> =
+        match IniProperty::<PathBuf>::read(config, Some("paths"), "game_dir") {
+            Ok(ini_property) => match does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
+                true => {
+                    info!("Success: \"game_dir\" from ini is valid");
+                    Some(ini_property.value)
                 }
-            }
+                false => {
+                    warn!("Game files not found in directory read from ini");
+                    None
+                }
+            },
             Err(err) => {
                 error!("{}", err);
                 None
             }
         };
-    if let Some(path) = read_common {
-        path
-    } else {
-        let common_dir = attempt_locate_dir(&DEFAULT_COMMON_DIR).unwrap_or_else(|| "".into());
+    if let Some(path) = try_read {
+        return PathResult::Full(path);
+    }
+    let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or_else(|| "".into());
+    if does_dir_contain(&try_locate, &REQUIRED_GAME_FILES) {
+        info!("Success: located \"game_dir\" on drive");
         save_path(
             config,
             CONFIG_DIR,
             Some("paths"),
-            "common_dir",
-            common_dir.as_path(),
+            "game_dir",
+            try_locate.as_path(),
         );
-        info!("default \"common_dir\" wrote to cfg file");
-        common_dir
+        return PathResult::Full(try_locate);
     }
+    if try_locate.components().count() > 1 {
+        info!("Partial \"game_dir\" found");
+        return PathResult::Partial(try_locate);
+    }
+    warn!("Could not locate \"game_dir\"");
+    PathResult::None(try_locate)
 }
 
-fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
+pub fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
     let drive: String = match get_current_drive() {
         Some(drive) => drive,
         None => {
