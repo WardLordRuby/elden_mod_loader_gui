@@ -10,7 +10,7 @@ mod ini_tools {
 
 use ini::Ini;
 use ini_tools::{parser::RegMod, writer::*};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use std::{
@@ -19,12 +19,12 @@ use std::{
 };
 
 use elden_mod_loader_gui::*;
+
 fn main() -> Result<(), slint::PlatformError> {
     env_logger::init();
     let ui = App::new()?;
     let mut game_dir: PathBuf;
     let mut game_verified: bool;
-    let mut reg_mods = RegMod::collect(CONFIG_DIR);
 
     {
         let mut config: Ini = match get_cgf(CONFIG_DIR) {
@@ -49,11 +49,11 @@ fn main() -> Result<(), slint::PlatformError> {
         if !game_verified {
             ui.set_focus_page(1);
         } else {
-            let display_mods = deserialize(&reg_mods);
-            ui.global::<MainLogic>().set_current_mods(display_mods);
             ui.set_focus_page(0);
         };
-
+        let reg_mods = RegMod::collect(CONFIG_DIR);
+        ui.global::<MainLogic>()
+            .set_current_mods(deserialize(&reg_mods));
         ui.global::<MainLogic>().set_game_path_valid(game_verified);
         ui.global::<SettingsLogic>()
             .set_game_path(game_dir.to_string_lossy().to_string().into());
@@ -64,28 +64,29 @@ fn main() -> Result<(), slint::PlatformError> {
     // if selected file already exists as reg_mod -> error dialog | else success dialog mod_name with mod_files Registered
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
-        let game_dir_ref: Rc<PathBuf> = Rc::from(game_dir.clone());
+        let game_dir_ref: Rc<Path> = Rc::from(game_dir.clone().as_path());
         move || {
+            if !game_verified {
+                return;
+            }
             // remember to handle unwrap errors like this one
             let mut config = get_cgf(CONFIG_DIR).unwrap();
             let ui = ui_handle.unwrap();
             let mod_name: String = ui.global::<MainLogic>().get_mod_name().to_string();
-            if !game_verified {
-                return;
-            }
-            let mod_files: Result<Vec<PathBuf>, &'static str> =
-                match get_user_files(game_dir_ref.as_path()) {
-                    Ok(opt) => match opt.len() {
-                        0 => Err("No files selected"),
-                        _ => Ok(opt),
-                    },
-                    Err(err) => {
-                        error!("{}", err);
-                        Err("Error selecting path")
-                    }
-                };
+            let mod_files: Result<Vec<PathBuf>, &'static str> = match get_user_files(&game_dir_ref)
+            {
+                Ok(opt) => match opt.len() {
+                    0 => Err("No files selected"),
+                    _ => Ok(opt),
+                },
+                Err(err) => {
+                    error!("{}", err);
+                    Err("Error selecting path")
+                }
+            };
+            let local_game_dir = PathBuf::from(game_dir_ref.to_string_lossy().to_string());
             match mod_files {
-                Ok(files) => match shorten_paths(files, &game_dir_ref) {
+                Ok(files) => match shorten_paths(files, &local_game_dir) {
                     Ok(paths) => match paths.len() {
                         1 => {
                             save_path(
@@ -95,19 +96,9 @@ fn main() -> Result<(), slint::PlatformError> {
                                 &mod_name,
                                 paths[0].as_path(),
                             );
-                            reg_mods.push(RegMod {
-                                name: mod_name.clone(),
-                                state: true,
-                                files: vec![paths[0].clone()],
-                            })
                         }
                         _ => {
                             save_path_bufs(&mut config, CONFIG_DIR, &mod_name, &paths);
-                            reg_mods.push(RegMod {
-                                name: mod_name.clone(),
-                                state: true,
-                                files: paths.clone(),
-                            })
                         }
                     },
                     Err(err) => {
@@ -121,10 +112,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             save_bool(&mut config, CONFIG_DIR, &mod_name, true);
+            let reg_mods = RegMod::collect(CONFIG_DIR);
             ui.global::<MainLogic>()
                 .set_mod_name(SharedString::from(""));
-            let display_mods = deserialize(&reg_mods);
-            ui.global::<MainLogic>().set_current_mods(display_mods);
+            ui.global::<MainLogic>()
+                .set_current_mods(deserialize(&reg_mods));
         }
     });
     ui.global::<SettingsLogic>().on_select_game_dir({
@@ -189,6 +181,17 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }
     });
+    ui.global::<MainLogic>().on_toggleMod({
+        move |key: SharedString| {
+            let reg_mods = RegMod::collect(CONFIG_DIR);
+            let mut config = get_cgf(CONFIG_DIR).unwrap();
+            if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
+                toggle_files(&mut config, &found_mod.name, found_mod.files.clone());
+            } else {
+                println!("Mod not found");
+            };
+        }
+    });
     ui.run()
 }
 
@@ -202,7 +205,7 @@ fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, native_dialog::Error> {
         .show_open_multiple_file()
 }
 
-pub fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
+fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
     let display_mod: Rc<VecModel<DisplayMod>> = Default::default();
     for mod_data in data.iter() {
         display_mod.push(DisplayMod {
