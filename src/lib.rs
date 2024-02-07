@@ -4,15 +4,18 @@ pub mod ini_tools {
 }
 
 use ini::Ini;
-use ini_tools::{parser::IniProperty, writer::save_path};
-use log::{error, info, warn};
+use ini_tools::{parser::IniProperty, writer::save_bool, writer::save_path};
+use log::{debug, error, info, warn};
 
 use std::{
+    env,
     ffi::{OsStr, OsString},
     fs::{read_dir, rename},
     path::{self, Path, PathBuf},
-    {env, rc::Rc},
+    rc::Rc,
 };
+
+use crate::ini_tools::writer::{remove_array, save_path_bufs};
 
 pub const DEFAULT_GAME_DIR: [&str; 6] = [
     "Program Files (x86)",
@@ -39,7 +42,11 @@ pub fn shorten_paths(
         .collect()
 }
 
-pub fn toggle_files(file_paths: Vec<PathBuf>) -> Result<&'static str, String> {
+pub fn toggle_files(
+    config: &mut Ini,
+    key: &str,
+    file_paths: Vec<PathBuf>,
+) -> Result<&'static str, String> {
     fn toggle_name_state(file_name: &OsStr) -> OsString {
         let mut new_name = file_name.to_string_lossy().to_string();
         let new_name_clone = new_name.clone();
@@ -51,16 +58,28 @@ pub fn toggle_files(file_paths: Vec<PathBuf>) -> Result<&'static str, String> {
         OsString::from(new_name)
     }
 
+    let game_dir = IniProperty::<PathBuf>::read(config, Some("paths"), "game_dir")
+        .unwrap()
+        .value;
     let mut counter: usize = 0;
     let mut err_msg = String::new();
+    let mut path_to_save = Vec::new();
     for path in file_paths.iter() {
-        let path_clone = path.clone();
-        let mut new_path = path.clone();
+        let full_path = game_dir.clone().join(path);
+        let mut collect_path = path.clone();
+        let path_clone = full_path.clone();
+        let mut new_path = full_path.clone();
         if new_path.pop() {
+            collect_path.pop();
             if let Some(file_name) = path.file_name() {
-                new_path.push(toggle_name_state(file_name));
+                let new_name = toggle_name_state(file_name);
+                new_path.push(new_name.clone());
+                collect_path.push(new_name);
                 match rename(&path_clone, &new_path) {
-                    Ok(_) => counter += 1,
+                    Ok(_) => {
+                        counter += 1;
+                        path_to_save.push(collect_path);
+                    }
                     Err(err) => error!(
                         "File: {:?} into {:?} Error: {}",
                         &path_clone, &new_path, err
@@ -75,6 +94,18 @@ pub fn toggle_files(file_paths: Vec<PathBuf>) -> Result<&'static str, String> {
         }
     }
     if counter == file_paths.len() {
+        if counter == 1 {
+            save_path(config, CONFIG_DIR, Some("mod-files"), key, &path_to_save[0]);
+        } else {
+            remove_array(CONFIG_DIR, key);
+            let mut config = get_cgf(CONFIG_DIR).unwrap();
+            save_path_bufs(&mut config, CONFIG_DIR, key, &path_to_save);
+        }
+        let new_state = !IniProperty::<bool>::read(config, Some("registered-mods"), key)
+            .unwrap()
+            .value;
+        let mut config = get_cgf(CONFIG_DIR).unwrap();
+        save_bool(&mut config, CONFIG_DIR, key, new_state);
         Ok("Success: All files in array have been renamed")
     } else {
         err_msg += "Error: Was not able to rename all files from array[file_paths]";
