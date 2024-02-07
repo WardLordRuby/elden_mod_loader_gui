@@ -1,11 +1,13 @@
 import { Button, VerticalBox, StandardListView, StandardButton } from "std-widgets.slint";
-import { SettingsPage, Logic } from "settings.slint";
+import { MainPage, MainLogic, DisplayMod } from "main.slint";
+import { SettingsPage, SettingsLogic } from "settings.slint";
 
-export { Logic }
+export { MainLogic, SettingsLogic, DisplayMod }
 
 export component App inherits Window {
-    height: 250px;
+    preferred-height: 350px;
     preferred-width: 460px;
+    min-height: 250px;
     min-width: 370px;
     in-out property <int> focus_page;
     in property <string> err-message;
@@ -13,15 +15,18 @@ export component App inherits Window {
     //in-out property<string> filepath: "\\"; ui_ref: {root.filepath} rs_ref: ui.set_filepath(ref)
     background: #0f161d;
     
-    if(root.focus_page == 1) : SettingsPage {}
+    if(root.focus_page == 0) : MainPage {preferred-height: 500px;}
+    if(root.focus_page == 1) : SettingsPage {preferred-height: 250px;}
 
     callback show_error_popup;
     show_error_popup => { err-popup.show(); }
 
+    // Make popupWindow look nice 
     err_popup := PopupWindow {
-        x: 40px;
-        y: 100px;
+        x: root.width / 2.7;
+        y: root.height / 2.7;
         width: min(err_popup_layout.preferred-width, root.width - 80px);
+        close-on-click: false;
 
         Rectangle {
             background: root.background;

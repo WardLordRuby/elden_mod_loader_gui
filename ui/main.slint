@@ -1,0 +1,90 @@
+import { CheckBox, GroupBox, ListView, LineEdit, HorizontalBox, Button } from "std-widgets.slint";
+import { Page } from "page.slint";
+
+export struct DisplayMod  {
+    name: string,
+    enabled: bool,
+    files: string,
+}
+
+export global MainLogic {
+    callback toggleMod(string);
+    callback select_mod_files();
+    in-out property <bool> game_path_valid;
+    in-out property <string> mod_name;
+    in property <[DisplayMod]> current-mods: [
+        {name: "Placeholder Name", enabled: true, files: "\\placeholder\\path\\data"},
+        {name: "Placeholder Name Two", enabled: false, files: "\\placeholder\\path\\data"},
+        {name: "Placeholder Name Three", enabled: true, files: "\\placeholder\\path\\data"},
+    ];
+}
+
+export component MainPage inherits Page {
+    title: @tr("Mods");
+    description: @tr("Edit state of registered mods here");
+    preferred-height: 500px;
+
+
+    VerticalLayout {
+        preferred-width: 460px;
+
+        reg-mod-box := GroupBox {
+            title: @tr("Registered-Mods:");
+            enabled: MainLogic.game_path_valid;
+
+            list-view := ListView {
+                for mod in MainLogic.current-mods:  HorizontalLayout {
+                    CheckBox {
+                        toggled => {
+                            mod.enabled = self.enabled;
+                            MainLogic.toggleMod(mod.name)
+                        }
+                        text: mod.name;
+                        checked: mod.enabled;
+                        enabled: reg-mod-box.enabled;
+                    }
+                    Button {
+                        text: "...";
+                        width: 40px;
+                        height: 15px;
+                    }
+
+                }
+            }
+
+        }
+
+        add-mod-box := GroupBox {
+            height: 95px;
+            title: @tr("Add Mod");
+            enabled: MainLogic.game_path_valid;
+    
+            HorizontalBox {
+                padding: 2px;
+                
+                input-mod := LineEdit {
+                    height: 36px;
+                    preferred-width: 100px;
+                    horizontal-alignment: left;
+                    placeholder-text: @tr("Mod Name");
+                    enabled: add-mod-box.enabled;
+                }
+                add-mod := Button {
+                    width: 105px;
+                    height: 36px;
+                    text: @tr("Select Files");
+                    enabled: add-mod-box.enabled;
+                    clicked => {
+                        if(input-mod.text != "") {
+                            MainLogic.mod_name = input-mod.text;
+                            MainLogic.select_mod_files();
+                            input-mod.text = MainLogic.mod_name;
+                        } else {
+                            input-mod.focus();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

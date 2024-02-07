@@ -1,13 +1,10 @@
-import { GroupBox, CheckBox, Button, HorizontalBox, LineEdit } from "std-widgets.slint";
+import { GroupBox, Button, HorizontalBox, LineEdit } from "std-widgets.slint";
 
 import { Page } from "page.slint";
 
-export global Logic  {
-    callback select_mod_files();
-    pure callback select_game_dir();
+export global SettingsLogic  {
+    callback select_game_dir();
     in property <string> game_path;
-    in-out property <bool> game_path_valid;
-    // You can collect other global properties here
 }
 
 export component SettingsPage inherits Page {
@@ -32,7 +29,7 @@ export component SettingsPage inherits Page {
                     vertical-alignment: center;
                     horizontal-alignment: left;
                     wrap: word-wrap;
-                    text: Logic.game_path;
+                    text: SettingsLogic.game_path;
                 }
     
                 select-game := Button {
@@ -40,37 +37,12 @@ export component SettingsPage inherits Page {
                     height: 35px;
                     text: @tr("Set Path");
                     clicked => {
-                        Logic.select_game_dir();
+                        SettingsLogic.select_game_dir();
                     }
                 }
             }
         }
     
-        GroupBox {
-            height: 95px;
-            title: @tr("Add Mod");
-            enabled: Logic.game_path_valid;
-    
-            HorizontalBox {
-                padding: 2px;
-                
-                LineEdit {
-                    height: 36px;
-                    preferred-width: 100px;
-                    horizontal-alignment: left;
-                    placeholder-text: @tr("Mod Name");
-                    enabled: Logic.game_path_valid;
-                }
-                add-mod := Button {
-                    width: 105px;
-                    height: 36px;
-                    text: @tr("Select Files");
-                    enabled: Logic.game_path_valid;
-                    clicked => {
-                        Logic.select_mod_files();
-                    }
-                }
-            }
-        }
+
     }
 }
