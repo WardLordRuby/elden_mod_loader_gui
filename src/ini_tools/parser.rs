@@ -1,6 +1,5 @@
 use ini::Ini;
-use log::{error, info, warn};
-
+use log::{debug, error, info, warn};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -92,7 +91,11 @@ impl<T: ValueType> IniProperty<T> {
         let format_key = key.replace(' ', "_");
         match IniProperty::is_valid(ini, section, &format_key) {
             Some(value) => {
-                info!("Success: read \"{}\" from ini", key);
+                debug!(
+                    "Success: read key: \"{}\" Section: \"{}\" from ini",
+                    key,
+                    section.unwrap()
+                );
                 Ok(IniProperty {
                     //section: Some(section.unwrap().to_string()),
                     //key: key.to_string(),
@@ -159,13 +162,16 @@ impl RegMod {
                 .filter_map(|(k, _)| if k != "array[]" { Some(k) } else { None })
                 .collect();
             for key in state_keys.iter().filter(|&&k| !file_keys.contains(&k)) {
+                warn!("\"{}\" has no matching files", &key);
                 remove_entry(&mut ini, path, Some("registered-mods"), key);
             }
             for key in file_keys.iter().filter(|&&k| !state_keys.contains(&k)) {
                 if ini.get_from(Some("mod-files"), key).unwrap() == "array" {
+                    warn!("\"{}\" has no matching state", &key);
                     remove_array(path, key);
                     ini = get_cgf(path).unwrap();
                 } else {
+                    warn!("\"{}\" has no matching state", &key);
                     remove_entry(&mut ini, path, Some("mod-files"), key);
                 }
             }
@@ -212,6 +218,7 @@ impl RegMod {
 
         for (name, state) in state_data {
             let files = file_data.get(&name).cloned().unwrap();
+            info!("Success: \"{}\" extracted from ini", &name);
             reg_mods.push(RegMod { name, state, files });
         }
         reg_mods
