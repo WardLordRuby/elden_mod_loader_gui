@@ -8,12 +8,17 @@ Work in progress
 
 ### To-do:
 
-* Work on GUI  
+* Work on GUI:  
+* Design Main page  
+* Polish Error dialog  
+* Create confirm dialog   
 * Better error handling  
-* Some errors need to be outputed in popup dialog to user  
 
 ### feats:
 
+* Ability: main user functions are tied together and functioning  
+* Ability: deserialize backend rust modData to data slint can use  
+* Ability: display error message to user in dialog  
 * Ability: parse Array of Paths, Paths and bools from ini  
 * Abiltiy: only save valid Arrays, Paths, and bools  
 * Ability: check if directory contains files  
