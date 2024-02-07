@@ -1,4 +1,5 @@
 use ini::{EscapePolicy, Ini, LineSeparator, WriteOption};
+//use log::{debug, info};
 
 use std::{
     fs::{read_to_string, write, File},
@@ -52,6 +53,7 @@ pub fn new_cfg(path: &str) -> io::Result<()> {
 }
 
 pub fn remove_array(path: &str, key: &str) -> io::Result<()> {
+    let format_key = key.trim().replace(' ', "_");
     let content = read_to_string(path)?;
 
     let mut skip_next_line = false;
@@ -62,7 +64,7 @@ pub fn remove_array(path: &str, key: &str) -> io::Result<()> {
             skip_next_line = false;
             key_found = false;
         }
-        if line.starts_with(key) {
+        if line.starts_with(&format_key) {
             skip_next_line = true;
             key_found = true;
         }
@@ -81,6 +83,7 @@ pub fn remove_entry(
     section: Option<&str>,
     key: &str,
 ) -> io::Result<()> {
-    config.delete_from(section, key);
+    let format_key = key.trim().replace(' ', "_");
+    config.delete_from(section, &format_key);
     config.write_to_file_opt(path, WRITE_OPTIONS)
 }
