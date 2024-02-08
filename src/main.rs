@@ -63,11 +63,12 @@ fn main() -> Result<(), slint::PlatformError> {
     // Use global rust mut variables for source of truth logic to ref current state | very slow to pull from UI global
     // Error check input text for invalid symbols | If mod_name already exists confirm overwrite dialog -> if array into entry -> remove_array fist
     // if selected file already exists as reg_mod -> error dialog | else success dialog mod_name with mod_files Registered
+    // need fn for checking state of the files are all the same, if all files disabled need to save state as false
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
         let game_verified = ui.global::<MainLogic>().get_game_path_valid();
         let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-        let game_dir_ref: Rc<Path> = Rc::from(game_dir.clone().as_path());
+        let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
         move || {
             if !game_verified {
                 return;
@@ -85,9 +86,9 @@ fn main() -> Result<(), slint::PlatformError> {
                     Err("Error selecting path")
                 }
             };
-            let local_game_dir = PathBuf::from(game_dir_ref.to_string_lossy().to_string());
+            // let local_game_dir = PathBuf::from(game_dir.to_string_lossy().to_string());
             match mod_files {
-                Ok(files) => match shorten_paths(files, &local_game_dir) {
+                Ok(files) => match shorten_paths(files, &game_dir) {
                     Ok(paths) => match paths.len() {
                         1 => {
                             save_path(CONFIG_DIR, Some("mod-files"), &mod_name, paths[0].as_path());
@@ -117,7 +118,7 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.global::<SettingsLogic>().on_select_game_dir({
         let ui_handle = ui.as_weak();
         let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-        let game_dir_ref: Rc<Path> = Rc::from(game_dir.clone().as_path());
+        let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
         move || {
             // remember to handle unwrap errors like this one
             let ui = ui_handle.unwrap();
@@ -170,15 +171,15 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_toggleMod({
         let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-        let game_dir_ref: Rc<Path> = Rc::from(game_dir.clone().as_path());
         move |key: SharedString| {
             let reg_mods = RegMod::collect(CONFIG_DIR);
             if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
                 toggle_files(
                     &found_mod.name,
-                    &game_dir_ref,
+                    &game_dir,
                     !found_mod.state,
                     found_mod.files.clone(),
+                    CONFIG_DIR,
                 );
             } else {
                 error!("Mod: \"{}\" not found", key);

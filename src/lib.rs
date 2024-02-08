@@ -4,18 +4,21 @@ pub mod ini_tools {
 }
 
 use ini::Ini;
-use ini_tools::{parser::IniProperty, writer::save_bool, writer::save_path};
+use ini_tools::{
+    parser::IniProperty,
+    writer::{remove_array, save_bool, save_path, save_path_bufs},
+};
 use log::{debug, error, info, trace, warn};
 
 use std::{
     env,
-    ffi::{OsStr, OsString},
     fs::{read_dir, rename},
+    io,
     path::{self, Path, PathBuf},
     rc::Rc,
+    sync::Arc,
+    thread,
 };
-
-use crate::ini_tools::writer::{remove_array, save_path_bufs};
 
 pub const DEFAULT_GAME_DIR: [&str; 6] = [
     "Program Files (x86)",
@@ -42,69 +45,91 @@ pub fn shorten_paths(
         .collect()
 }
 
-// Make this fn more readable
 pub fn toggle_files(
     key: &str,
     game_dir: &Path,
     new_state: bool,
     file_paths: Vec<PathBuf>,
-) -> Result<&'static str, String> {
-    fn toggle_name_state(file_name: &OsStr) -> OsString {
-        let mut new_name = file_name.to_string_lossy().to_string();
-        let new_name_clone = new_name.clone();
-        if let Some(index) = new_name_clone.to_lowercase().find(".disabled") {
-            new_name.replace_range(index..index + ".disabled".len(), "");
-        } else {
-            new_name.push_str(".disabled");
-        }
-        OsString::from(new_name)
-    }
-
-    let mut counter: usize = 0;
-    let mut err_msg = String::new();
-    let mut path_to_save = Vec::new();
-    for path in file_paths.iter() {
-        let full_path = game_dir.join(path);
-        let mut collect_path = path.clone();
-        let path_clone = full_path.clone();
-        let mut new_path = full_path.clone();
-        if new_path.pop() {
-            collect_path.pop();
-            if let Some(file_name) = path.file_name() {
-                let new_name = toggle_name_state(file_name);
-                new_path.push(new_name.clone());
-                collect_path.push(new_name);
-                match rename(&path_clone, &new_path) {
-                    Ok(_) => {
-                        counter += 1;
-                        path_to_save.push(collect_path);
-                    }
-                    Err(err) => error!(
-                        "File: {:?} into {:?} Error: {}",
-                        &path_clone, &new_path, err
-                    ),
+    save_file: &str,
+) {
+    // Takes in a potential pathBuf, finds file_name name and outputs the new_state version
+    fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
+        file_paths
+            .iter()
+            .map(|path| {
+                let file_name = match path.file_name() {
+                    Some(name) => name,
+                    None => path.as_os_str(),
                 };
-            };
-        } else {
-            err_msg = format!(
-                "Error: Could not find parent directory at file_path array path: {:?}|",
-                path
-            );
-        }
+                let mut new_name = file_name.to_string_lossy().to_string();
+                if let Some(index) = new_name.to_lowercase().find(".disabled") {
+                    if new_state {
+                        new_name.replace_range(index..index + ".disabled".len(), "");
+                    }
+                } else if !new_state {
+                    new_name.push_str(".disabled");
+                }
+                let mut new_path = path.clone();
+                new_path.set_file_name(new_name);
+                new_path
+            })
+            .collect()
     }
-    if counter == file_paths.len() {
-        if counter == 1 {
-            save_path(CONFIG_DIR, Some("mod-files"), key, &path_to_save[0]);
-        } else {
-            remove_array(CONFIG_DIR, key);
-            save_path_bufs(CONFIG_DIR, key, &path_to_save);
-        }
-        save_bool(CONFIG_DIR, key, new_state);
-        Ok("Success: All files in array have been renamed")
-    } else {
-        err_msg += "Error: Was not able to rename all files from array[file_paths]";
-        Err(err_msg)
+    fn join_paths(base_path: PathBuf, join_to: Vec<PathBuf>) -> Vec<PathBuf> {
+        join_to.iter().map(|path| base_path.join(path)).collect()
     }
+    fn rename_files(
+        num_files: usize,
+        paths: Vec<PathBuf>,
+        new_paths: Vec<PathBuf>,
+    ) -> Result<(), io::Error> {
+        if num_files != paths.len() || num_files != new_paths.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Number of files and new paths must match",
+            ));
+        }
+
+        paths
+            .iter()
+            .zip(new_paths.iter())
+            .try_for_each(|(path, new_path)| {
+                rename(path, new_path)?;
+                Ok(())
+            })
+    }
+    fn update_cfg(
+        num_file: usize,
+        path_to_save: Vec<PathBuf>,
+        state: bool,
+        key: &str,
+        save_file: &str,
+    ) {
+        if num_file == 1 {
+            save_path(save_file, Some("mod-files"), key, &path_to_save[0]);
+        } else {
+            remove_array(save_file, key);
+            save_path_bufs(save_file, key, &path_to_save);
+        }
+        save_bool(save_file, key, state);
+    }
+    let num_of_files = file_paths.len();
+
+    let file_paths_clone = Arc::new(file_paths.clone());
+    let state_clone = Arc::new(new_state);
+    let game_dir_clone = game_dir.to_path_buf();
+
+    let new_short_paths_thread =
+        thread::spawn(move || toggle_name_state(&file_paths_clone, *state_clone));
+    let original_full_paths_thread = thread::spawn(move || join_paths(game_dir_clone, file_paths));
+
+    let short_path_new = new_short_paths_thread.join().unwrap();
+    let full_path_new = join_paths(PathBuf::from(game_dir), short_path_new.clone());
+    let full_path_original = original_full_paths_thread.join().unwrap();
+
+    rename_files(num_of_files, full_path_original, full_path_new);
+
+    update_cfg(num_of_files, short_path_new, new_state, key, save_file);
 }
 
 pub fn get_cgf(input_file: &str) -> Result<Ini, ini::Error> {
