@@ -9,7 +9,6 @@ mod tests {
         get_cgf,
         ini_tools::{parser::IniProperty, parser::RegMod, writer::*},
     };
-    use ini::Ini;
 
     #[test]
     fn does_path_parse() {
@@ -17,22 +16,11 @@ mod tests {
             Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
         let test_path_2 = Path::new("C:\\Windows\\System32");
         let test_file = "test_files\\test_path.ini";
+
         {
-            let mut test_ini = Ini::new();
-            save_path(
-                &mut test_ini,
-                test_file,
-                Some("paths"),
-                "game_dir",
-                test_path_1,
-            );
-            save_path(
-                &mut test_ini,
-                test_file,
-                Some("paths"),
-                "random_dir",
-                test_path_2,
-            );
+            let _ = new_cfg(test_file);
+            let _ = save_path(test_file, Some("paths"), "game_dir", test_path_1);
+            let _ = save_path(test_file, Some("paths"), "random_dir", test_path_2);
         }
 
         let config = get_cgf(test_file).unwrap();
@@ -64,7 +52,6 @@ mod tests {
 
         {
             let _ = new_cfg(test_file);
-            let mut test_ini: Ini = get_cgf(test_file).unwrap();
 
             let invalid_format_1 = vec![
                 PathBuf::from("mods\\UnlockTheFps.dll"),
@@ -78,38 +65,20 @@ mod tests {
             let game_path =
                 Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
 
-            save_path_bufs(&mut test_ini, test_file, mod_1_key, &mod_1);
-            save_bool(&mut test_ini, test_file, mod_1_key, mod_1_state);
-            save_path(
-                &mut test_ini,
-                test_file,
-                Some("mod-files"),
-                mod_2_key,
-                &mod_2,
-            );
-            save_bool(&mut test_ini, test_file, mod_2_key, mod_2_state);
-            save_path_bufs(
-                &mut test_ini,
-                test_file,
-                "no_matching_state_1",
-                &invalid_format_1,
-            );
-            save_path(
-                &mut test_ini,
+            let _ = save_path_bufs(test_file, mod_1_key, &mod_1);
+            let _ = save_bool(test_file, mod_1_key, mod_1_state);
+            let _ = save_path(test_file, Some("mod-files"), mod_2_key, &mod_2);
+            let _ = save_bool(test_file, mod_2_key, mod_2_state);
+            let _ = save_path_bufs(test_file, "no_matching_state_1", &invalid_format_1);
+            let _ = save_path(
                 test_file,
                 Some("mod-files"),
                 "no_matching_state_2",
                 &invalid_format_2,
             );
-            save_bool(&mut test_ini, test_file, "no_matching_path", true);
+            let _ = save_bool(test_file, "no_matching_path", true);
 
-            save_path(
-                &mut test_ini,
-                test_file,
-                Some("paths"),
-                "game_dir",
-                game_path,
-            );
+            let _ = save_path(test_file, Some("paths"), "game_dir", game_path);
         }
 
         // -------------------------------------sync_keys runs from inside RegMod::collect()------------------------------------------------

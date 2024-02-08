@@ -8,7 +8,6 @@ mod ini_tools {
     pub mod writer;
 }
 
-use ini::Ini;
 use ini_tools::{parser::RegMod, writer::*};
 use log::{debug, error, info, warn};
 use native_dialog::FileDialog;
@@ -23,20 +22,22 @@ use elden_mod_loader_gui::*;
 fn main() -> Result<(), slint::PlatformError> {
     env_logger::init();
     let ui = App::new()?;
-    let mut game_dir: PathBuf;
-    let mut game_verified: bool;
+    // let mut game_dir: PathBuf;
+    // let mut game_verified: bool;
 
     {
-        let mut config: Ini = match get_cgf(CONFIG_DIR) {
-            Some(ini) => ini,
-            None => {
+        match get_cgf(CONFIG_DIR) {
+            Ok(_) => info!("Config file found at \"{}\"", &CONFIG_DIR),
+            Err(err) => {
+                error!("Error: {}", err);
                 warn!("Ini not found. Creating new Ini");
                 let _ = new_cfg(CONFIG_DIR);
-                get_cgf(CONFIG_DIR).unwrap()
+                get_cgf(CONFIG_DIR).unwrap();
             }
         };
 
-        game_dir = match attempt_locate_game(&mut config) {
+        let game_verified: bool;
+        let game_dir = match attempt_locate_game(CONFIG_DIR) {
             PathResult::Full(path) => {
                 game_verified = true;
                 path
@@ -64,13 +65,13 @@ fn main() -> Result<(), slint::PlatformError> {
     // if selected file already exists as reg_mod -> error dialog | else success dialog mod_name with mod_files Registered
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
+        let game_verified = ui.global::<MainLogic>().get_game_path_valid();
+        let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
         let game_dir_ref: Rc<Path> = Rc::from(game_dir.clone().as_path());
         move || {
             if !game_verified {
                 return;
             }
-            // remember to handle unwrap errors like this one
-            let mut config = get_cgf(CONFIG_DIR).unwrap();
             let ui = ui_handle.unwrap();
             let mod_name: String = ui.global::<MainLogic>().get_mod_name().to_string();
             let mod_files: Result<Vec<PathBuf>, &'static str> = match get_user_files(&game_dir_ref)
@@ -89,16 +90,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 Ok(files) => match shorten_paths(files, &local_game_dir) {
                     Ok(paths) => match paths.len() {
                         1 => {
-                            save_path(
-                                &mut config,
-                                CONFIG_DIR,
-                                Some("mod-files"),
-                                &mod_name,
-                                paths[0].as_path(),
-                            );
+                            save_path(CONFIG_DIR, Some("mod-files"), &mod_name, paths[0].as_path());
                         }
                         _ => {
-                            save_path_bufs(&mut config, CONFIG_DIR, &mod_name, &paths);
+                            save_path_bufs(CONFIG_DIR, &mod_name, &paths);
                         }
                     },
                     Err(err) => {
@@ -111,7 +106,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
-            save_bool(&mut config, CONFIG_DIR, &mod_name, true);
+            save_bool(CONFIG_DIR, &mod_name, true);
             let reg_mods = RegMod::collect(CONFIG_DIR);
             ui.global::<MainLogic>()
                 .set_mod_name(SharedString::from(""));
@@ -121,10 +116,10 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<SettingsLogic>().on_select_game_dir({
         let ui_handle = ui.as_weak();
+        let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
         let game_dir_ref: Rc<Path> = Rc::from(game_dir.clone().as_path());
         move || {
             // remember to handle unwrap errors like this one
-            let mut config = get_cgf(CONFIG_DIR).unwrap();
             let ui = ui_handle.unwrap();
             let user_path: Result<String, &'static str> = match get_user_folder(&game_dir_ref) {
                 Ok(opt) => match opt {
@@ -152,15 +147,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             ui.global::<MainLogic>().set_game_path_valid(true);
                             ui.global::<SettingsLogic>()
                                 .set_game_path(try_path.to_string_lossy().to_string().into());
-                            save_path(
-                                &mut config,
-                                CONFIG_DIR,
-                                Some("paths"),
-                                "game_dir",
-                                &try_path,
-                            );
-                            game_dir = try_path;
-                            game_verified = true;
+                            save_path(CONFIG_DIR, Some("paths"), "game_dir", &try_path);
                         }
                         false => {
                             let msg: &str = "Failure: Files not found";
@@ -182,13 +169,19 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
     ui.global::<MainLogic>().on_toggleMod({
+        let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
+        let game_dir_ref: Rc<Path> = Rc::from(game_dir.clone().as_path());
         move |key: SharedString| {
             let reg_mods = RegMod::collect(CONFIG_DIR);
-            let mut config = get_cgf(CONFIG_DIR).unwrap();
             if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
-                toggle_files(&mut config, &found_mod.name, found_mod.files.clone());
+                toggle_files(
+                    &found_mod.name,
+                    &game_dir_ref,
+                    !found_mod.state,
+                    found_mod.files.clone(),
+                );
             } else {
-                println!("Mod not found");
+                error!("Mod: \"{}\" not found", key);
             };
         }
     });

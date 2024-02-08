@@ -163,7 +163,7 @@ impl RegMod {
                 .collect();
             for key in state_keys.iter().filter(|&&k| !file_keys.contains(&k)) {
                 warn!("\"{}\" has no matching files", &key);
-                remove_entry(&mut ini, path, Some("registered-mods"), key);
+                remove_entry(path, Some("registered-mods"), key);
             }
             for key in file_keys.iter().filter(|&&k| !state_keys.contains(&k)) {
                 if ini.get_from(Some("mod-files"), key).unwrap() == "array" {
@@ -172,7 +172,7 @@ impl RegMod {
                     ini = get_cgf(path).unwrap();
                 } else {
                     warn!("\"{}\" has no matching state", &key);
-                    remove_entry(&mut ini, path, Some("mod-files"), key);
+                    remove_entry(path, Some("mod-files"), key);
                 }
             }
         }

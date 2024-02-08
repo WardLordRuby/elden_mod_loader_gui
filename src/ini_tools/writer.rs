@@ -1,5 +1,5 @@
 use ini::{EscapePolicy, Ini, LineSeparator, WriteOption};
-//use log::{debug, info};
+use log::{error, trace};
 
 use std::{
     fs::{read_to_string, write, File},
@@ -7,13 +7,29 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::get_cgf;
+
 const WRITE_OPTIONS: WriteOption = WriteOption {
     escape_policy: EscapePolicy::Nothing,
     line_separator: LineSeparator::CRLF,
     kv_separator: "=",
 };
 
-pub fn save_path_bufs(config: &mut Ini, file_name: &str, key: &str, files: &[PathBuf]) {
+pub fn save_path_bufs(file_name: &str, key: &str, files: &[PathBuf]) -> io::Result<()> {
+    let mut config: Ini = match get_cgf(file_name) {
+        Ok(ini) => {
+            trace!("Success: (save_path_bufs) Read ini from \"{}\"", file_name);
+            ini
+        }
+        Err(err) => {
+            error!(
+                "Failure: (save_path_bufs) Could not complete. Could not read ini from \"{}\"",
+                file_name
+            );
+            error!("Error: {}", err);
+            return Ok(());
+        }
+    };
     let format_key = key.trim().replace(' ', "_");
     let save_paths = files
         .iter()
@@ -23,23 +39,51 @@ pub fn save_path_bufs(config: &mut Ini, file_name: &str, key: &str, files: &[Pat
     config
         .with_section(Some("mod-files"))
         .set(&format_key, format!("array\r\narray[]={}", save_paths));
-    config.write_to_file_opt(file_name, WRITE_OPTIONS).unwrap();
+    config.write_to_file_opt(file_name, WRITE_OPTIONS)
 }
 
-pub fn save_path(config: &mut Ini, file_name: &str, section: Option<&str>, key: &str, path: &Path) {
+pub fn save_path(file_name: &str, section: Option<&str>, key: &str, path: &Path) -> io::Result<()> {
+    let mut config: Ini = match get_cgf(file_name) {
+        Ok(ini) => {
+            trace!("Success: (save_path) Read ini from \"{}\"", file_name);
+            ini
+        }
+        Err(err) => {
+            error!(
+                "Failure: (save_path) Could not complete. Could not read ini from \"{}\"",
+                file_name
+            );
+            error!("Error: {}", err);
+            return Ok(());
+        }
+    };
     let format_key = key.trim().replace(' ', "_");
     config
         .with_section(section)
         .set(&format_key, path.to_string_lossy().to_string());
-    config.write_to_file_opt(file_name, WRITE_OPTIONS).unwrap();
+    config.write_to_file_opt(file_name, WRITE_OPTIONS)
 }
 
-pub fn save_bool(config: &mut Ini, file_name: &str, key: &str, value: bool) {
+pub fn save_bool(file_name: &str, key: &str, value: bool) -> io::Result<()> {
+    let mut config: Ini = match get_cgf(file_name) {
+        Ok(ini) => {
+            trace!("Success: (save_bool) Read ini from \"{}\"", file_name);
+            ini
+        }
+        Err(err) => {
+            error!(
+                "Failure: (save_bool) Could not complete. Could not read ini from \"{}\"",
+                file_name
+            );
+            error!("Error: {}", err);
+            return Ok(());
+        }
+    };
     let format_key = key.trim().replace(' ', "_");
     config
         .with_section(Some("registered-mods"))
         .set(&format_key, value.to_string());
-    config.write_to_file_opt(file_name, WRITE_OPTIONS).unwrap();
+    config.write_to_file_opt(file_name, WRITE_OPTIONS)
 }
 
 pub fn new_cfg(path: &str) -> io::Result<()> {
@@ -52,9 +96,9 @@ pub fn new_cfg(path: &str) -> io::Result<()> {
     Ok(())
 }
 
-pub fn remove_array(path: &str, key: &str) -> io::Result<()> {
+pub fn remove_array(file_name: &str, key: &str) -> io::Result<()> {
     let format_key = key.trim().replace(' ', "_");
-    let content = read_to_string(path)?;
+    let content = read_to_string(file_name)?;
 
     let mut skip_next_line = false;
     let mut key_found = false;
@@ -73,17 +117,25 @@ pub fn remove_array(path: &str, key: &str) -> io::Result<()> {
 
     let lines: Vec<&str> = content.lines().filter(|&line| filter_lines(line)).collect();
 
-    write(path, lines.join("\r\n"))?;
-    Ok(())
+    write(file_name, lines.join("\r\n"))
 }
 
-pub fn remove_entry(
-    config: &mut Ini,
-    path: &str,
-    section: Option<&str>,
-    key: &str,
-) -> io::Result<()> {
+pub fn remove_entry(file_name: &str, section: Option<&str>, key: &str) -> io::Result<()> {
+    let mut config: Ini = match get_cgf(file_name) {
+        Ok(ini) => {
+            trace!("Success: (remove_entry) Read ini from \"{}\"", file_name);
+            ini
+        }
+        Err(err) => {
+            error!(
+                "Failure: (remove_entry) Could not complete. Could not read ini from \"{}\"",
+                file_name
+            );
+            error!("Error: {}", err);
+            return Ok(());
+        }
+    };
     let format_key = key.trim().replace(' ', "_");
     config.delete_from(section, &format_key);
-    config.write_to_file_opt(path, WRITE_OPTIONS)
+    config.write_to_file_opt(file_name, WRITE_OPTIONS)
 }
