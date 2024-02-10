@@ -26,13 +26,13 @@ fn main() -> Result<(), slint::PlatformError> {
     // let mut game_verified: bool;
 
     {
-        match get_cgf(CONFIG_DIR) {
+        match get_cfg(CONFIG_DIR) {
             Ok(_) => info!("Config file found at \"{}\"", &CONFIG_DIR),
             Err(err) => {
                 error!("Error: {}", err);
                 warn!("Ini not found. Creating new Ini");
                 let _ = new_cfg(CONFIG_DIR);
-                get_cgf(CONFIG_DIR).unwrap();
+                get_cfg(CONFIG_DIR).unwrap();
             }
         };
 

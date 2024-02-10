@@ -132,7 +132,7 @@ pub fn toggle_files(
     update_cfg(num_of_files, short_path_new, new_state, key, save_file);
 }
 
-pub fn get_cgf(input_file: &str) -> Result<Ini, ini::Error> {
+pub fn get_cfg(input_file: &str) -> Result<Ini, ini::Error> {
     Ini::load_from_file_noescape(Path::new(input_file))
 }
 
@@ -151,7 +151,7 @@ pub fn does_dir_contain(path: &Path, list: &[&str]) -> bool {
                 .all(|check_file| file_names.iter().any(|file_name| file_name == check_file));
 
             if all_files_exist {
-                info!("Success: Directory verified");
+                // info!("Success: Directory verified");
                 true
             } else {
                 warn!(
@@ -175,7 +175,7 @@ pub enum PathResult {
     None(PathBuf),
 }
 pub fn attempt_locate_game(file_name: &str) -> PathResult {
-    let config: Ini = match get_cgf(file_name) {
+    let config: Ini = match get_cfg(file_name) {
         Ok(ini) => {
             trace!(
                 "Success: (attempt_locate_game) Read ini from \"{}\"",

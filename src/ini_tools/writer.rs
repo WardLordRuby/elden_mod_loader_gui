@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::get_cgf;
+use crate::get_cfg;
 
 const WRITE_OPTIONS: WriteOption = WriteOption {
     escape_policy: EscapePolicy::Nothing,
@@ -16,7 +16,7 @@ const WRITE_OPTIONS: WriteOption = WriteOption {
 };
 
 pub fn save_path_bufs(file_name: &str, key: &str, files: &[PathBuf]) -> io::Result<()> {
-    let mut config: Ini = match get_cgf(file_name) {
+    let mut config: Ini = match get_cfg(file_name) {
         Ok(ini) => {
             trace!("Success: (save_path_bufs) Read ini from \"{}\"", file_name);
             ini
@@ -43,7 +43,7 @@ pub fn save_path_bufs(file_name: &str, key: &str, files: &[PathBuf]) -> io::Resu
 }
 
 pub fn save_path(file_name: &str, section: Option<&str>, key: &str, path: &Path) -> io::Result<()> {
-    let mut config: Ini = match get_cgf(file_name) {
+    let mut config: Ini = match get_cfg(file_name) {
         Ok(ini) => {
             trace!("Success: (save_path) Read ini from \"{}\"", file_name);
             ini
@@ -65,7 +65,7 @@ pub fn save_path(file_name: &str, section: Option<&str>, key: &str, path: &Path)
 }
 
 pub fn save_bool(file_name: &str, key: &str, value: bool) -> io::Result<()> {
-    let mut config: Ini = match get_cgf(file_name) {
+    let mut config: Ini = match get_cfg(file_name) {
         Ok(ini) => {
             trace!("Success: (save_bool) Read ini from \"{}\"", file_name);
             ini
@@ -121,7 +121,7 @@ pub fn remove_array(file_name: &str, key: &str) -> io::Result<()> {
 }
 
 pub fn remove_entry(file_name: &str, section: Option<&str>, key: &str) -> io::Result<()> {
-    let mut config: Ini = match get_cgf(file_name) {
+    let mut config: Ini = match get_cfg(file_name) {
         Ok(ini) => {
             trace!("Success: (remove_entry) Read ini from \"{}\"", file_name);
             ini

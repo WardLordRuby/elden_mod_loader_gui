@@ -6,7 +6,7 @@ mod tests {
     };
 
     use elden_mod_loader_gui::{
-        get_cgf,
+        get_cfg,
         ini_tools::{parser::IniProperty, parser::RegMod, writer::*},
     };
 
@@ -23,7 +23,7 @@ mod tests {
             let _ = save_path(test_file, Some("paths"), "random_dir", test_path_2);
         }
 
-        let config = get_cgf(test_file).unwrap();
+        let config = get_cfg(test_file).unwrap();
         let parse_test_1 = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir")
             .unwrap()
             .value;
