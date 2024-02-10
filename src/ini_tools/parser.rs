@@ -1,13 +1,14 @@
 use ini::Ini;
 use log::{debug, error, info, warn};
 use std::{
-    collections::HashMap,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::{mpsc, Arc},
+    thread,
 };
 
 use crate::{
-    get_cgf,
+    get_cfg,
     ini_tools::writer::{remove_array, remove_entry},
 };
 
@@ -153,7 +154,7 @@ pub struct RegMod {
 impl RegMod {
     pub fn collect(path: &str) -> Vec<Self> {
         fn sync_keys(path: &str) {
-            let mut ini = get_cgf(path).unwrap();
+            let ini = get_cfg(path).unwrap();
             let mod_state_data = ini.section(Some("registered-mods")).unwrap().clone();
             let mod_files_data = ini.section(Some("mod-files")).unwrap().clone();
             let state_keys: Vec<&str> = mod_state_data.iter().map(|(k, _)| k).collect();
@@ -166,10 +167,9 @@ impl RegMod {
                 remove_entry(path, Some("registered-mods"), key);
             }
             for key in file_keys.iter().filter(|&&k| !state_keys.contains(&k)) {
-                if ini.get_from(Some("mod-files"), key).unwrap() == "array" {
+                if mod_files_data.get(key).unwrap() == "array" {
                     warn!("\"{}\" has no matching state", &key);
                     remove_array(path, key);
-                    ini = get_cgf(path).unwrap();
                 } else {
                     warn!("\"{}\" has no matching state", &key);
                     remove_entry(path, Some("mod-files"), key);
@@ -177,50 +177,40 @@ impl RegMod {
             }
         }
         sync_keys(path);
-        let ini = get_cgf(path).unwrap();
+        let ini = Arc::new(get_cfg(path).unwrap());
         let mod_state_data = ini.section(Some("registered-mods")).unwrap();
-        let mod_files_data = ini.section(Some("mod-files")).unwrap();
-        let state_data: HashMap<String, bool> = mod_state_data
-            .iter()
-            .map(|(key, _)| {
-                (
-                    key.replace('_', " ").to_string(),
-                    IniProperty::<bool>::read(&ini, Some("registered-mods"), key)
+        let mut found_data: Vec<RegMod> = Vec::with_capacity(mod_state_data.len());
+        let (tx, rx) = mpsc::channel();
+        for (key, _) in mod_state_data.iter() {
+            let ini_clone = Arc::clone(&ini);
+            let key_clone = String::from(key);
+            let tx_clone = tx.clone();
+            thread::spawn(move || {
+                let name = key_clone.replace('_', " ");
+                let state =
+                    IniProperty::<bool>::read(&ini_clone, Some("registered-mods"), &key_clone)
                         .unwrap()
-                        .value,
-                )
-            })
-            .collect();
-        let file_data: HashMap<String, Vec<PathBuf>> = mod_files_data
-            .iter()
-            .filter_map(|(key, _)| {
-                if key != "array[]" {
-                    Some((
-                        key.replace('_', " ").to_string(),
-                        if ini.get_from(Some("mod-files"), key).unwrap() == "array" {
-                            IniProperty::<Vec<PathBuf>>::read(&ini, Some("mod-files"), key)
-                                .unwrap()
-                                .value
-                        } else {
-                            vec![
-                                IniProperty::<PathBuf>::read(&ini, Some("mod-files"), key)
-                                    .unwrap()
-                                    .value,
-                            ]
-                        },
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let mut reg_mods = Vec::new();
+                        .value;
 
-        for (name, state) in state_data {
-            let files = file_data.get(&name).cloned().unwrap();
-            info!("Success: \"{}\" extracted from ini", &name);
-            reg_mods.push(RegMod { name, state, files });
+                let files = if ini_clone.get_from(Some("mod-files"), &key_clone).unwrap() == "array"
+                {
+                    IniProperty::<Vec<PathBuf>>::read(&ini_clone, Some("mod-files"), &key_clone) // <-- Check if a closing parenthesis is needed here
+                        .unwrap()
+                        .value
+                } else {
+                    vec![
+                        IniProperty::<PathBuf>::read(&ini_clone, Some("mod-files"), &key_clone)
+                            .unwrap()
+                            .value,
+                    ]
+                };
+                tx_clone.send(RegMod { name, state, files }).unwrap();
+            });
         }
-        reg_mods
+        drop(tx);
+        for received in rx {
+            found_data.push(received);
+        }
+        found_data
     }
 }
