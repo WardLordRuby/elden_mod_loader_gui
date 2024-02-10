@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use elden_mod_loader_gui::*;
+    use elden_mod_loader_gui::{ini_tools::writer::new_cfg, *};
     use std::{
         fs::{metadata, remove_file, File},
         path::{Path, PathBuf},
@@ -20,6 +20,7 @@ mod tests {
         let dir_to_test_files =
             Path::new("C:\\Users\\cal_b\\Documents\\School\\code\\elden_mod_loader_gui");
         let save_file = "test_files\\file_toggle_test.ini";
+        let _ = new_cfg(save_file);
 
         let test_files = vec![
             PathBuf::from("test_files\\test1.txt"),
@@ -66,5 +67,6 @@ mod tests {
         for path in test_files.iter() {
             let _ = remove_file(path.as_path());
         }
+        let _ = remove_file(save_file);
     }
 }
