@@ -16,3 +16,11 @@ rust-ini = "0.20.0"
 
 [build-dependencies]
 slint-build = "1.4.1"
+
+[dev-dependencies]
+criterion = "0.5.1"
+rand = "0.8.5"
+
+[[bench]]
+name = "data_collection_benchmark"
+harness = false
