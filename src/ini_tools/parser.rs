@@ -3,6 +3,7 @@ use log::{debug, error, info, warn};
 use std::{
     collections::HashMap,
     convert::Infallible,
+    marker::PhantomData,
     path::{Path, PathBuf},
     str::ParseBoolError,
 };
@@ -16,7 +17,7 @@ pub struct IniProperty<'a, T: ValueType<'a>> {
     //section: Option<String>,
     //key: String,
     pub value: T,
-    lifetime: std::marker::PhantomData<&'a ()>,
+    lifetime: PhantomData<&'a ()>,
 }
 
 pub trait ValueType<'a>: Sized {
@@ -186,7 +187,7 @@ impl<'a, T: ValueType<'a>> IniProperty<'a, T> {
                     //section: Some(section.unwrap().to_string()),
                     //key: key.to_string(),
                     value,
-                    lifetime: std::marker::PhantomData,
+                    lifetime: PhantomData,
                 })
             }
             None => Err(format!(
@@ -314,9 +315,13 @@ impl RegMod {
                 .iter()
                 .filter_map(|(&key, &value1)| {
                     file_data.get(&key).map(|value2| {
-                        let bool_value = value1.parse::<bool>();
-                        let path_bufs = value2.iter().map(PathBuf::from).collect();
-                        (key, (bool_value, path_bufs))
+                        (
+                            key,
+                            (
+                                value1.parse::<bool>(),
+                                value2.iter().map(PathBuf::from).collect(),
+                            ),
+                        )
                     })
                 })
                 .collect()
@@ -332,7 +337,7 @@ impl RegMod {
                     state: v.1 .0.unwrap(),
                     files: v.1 .1,
                 })
-                .collect::<Vec<RegMod>>()
+                .collect()
         } else {
             parsed_data
                 .into_iter()
@@ -372,7 +377,7 @@ impl RegMod {
                         None
                     }
                 })
-                .collect::<Vec<RegMod>>()
+                .collect()
         }
     }
 }
