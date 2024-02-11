@@ -170,7 +170,7 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.global::<MainLogic>().on_toggleMod({
         let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
         move |key: SharedString| {
-            let reg_mods = RegMod::collect(CONFIG_DIR, true);
+            let reg_mods = RegMod::collect(CONFIG_DIR, false);
             if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
                 toggle_files(
                     &found_mod.name,
