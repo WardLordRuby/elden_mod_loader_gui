@@ -52,7 +52,7 @@ fn main() -> Result<(), slint::PlatformError> {
         } else {
             ui.set_focus_page(0);
         };
-        let reg_mods = RegMod::collect(CONFIG_DIR);
+        let reg_mods = RegMod::collect(CONFIG_DIR, false);
         ui.global::<MainLogic>()
             .set_current_mods(deserialize(&reg_mods));
         ui.global::<MainLogic>().set_game_path_valid(game_verified);
@@ -108,7 +108,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             save_bool(CONFIG_DIR, &mod_name, true);
-            let reg_mods = RegMod::collect(CONFIG_DIR);
+            let reg_mods = RegMod::collect(CONFIG_DIR, false);
             ui.global::<MainLogic>()
                 .set_mod_name(SharedString::from(""));
             ui.global::<MainLogic>()
@@ -172,7 +172,7 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.global::<MainLogic>().on_toggleMod({
         let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
         move |key: SharedString| {
-            let reg_mods = RegMod::collect(CONFIG_DIR);
+            let reg_mods = RegMod::collect(CONFIG_DIR, true);
             if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
                 toggle_files(
                     &found_mod.name,

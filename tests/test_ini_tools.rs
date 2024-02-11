@@ -24,12 +24,13 @@ mod tests {
         }
 
         let config = get_cfg(test_file).unwrap();
-        let parse_test_1 = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir")
+        let parse_test_1 = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
             .unwrap()
             .value;
-        let parse_test_2 = IniProperty::<PathBuf>::read(&config, Some("paths"), "random_dir")
-            .unwrap()
-            .value;
+        let parse_test_2 =
+            IniProperty::<PathBuf>::read(&config, Some("paths"), "random_dir", false)
+                .unwrap()
+                .value;
 
         // Tests if paths stored in Section("paths") will parse correctly | these are full length paths
         assert_eq!(test_path_1, parse_test_1);
@@ -84,7 +85,8 @@ mod tests {
         // -------------------------------------sync_keys runs from inside RegMod::collect()------------------------------------------------
         // ----this deletes any keys that do not have a matching state eg. (key has state but no files, or key has files but no state)-----
         // this tests delete_entry && delete_array in this case we delete "no_matching_path", "no_matching_state_1", and "no_matching_state_2"
-        let registered_mods = RegMod::collect(test_file);
+        let registered_mods = RegMod::collect(test_file, false);
+        // dbg!(&registered_mods);
         assert_eq!(registered_mods.len(), 2);
 
         // Tests name format is correct
