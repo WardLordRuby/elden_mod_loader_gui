@@ -22,10 +22,10 @@ pub struct IniProperty<'a, T: ValueType<'a>> {
 
 pub trait ValueType<'a>: Sized {
     type MyError;
-    type MyType: 'a;
+    type MyInput: 'a;
     fn retrieve(ini: &Ini, section: Option<&str>, key: &str, skip_validation: bool)
         -> Option<Self>;
-    fn parse_str(input: Self::MyType) -> Result<Self, Self::MyError>;
+    fn parse_str(input: Self::MyInput) -> Result<Self, Self::MyError>;
     fn validate(
         input: Result<Self, Self::MyError>,
         ini: &Ini,
@@ -36,7 +36,7 @@ pub trait ValueType<'a>: Sized {
 
 impl<'a> ValueType<'a> for bool {
     type MyError = ParseBoolError;
-    type MyType = &'a str;
+    type MyInput = &'a str;
     fn retrieve(
         ini: &Ini,
         section: Option<&str>,
@@ -50,7 +50,7 @@ impl<'a> ValueType<'a> for bool {
             skip_validation,
         )
     }
-    fn parse_str(input: Self::MyType) -> Result<Self, Self::MyError> {
+    fn parse_str(input: Self::MyInput) -> Result<Self, Self::MyError> {
         input.parse::<bool>()
     }
     fn validate(
@@ -71,7 +71,7 @@ impl<'a> ValueType<'a> for bool {
 
 impl<'a> ValueType<'a> for PathBuf {
     type MyError = Infallible;
-    type MyType = &'a str;
+    type MyInput = &'a str;
     fn retrieve(
         ini: &Ini,
         section: Option<&str>,
@@ -85,7 +85,7 @@ impl<'a> ValueType<'a> for PathBuf {
             skip_validation,
         )
     }
-    fn parse_str(input: Self::MyType) -> Result<Self, Self::MyError> {
+    fn parse_str(input: Self::MyInput) -> Result<Self, Self::MyError> {
         input.parse::<PathBuf>()
     }
     fn validate(
@@ -123,7 +123,7 @@ impl<'a> ValueType<'a> for PathBuf {
 
 impl<'a> ValueType<'a> for Vec<PathBuf> {
     type MyError = Infallible;
-    type MyType = Vec<&'a str>;
+    type MyInput = Vec<&'a str>;
     fn retrieve(
         ini: &Ini,
         section: Option<&str>,
@@ -133,7 +133,7 @@ impl<'a> ValueType<'a> for Vec<PathBuf> {
         let array = read_array(ini.section(section).unwrap(), key);
         ValueType::validate(ValueType::parse_str(array), ini, section, skip_validation)
     }
-    fn parse_str(input: Self::MyType) -> Result<Self, Self::MyError> {
+    fn parse_str(input: Self::MyInput) -> Result<Self, Self::MyError> {
         input.into_iter().map(|p| p.parse::<PathBuf>()).collect()
     }
     fn validate(
@@ -142,15 +142,13 @@ impl<'a> ValueType<'a> for Vec<PathBuf> {
         _section: Option<&str>,
         disable: bool,
     ) -> Option<Self> {
-        let mut game_dir = PathBuf::new();
-        if !disable {
-            game_dir = IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
-                .unwrap()
-                .value;
-        }
         match input {
             Ok(paths) => {
                 if !disable {
+                    let game_dir =
+                        IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
+                            .unwrap()
+                            .value;
                     if paths.iter().all(|path| validate_path(&game_dir.join(path))) {
                         Some(paths)
                     } else {
@@ -160,10 +158,7 @@ impl<'a> ValueType<'a> for Vec<PathBuf> {
                     Some(paths)
                 }
             }
-            Err(err) => {
-                error!("Error: {}", err);
-                None
-            }
+            _ => None,
         }
     }
 }
