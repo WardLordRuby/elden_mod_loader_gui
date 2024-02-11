@@ -130,6 +130,15 @@ impl<'a> ValueType<'a> for Vec<PathBuf> {
         key: &str,
         skip_validation: bool,
     ) -> Option<Self> {
+        fn read_array<'a>(section: &'a Properties, key: &str) -> Vec<&'a str> {
+            section
+                .iter()
+                .skip_while(|(k, _)| *k != key)
+                .skip_while(|(k, _)| *k == key)
+                .take_while(|(k, _)| *k == "array[]")
+                .map(|(_, v)| v)
+                .collect()
+        }
         let array = read_array(ini.section(section).unwrap(), key);
         ValueType::validate(ValueType::parse_str(array), ini, section, skip_validation)
     }
@@ -159,6 +168,23 @@ impl<'a> ValueType<'a> for Vec<PathBuf> {
                 }
             }
             _ => None,
+        }
+    }
+}
+
+fn validate_path(path: &Path) -> bool {
+    match path.try_exists() {
+        Ok(result) => {
+            if result {
+                true
+            } else {
+                warn!("Path from ini can not be found on machine");
+                false
+            }
+        }
+        Err(err) => {
+            error!("Error: {}", err);
+            false
         }
     }
 }
@@ -222,34 +248,6 @@ impl<'a, T: ValueType<'a>> IniProperty<'a, T> {
     }
 }
 
-fn validate_path(path: &Path) -> bool {
-    match path.try_exists() {
-        Ok(result) => {
-            if result {
-                true
-            } else {
-                warn!("Path from ini can not be found on machine");
-                false
-            }
-        }
-        Err(err) => {
-            error!("Error: {}", err);
-            false
-        }
-    }
-}
-
-fn read_array<'a>(section: &'a Properties, key: &str) -> Vec<&'a str> {
-    section
-        .iter()
-        .skip_while(|(k, _)| *k != key)
-        .skip_while(|(k, _)| *k == key)
-        .take_while(|(k, _)| *k == "array[]")
-        .map(|(_, v)| v)
-        .collect()
-}
-
-#[derive(Debug)]
 pub struct RegMod {
     pub name: String,
     pub state: bool,
@@ -258,30 +256,52 @@ pub struct RegMod {
 
 impl RegMod {
     pub fn collect(path: &str, skip_validation: bool) -> Vec<Self> {
+        fn collect_file_data(section: &Properties) -> HashMap<&str, Vec<&str>> {
+            section
+                .iter()
+                .enumerate()
+                .filter(|(_, v)| v.0 != "array[]")
+                .map(|(i, v)| {
+                    let paths = section
+                        .iter()
+                        .skip(i + 1)
+                        .take_while(|v| v.0 == "array[]")
+                        .map(|v| v.1)
+                        .collect();
+                    (v.0, if v.1 == "array" { paths } else { vec![v.1] })
+                })
+                .collect()
+        }
+        fn collect_state_data(section: &Properties) -> HashMap<&str, &str> {
+            section.iter().collect()
+        }
+        fn combine_map_data<'a>(
+            state_map: HashMap<&'a str, &str>,
+            file_map: HashMap<&str, Vec<&str>>,
+        ) -> HashMap<&'a str, (Result<bool, ParseBoolError>, Vec<PathBuf>)> {
+            state_map
+                .iter()
+                .filter_map(|(&key, &value1)| {
+                    file_map.get(&key).map(|value2| {
+                        (
+                            key,
+                            (
+                                value1.parse::<bool>(),
+                                value2.iter().map(PathBuf::from).collect::<Vec<_>>(),
+                            ),
+                        )
+                    })
+                })
+                .collect()
+        }
         fn sync_keys<'a>(
             ini: &'a Ini,
             path: &str,
         ) -> HashMap<&'a str, (Result<bool, ParseBoolError>, Vec<PathBuf>)> {
-            fn collect_section(section: &Properties) -> HashMap<&str, Vec<&str>> {
-                section
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, v)| v.0 != "array[]")
-                    .map(|(i, v)| {
-                        let paths = section
-                            .iter()
-                            .skip(i + 1)
-                            .take_while(|v| v.0 == "array[]")
-                            .map(|v| v.1)
-                            .collect();
-                        (v.0, if v.1 == "array" { paths } else { vec![v.1] })
-                    })
-                    .collect()
-            }
             let mod_state_data = ini.section(Some("registered-mods")).unwrap();
             let mod_files_data = ini.section(Some("mod-files")).unwrap();
-            let mut state_data = mod_state_data.iter().collect::<HashMap<&str, &str>>();
-            let mut file_data = collect_section(mod_files_data);
+            let mut state_data = collect_state_data(mod_state_data);
+            let mut file_data = collect_file_data(mod_files_data);
             let invalid_state: Vec<_> = state_data
                 .keys()
                 .filter(|k| !file_data.contains_key(*k))
@@ -303,28 +323,17 @@ impl RegMod {
                 } else {
                     remove_entry(path, Some("mod-files"), key);
                 }
-                warn!("\"{}\" has no matching state", &key);
                 file_data.remove(key);
+                warn!("\"{}\" has no matching state", &key);
             }
-            state_data
-                .iter()
-                .filter_map(|(&key, &value1)| {
-                    file_data.get(&key).map(|value2| {
-                        (
-                            key,
-                            (
-                                value1.parse::<bool>(),
-                                value2.iter().map(PathBuf::from).collect(),
-                            ),
-                        )
-                    })
-                })
-                .collect()
+            combine_map_data(state_data, file_data)
         }
         let ini = get_cfg(path).unwrap();
-        let parsed_data = sync_keys(&ini, path);
 
         if skip_validation {
+            let file_data = collect_file_data(ini.section(Some("mod-files")).unwrap());
+            let state_data = collect_state_data(ini.section(Some("registered-mods")).unwrap());
+            let parsed_data = combine_map_data(state_data, file_data);
             parsed_data
                 .into_iter()
                 .map(|v| RegMod {
@@ -334,6 +343,7 @@ impl RegMod {
                 })
                 .collect()
         } else {
+            let parsed_data = sync_keys(&ini, path);
             parsed_data
                 .into_iter()
                 .filter_map(|(k, v)| {
@@ -343,8 +353,8 @@ impl RegMod {
                         Some("registered-mods"),
                         skip_validation,
                     ) {
-                        if v.1.len() == 1 {
-                            IniProperty::<PathBuf>::validate(
+                        match v.1.len() {
+                            1 => IniProperty::<PathBuf>::validate(
                                 Ok(v.1[0].clone()),
                                 &ini,
                                 Some("mod-files"),
@@ -354,9 +364,8 @@ impl RegMod {
                                 name: k.replace('_', " ").to_string(),
                                 state: bool,
                                 files: vec![path],
-                            })
-                        } else {
-                            IniProperty::<Vec<PathBuf>>::validate(
+                            }),
+                            2.. => IniProperty::<Vec<PathBuf>>::validate(
                                 Ok(v.1),
                                 &ini,
                                 Some("mod-files"),
@@ -366,7 +375,11 @@ impl RegMod {
                                 name: k.replace('_', " ").to_string(),
                                 state: bool,
                                 files: paths,
-                            })
+                            }),
+                            0 => {
+                                error!("Error: Tried to validate a Path in a Vec with size 0");
+                                None
+                            }
                         }
                     } else {
                         None
@@ -377,7 +390,6 @@ impl RegMod {
     }
 }
 // ----------------------Optimized original implementation-------------------------------
-// Collect into vecdeque tuple (key: &str, state: &str, files ?)
 // let mod_state_data = ini.section(Some("registered-mods")).unwrap();
 // mod_state_data
 //     .iter()

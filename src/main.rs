@@ -22,10 +22,9 @@ use elden_mod_loader_gui::*;
 fn main() -> Result<(), slint::PlatformError> {
     env_logger::init();
     let ui = App::new()?;
-    // let mut game_dir: PathBuf;
-    // let mut game_verified: bool;
 
     {
+        // Error check for if cfg exists but contains no data or no mod data but valid game_dir
         match get_cfg(CONFIG_DIR) {
             Ok(_) => info!("Config file found at \"{}\"", &CONFIG_DIR),
             Err(err) => {
@@ -60,7 +59,6 @@ fn main() -> Result<(), slint::PlatformError> {
             .set_game_path(game_dir.to_string_lossy().to_string().into());
     }
 
-    // Use global rust mut variables for source of truth logic to ref current state | very slow to pull from UI global
     // Error check input text for invalid symbols | If mod_name already exists confirm overwrite dialog -> if array into entry -> remove_array fist
     // if selected file already exists as reg_mod -> error dialog | else success dialog mod_name with mod_files Registered
     // need fn for checking state of the files are all the same, if all files disabled need to save state as false
