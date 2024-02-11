@@ -295,7 +295,6 @@ impl RegMod {
                 state_data.remove(key);
                 remove_entry(path, Some("registered-mods"), key);
                 warn!("\"{}\" has no matching files", &key);
-                eprintln!("\"{}\" has no matching files", &key);
             }
             let invalid_files: Vec<_> = file_data
                 .keys()
@@ -309,25 +308,21 @@ impl RegMod {
                     remove_entry(path, Some("mod-files"), key);
                 }
                 warn!("\"{}\" has no matching state", &key);
-                eprintln!("\"{}\" has no matching state", &key);
                 file_data.remove(key);
             }
             state_data
                 .iter()
-                .zip(file_data.iter())
-                .map(|((&key, &value1), (_, value2))| {
-                    (
-                        key,
-                        (
-                            value1.parse::<bool>(),
-                            value2.iter().map(PathBuf::from).collect(),
-                        ),
-                    )
+                .filter_map(|(&key, &value1)| {
+                    file_data.get(&key).map(|value2| {
+                        let bool_value = value1.parse::<bool>();
+                        let path_bufs = value2.iter().map(PathBuf::from).collect();
+                        (key, (bool_value, path_bufs))
+                    })
                 })
                 .collect()
         }
         let ini = get_cfg(path).unwrap();
-        let mut parsed_data = sync_keys(&ini, path);
+        let parsed_data = sync_keys(&ini, path);
 
         if skip_validation {
             parsed_data
@@ -337,40 +332,48 @@ impl RegMod {
                     state: v.1 .0.unwrap(),
                     files: v.1 .1,
                 })
-                .collect()
+                .collect::<Vec<RegMod>>()
         } else {
             parsed_data
-                .drain()
+                .into_iter()
                 .filter_map(|(k, v)| {
-                    let bool_validation =
-                        IniProperty::<bool>::validate(v.0, &ini, Some("registered-mods"), false);
-                    let paths_validation: Option<Vec<PathBuf>>;
-                    if v.1.len() == 1 {
-                        paths_validation = IniProperty::<PathBuf>::validate(
-                            Ok(v.1),
-                            &ini,
-                            Some("mod-files"),
-                            false,
-                        );
+                    if let Some(bool) = IniProperty::<bool>::validate(
+                        v.0,
+                        &ini,
+                        Some("registered-mods"),
+                        skip_validation,
+                    ) {
+                        if v.1.len() == 1 {
+                            IniProperty::<PathBuf>::validate(
+                                Ok(v.1[0].clone()),
+                                &ini,
+                                Some("mod-files"),
+                                skip_validation,
+                            )
+                            .map(|path| RegMod {
+                                name: k.replace('_', " ").to_string(),
+                                state: bool,
+                                files: vec![path],
+                            })
+                        } else {
+                            IniProperty::<Vec<PathBuf>>::validate(
+                                Ok(v.1),
+                                &ini,
+                                Some("mod-files"),
+                                skip_validation,
+                            )
+                            .map(|paths| RegMod {
+                                name: k.replace('_', " ").to_string(),
+                                state: bool,
+                                files: paths,
+                            })
+                        }
                     } else {
-                        paths_validation = IniProperty::<Vec<PathBuf>>::validate(
-                            Ok(v.1),
-                            &ini,
-                            Some("mod-files"),
-                            false,
-                        );
+                        None
                     }
-                    bool_validation.and_then(|bool_value| {
-                        paths_validation.map(|paths_value| RegMod {
-                            name: k.replace('_', " ").to_string(),
-                            state: bool_value,
-                            files: paths_value,
-                        })
-                    })
                 })
-                .collect()
+                .collect::<Vec<RegMod>>()
         }
-        // data validation layer -- make a toggle so we can easily turn off for benchmarks but keep on for tests
     }
 }
 // ----------------------Optimized original implementation-------------------------------
