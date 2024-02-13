@@ -193,8 +193,8 @@ pub fn attempt_locate_game(file_name: &str) -> PathResult {
         }
     };
     let try_read: Option<PathBuf> =
-        match IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false) {
-            Ok(ini_property) => match does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
+        IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false).and_then(
+            |ini_property| match does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
                 true => {
                     info!("Success: \"game_dir\" from ini is valid");
                     Some(ini_property.value)
@@ -204,11 +204,7 @@ pub fn attempt_locate_game(file_name: &str) -> PathResult {
                     None
                 }
             },
-            Err(err) => {
-                error!("{}", err);
-                None
-            }
-        };
+        );
     if let Some(path) = try_read {
         return PathResult::Full(path);
     }

@@ -2,8 +2,7 @@ use ini::{Ini, Properties};
 use log::{debug, error, info, warn};
 use std::{
     collections::HashMap,
-    convert::Infallible,
-    marker::PhantomData,
+    fmt::Debug,
     path::{Path, PathBuf},
     str::ParseBoolError,
 };
@@ -13,237 +12,210 @@ use crate::{
     ini_tools::writer::{remove_array, remove_entry},
 };
 
-pub struct IniProperty<'a, T: ValueType<'a>> {
-    //section: Option<String>,
-    //key: String,
-    pub value: T,
-    lifetime: PhantomData<&'a ()>,
-}
-
-pub trait ValueType<'a>: Sized {
-    type MyError;
-    type MyInput: 'a;
-    fn retrieve(ini: &Ini, section: Option<&str>, key: &str, skip_validation: bool)
-        -> Option<Self>;
-    fn parse_str(input: Self::MyInput) -> Result<Self, Self::MyError>;
-    fn validate(
-        input: Result<Self, Self::MyError>,
-        ini: &Ini,
-        section: Option<&str>,
-        disable: bool,
-    ) -> Option<Self>;
-}
-
-impl<'a> ValueType<'a> for bool {
-    type MyError = ParseBoolError;
-    type MyInput = &'a str;
-    fn retrieve(
+pub trait ValueType: Sized {
+    type ParseError: Debug;
+    fn parse_str(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> Option<Self> {
-        ValueType::validate(
-            ValueType::parse_str(ini.get_from(section, key).unwrap()),
-            ini,
-            section,
-            skip_validation,
-        )
-    }
-    fn parse_str(input: Self::MyInput) -> Result<Self, Self::MyError> {
-        input.parse::<bool>()
+    ) -> Result<Self, Self::ParseError>;
+    fn validate(
+        self,
+        ini: &Ini,
+        section: Option<&str>,
+        disable: bool,
+    ) -> Result<Self, Self::ParseError>;
+}
+
+impl ValueType for bool {
+    type ParseError = ParseBoolError;
+    fn parse_str(
+        ini: &Ini,
+        section: Option<&str>,
+        key: &str,
+        _skip_validation: bool,
+    ) -> Result<Self, Self::ParseError> {
+        ini.get_from(section, key).unwrap().parse::<bool>()
     }
     fn validate(
-        input: Result<Self, Self::MyError>,
+        self,
         _ini: &Ini,
         _section: Option<&str>,
         _disable: bool,
-    ) -> Option<Self> {
-        match input {
-            Ok(bool) => Some(bool),
-            Err(err) => {
-                error!("Error: {}", err);
-                None
-            }
-        }
+    ) -> Result<Self, Self::ParseError> {
+        // Do not use | .parse_str already handles validation or ParseBoolError
+        Ok(self)
     }
 }
 
-impl<'a> ValueType<'a> for PathBuf {
-    type MyError = Infallible;
-    type MyInput = &'a str;
-    fn retrieve(
+impl ValueType for PathBuf {
+    type ParseError = &'static str;
+    fn parse_str(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> Option<Self> {
-        ValueType::validate(
-            ValueType::parse_str(ini.get_from(section, key).unwrap()),
-            ini,
-            section,
-            skip_validation,
-        )
-    }
-    fn parse_str(input: Self::MyInput) -> Result<Self, Self::MyError> {
-        input.parse::<PathBuf>()
+    ) -> Result<Self, Self::ParseError> {
+        if skip_validation {
+            Ok(PathBuf::from(ini.get_from(section, key).unwrap()))
+        } else {
+            PathBuf::from(ini.get_from(section, key).unwrap()).validate(
+                ini,
+                section,
+                skip_validation,
+            )
+        }
     }
     fn validate(
-        input: Result<Self, Self::MyError>,
+        self,
         ini: &Ini,
         section: Option<&str>,
         disable: bool,
-    ) -> Option<Self> {
-        match input {
-            Ok(path) => {
-                if !disable {
-                    if section == Some("mod-files") {
-                        let game_dir =
-                            IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
-                                .unwrap()
-                                .value;
-                        if validate_path(&game_dir.join(&path)) {
-                            Some(path)
-                        } else {
-                            None
-                        }
-                    } else if validate_path(&path) {
-                        Some(path)
-                    } else {
-                        None
-                    }
-                } else {
-                    Some(path)
+    ) -> Result<Self, Self::ParseError> {
+        if !disable {
+            if section == Some("mod-files") {
+                let game_dir = IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
+                    .unwrap()
+                    .value;
+                match validate_path(&game_dir.join(&self)) {
+                    Ok(()) => Ok(self),
+                    Err(err) => Err(err),
+                }
+            } else {
+                match validate_path(&self) {
+                    Ok(()) => Ok(self),
+                    Err(err) => Err(err),
                 }
             }
-            _ => None,
+        } else {
+            Ok(self)
         }
     }
 }
 
-impl<'a> ValueType<'a> for Vec<PathBuf> {
-    type MyError = Infallible;
-    type MyInput = Vec<&'a str>;
-    fn retrieve(
+impl ValueType for Vec<PathBuf> {
+    type ParseError = &'static str;
+    fn parse_str(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> Option<Self> {
-        fn read_array<'a>(section: &'a Properties, key: &str) -> Vec<&'a str> {
+    ) -> Result<Self, Self::ParseError> {
+        fn read_array(section: &Properties, key: &str) -> Vec<PathBuf> {
             section
                 .iter()
                 .skip_while(|(k, _)| *k != key)
                 .skip_while(|(k, _)| *k == key)
                 .take_while(|(k, _)| *k == "array[]")
-                .map(|(_, v)| v)
+                .map(|(_, v)| PathBuf::from(v))
                 .collect()
         }
-        let array = read_array(ini.section(section).unwrap(), key);
-        ValueType::validate(ValueType::parse_str(array), ini, section, skip_validation)
-    }
-    fn parse_str(input: Self::MyInput) -> Result<Self, Self::MyError> {
-        input.into_iter().map(|p| p.parse::<PathBuf>()).collect()
+        if skip_validation {
+            Ok(read_array(ini.section(section).unwrap(), key))
+        } else {
+            read_array(ini.section(section).unwrap(), key).validate(ini, section, skip_validation)
+        }
     }
     fn validate(
-        input: Result<Self, Self::MyError>,
+        self,
         ini: &Ini,
         _section: Option<&str>,
         disable: bool,
-    ) -> Option<Self> {
-        match input {
-            Ok(paths) => {
-                if !disable {
-                    let game_dir =
-                        IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
-                            .unwrap()
-                            .value;
-                    if paths.iter().all(|path| validate_path(&game_dir.join(path))) {
-                        Some(paths)
-                    } else {
-                        None
-                    }
-                } else {
-                    Some(paths)
-                }
+    ) -> Result<Self, Self::ParseError> {
+        if !disable {
+            let game_dir = IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
+                .unwrap()
+                .value;
+            if self
+                .iter()
+                .all(|path| validate_path(&game_dir.join(path)).is_ok())
+            {
+                Ok(self)
+            } else {
+                Err("One or more paths read from Ini were not valid")
             }
-            _ => None,
+        } else {
+            Ok(self)
         }
     }
 }
 
-fn validate_path(path: &Path) -> bool {
+fn validate_path(path: &Path) -> Result<(), &'static str> {
     match path.try_exists() {
         Ok(result) => {
             if result {
-                true
+                Ok(())
             } else {
-                warn!("Path from ini can not be found on machine");
-                false
+                error!("Path: \"{}\" can not be found on machine", path.display());
+                Err("Path not found")
             }
         }
-        Err(err) => {
-            error!("Error: {}", err);
-            false
-        }
+        Err(_) => Err("Permission denied"),
     }
 }
 
-impl<'a, T: ValueType<'a>> IniProperty<'a, T> {
+pub struct IniProperty<T: ValueType> {
+    //section: Option<String>,
+    //key: String,
+    pub value: T,
+}
+
+impl<T: ValueType> IniProperty<T> {
     pub fn read(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> Result<IniProperty<'a, T>, String> {
+    ) -> Option<IniProperty<T>> {
         let format_key = key.replace(' ', "_");
         match IniProperty::is_valid(ini, section, &format_key, skip_validation) {
-            Some(value) => {
+            Ok(value) => {
                 debug!(
                     "Success: read key: \"{}\" Section: \"{}\" from ini",
                     key,
                     section.unwrap()
                 );
-                Ok(IniProperty {
+                Some(IniProperty {
                     //section: Some(section.unwrap().to_string()),
                     //key: key.to_string(),
                     value,
-                    lifetime: PhantomData,
                 })
             }
-            None => Err(format!(
-                "Value stored in Section: \"{}\", Key: \"{}\" is not valid",
-                section.unwrap(),
-                key
-            )),
+            Err(err) => {
+                error!(
+                    "{}",
+                    format!(
+                        "Value stored in Section: \"{}\", Key: \"{}\" is not valid",
+                        section.unwrap(),
+                        key
+                    )
+                );
+                error!("Error: {}", err);
+                None
+            }
         }
     }
 
-    pub fn validate(
-        input: Result<T, T::MyError>,
+    fn is_valid(
         ini: &Ini,
         section: Option<&str>,
-        disable: bool,
-    ) -> Option<T>
-    where
-        T: ValueType<'a>,
-    {
-        T::validate(input, ini, section, disable)
-    }
-
-    fn is_valid(ini: &Ini, section: Option<&str>, key: &str, skip_validation: bool) -> Option<T> {
+        key: &str,
+        skip_validation: bool,
+    ) -> Result<T, String> {
         match &ini.section(section) {
             Some(s) => match s.contains_key(key) {
-                true => T::retrieve(ini, section, key, skip_validation),
-                false => {
-                    warn!("Key: \"{}\" not found in {:?}", key, ini);
-                    None
-                }
+                true => match T::parse_str(ini, section, key, skip_validation) {
+                    Ok(t) => Ok(t),
+                    Err(err) => Err(format!("Error: {:?}", err)),
+                },
+                false => Err(format!("Key: \"{}\" not found in {:?}", key, ini)),
             },
-            None => {
-                warn!("Section: \"{}\" not found in {:?}", section.unwrap(), ini);
-                None
-            }
+            None => Err(format!(
+                "Section: \"{}\" not found in {:?}",
+                section.unwrap(),
+                ini
+            )),
         }
     }
 }
@@ -333,7 +305,7 @@ impl RegMod {
                 .enumerate()
                 .filter(|(_, v)| v.0 != "array[]")
                 .map(|(i, v)| {
-                    let paths = mod_files_data
+                    let paths: Vec<&str> = mod_files_data
                         .iter()
                         .skip(i + 1)
                         .take_while(|v| v.0 == "array[]")
@@ -349,7 +321,7 @@ impl RegMod {
         if skip_validation {
             let parsed_data = collect_data_unsafe(&ini);
             parsed_data
-                .into_iter()
+                .iter()
                 .map(|v| RegMod {
                     name: v.0.replace('_', " ").to_string(),
                     state: v.1.parse::<bool>().unwrap(),
@@ -359,43 +331,48 @@ impl RegMod {
         } else {
             let parsed_data = sync_keys(&ini, path);
             parsed_data
-                .into_iter()
-                .filter_map(|(k, v)| {
-                    if let Some(bool) = IniProperty::<bool>::validate(
-                        v.0,
-                        &ini,
-                        Some("registered-mods"),
-                        skip_validation,
-                    ) {
+                .iter()
+                .filter_map(|(k, v)| match &v.0 {
+                    Ok(bool) => {
                         match v.1.len() {
-                            1 => IniProperty::<PathBuf>::validate(
-                                Ok(v.1[0].clone()),
+                            1 => match v.1[0].to_owned().validate(
                                 &ini,
                                 Some("mod-files"),
                                 skip_validation,
-                            )
-                            .map(|path| RegMod {
-                                name: k.replace('_', " ").to_string(),
-                                state: bool,
-                                files: vec![path],
-                            }),
-                            2.. => IniProperty::<Vec<PathBuf>>::validate(
-                                Ok(v.1),
+                            ) {
+                                Ok(path) => Some(RegMod {
+                                    name: k.replace('_', " ").to_string(),
+                                    state: *bool,
+                                    files: vec![path],
+                                }),
+                                Err(err) => {
+                                    error!("Error: {}", err);
+                                    None
+                                }
+                            },
+                            2.. => match v.1.to_owned().validate(
                                 &ini,
                                 Some("mod-files"),
                                 skip_validation,
-                            )
-                            .map(|paths| RegMod {
-                                name: k.replace('_', " ").to_string(),
-                                state: bool,
-                                files: paths,
-                            }),
+                            ) {
+                                Ok(paths) => Some(RegMod {
+                                    name: k.replace('_', " ").to_string(),
+                                    state: *bool,
+                                    files: paths,
+                                }),
+                                Err(err) => {
+                                    error!("Error: {}", err);
+                                    None
+                                }
+                            },
                             0 => {
                                 error!("Error: Tried to validate a Path in a Vec with size 0");
                                 None
                             }
                         }
-                    } else {
+                    }
+                    Err(err) => {
+                        error!("Error: {}", err);
                         None
                     }
                 })
