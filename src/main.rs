@@ -13,6 +13,7 @@ use log::{debug, error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use std::{
+    io::ErrorKind,
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -150,12 +151,11 @@ fn main() -> Result<(), slint::PlatformError> {
                             save_path(CONFIG_DIR, Some("paths"), "game_dir", &try_path);
                         }
                         Err(err) => {
-                            warn!("Failure: Files not found");
-                            error!("Error: {}", err);
-                            ui.set_err_message(SharedString::from(format!(
-                                "Game files not found in: {}",
-                                try_path.to_string_lossy()
-                            )));
+                            match err.kind() {
+                                ErrorKind::NotFound => warn!("{}", err),
+                                _ => error!("Error: {}", err),
+                            }
+                            ui.set_err_message(SharedString::from(err.to_string()));
                             ui.invoke_show_error_popup();
                         }
                     }
