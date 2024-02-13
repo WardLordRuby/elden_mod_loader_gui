@@ -3,6 +3,7 @@ use log::{debug, error, info, warn};
 use std::{
     collections::HashMap,
     fmt::Debug,
+    io,
     path::{Path, PathBuf},
     str::ParseBoolError,
 };
@@ -38,19 +39,19 @@ impl ValueType for bool {
     ) -> Result<Self, Self::ParseError> {
         ini.get_from(section, key).unwrap().parse::<bool>()
     }
+    // Do not use | no extra steps needed for validating a bool, .parse already handles validation or ParseBoolError
     fn validate(
         self,
         _ini: &Ini,
         _section: Option<&str>,
         _disable: bool,
     ) -> Result<Self, Self::ParseError> {
-        // Do not use | .parse_str already handles validation or ParseBoolError
         Ok(self)
     }
 }
 
 impl ValueType for PathBuf {
-    type ParseError = &'static str;
+    type ParseError = io::Error;
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -95,7 +96,7 @@ impl ValueType for PathBuf {
 }
 
 impl ValueType for Vec<PathBuf> {
-    type ParseError = &'static str;
+    type ParseError = io::Error;
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -127,13 +128,13 @@ impl ValueType for Vec<PathBuf> {
             let game_dir = IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
                 .unwrap()
                 .value;
-            if self
+            if let Some(err) = self
                 .iter()
-                .all(|path| validate_path(&game_dir.join(path)).is_ok())
+                .find_map(|path| validate_path(&game_dir.join(path)).err())
             {
-                Ok(self)
+                Err(err)
             } else {
-                Err("One or more paths read from Ini were not valid")
+                Ok(self)
             }
         } else {
             Ok(self)
@@ -141,17 +142,25 @@ impl ValueType for Vec<PathBuf> {
     }
 }
 
-fn validate_path(path: &Path) -> Result<(), &'static str> {
+fn validate_path(path: &Path) -> Result<(), io::Error> {
     match path.try_exists() {
         Ok(result) => {
             if result {
                 Ok(())
             } else {
-                error!("Path: \"{}\" can not be found on machine", path.display());
-                Err("Path not found")
+                Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("Path: \"{}\" can not be found on machine", path.display()),
+                ))
             }
         }
-        Err(_) => Err("Permission denied"),
+        Err(_) => Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "Path \"{}\"'s existance can neither be confirmed nor denied",
+                path.display()
+            ),
+        )),
     }
 }
 
