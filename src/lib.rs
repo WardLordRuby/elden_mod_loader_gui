@@ -136,11 +136,11 @@ pub fn get_cfg(input_file: &str) -> Result<Ini, ini::Error> {
     Ini::load_from_file_noescape(Path::new(input_file))
 }
 
-pub fn does_dir_contain(path: &Path, list: &[&str]) -> bool {
+pub fn does_dir_contain(path: &Path, list: &[&str]) -> Result<(), io::Error> {
     match read_dir(path) {
         Ok(_) => {
-            let file_names: Vec<_> = read_dir(path)
-                .unwrap()
+            let entries = read_dir(path)?;
+            let file_names: Vec<_> = entries
                 .filter_map(|entry| entry.ok())
                 .map(|entry| entry.file_name())
                 .filter_map(|file_name| file_name.to_str().map(String::from))
@@ -151,21 +151,19 @@ pub fn does_dir_contain(path: &Path, list: &[&str]) -> bool {
                 .all(|check_file| file_names.iter().any(|file_name| file_name == check_file));
 
             if all_files_exist {
-                // info!("Success: Directory verified");
-                true
+                Ok(())
             } else {
-                warn!(
-                    "Failure: {:?} not found in: \"{}\"",
-                    list,
-                    path.to_string_lossy()
-                );
-                false
+                Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!(
+                        "Failure: {:?} not found in: \"{}\"",
+                        list,
+                        path.to_string_lossy(),
+                    ),
+                ))
             }
         }
-        Err(err) => {
-            error!("Error::{} on reading directory", err);
-            false
-        }
+        Err(err) => Err(err),
     }
 }
 
@@ -192,24 +190,22 @@ pub fn attempt_locate_game(file_name: &str) -> PathResult {
             return PathResult::None(PathBuf::from(""));
         }
     };
-    let try_read: Option<PathBuf> =
-        IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false).and_then(
-            |ini_property| match does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
-                true => {
-                    info!("Success: \"game_dir\" from ini is valid");
-                    Some(ini_property.value)
-                }
-                false => {
-                    warn!("Game files not found in directory read from ini");
+    if let Some(path) = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
+        .and_then(|ini_property| {
+            match does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
+                Ok(_) => Some(ini_property.value),
+                Err(err) => {
+                    error!("Error: {}", err);
                     None
                 }
-            },
-        );
-    if let Some(path) = try_read {
+            }
+        })
+    {
+        info!("Success: \"game_dir\" from ini is valid");
         return PathResult::Full(path);
     }
     let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or_else(|| "".into());
-    if does_dir_contain(&try_locate, &REQUIRED_GAME_FILES) {
+    if does_dir_contain(&try_locate, &REQUIRED_GAME_FILES).is_ok() {
         info!("Success: located \"game_dir\" on drive");
         save_path(CONFIG_DIR, Some("paths"), "game_dir", try_locate.as_path());
         return PathResult::Full(try_locate);
@@ -248,7 +244,7 @@ pub fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
 fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> Option<PathBuf> {
     for (index, folder) in target_path.iter().enumerate() {
         path.push(folder);
-        info!("Testing Path: {:?}", &path);
+        info!("Testing Path: {}", &path.display());
         if !path.exists() && index > 1 {
             path.pop();
             break;

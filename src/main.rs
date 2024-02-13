@@ -135,22 +135,23 @@ fn main() -> Result<(), slint::PlatformError> {
             match user_path {
                 Ok(path) => {
                     info!("User Selected Path: \"{}\"", &path);
-                    let try_path: PathBuf = if does_dir_contain(Path::new(&path), &["Game"]) {
+                    let try_path: PathBuf = if does_dir_contain(Path::new(&path), &["Game"]).is_ok()
+                    {
                         PathBuf::from(&format!("{}\\Game", path))
                     } else {
                         PathBuf::from(&path)
                     };
                     match does_dir_contain(Path::new(&try_path), &REQUIRED_GAME_FILES) {
-                        true => {
+                        Ok(_) => {
                             info!("Success: Files found, saving diretory");
                             ui.global::<MainLogic>().set_game_path_valid(true);
                             ui.global::<SettingsLogic>()
                                 .set_game_path(try_path.to_string_lossy().to_string().into());
                             save_path(CONFIG_DIR, Some("paths"), "game_dir", &try_path);
                         }
-                        false => {
-                            let msg: &str = "Failure: Files not found";
-                            warn!("{}", &msg);
+                        Err(err) => {
+                            warn!("Failure: Files not found");
+                            error!("Error: {}", err);
                             ui.set_err_message(SharedString::from(format!(
                                 "Game files not found in: {}",
                                 try_path.to_string_lossy()
