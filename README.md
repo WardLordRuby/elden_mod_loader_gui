@@ -20,7 +20,7 @@ Work in progress
 * Ability: deserialize backend rust modData to data slint can use  
 * Ability: display error message to user in dialog  
 * Ability: parse Array of Paths, Paths and bools from ini  
-* Abiltiy: only save valid Arrays, Paths, and bools  
+* Abiltiy: only read valid Arrays, Paths, and bools  
 * Ability: check if directory contains files  
 * Ability: try locate a dir on user drive  
 * Ability: Togglefiles to on and off state  

@@ -222,7 +222,7 @@ pub fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
     let drive: String = match get_current_drive() {
         Some(drive) => drive,
         None => {
-            info!("Failed to find find current Drive. Using 'C:\\'");
+            warn!("Failed to find find current Drive. Using 'C:\\'");
             "C:\\".to_string()
         }
     };

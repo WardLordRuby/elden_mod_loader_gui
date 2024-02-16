@@ -38,17 +38,15 @@ mod tests {
             PathBuf::from("test_files\\test5.bin.disabled"),
         ];
 
-        for path in test_files.iter() {
-            let _ = File::create(path.to_string_lossy().to_string());
+        for test_file in test_files.iter() {
+            let _ = File::create(test_file.to_string_lossy().to_string());
         }
 
         toggle_files(key, dir_to_test_files, false, test_files.clone(), save_file);
 
-        assert!(file_exists(test_files_disabled[0].as_path()));
-        assert!(file_exists(test_files_disabled[1].as_path()));
-        assert!(file_exists(test_files_disabled[2].as_path()));
-        assert!(file_exists(test_files_disabled[3].as_path()));
-        assert!(file_exists(test_files_disabled[4].as_path()));
+        for path_to_test in test_files_disabled.iter() {
+            assert!(file_exists(path_to_test.as_path()));
+        }
 
         toggle_files(
             key,
@@ -58,14 +56,12 @@ mod tests {
             save_file,
         );
 
-        assert!(file_exists(test_files[0].as_path()));
-        assert!(file_exists(test_files[1].as_path()));
-        assert!(file_exists(test_files[2].as_path()));
-        assert!(file_exists(test_files[3].as_path()));
-        assert!(file_exists(test_files[4].as_path()));
+        for path_to_test in test_files.iter() {
+            assert!(file_exists(path_to_test.as_path()));
+        }
 
-        for path in test_files.iter() {
-            let _ = remove_file(path.as_path());
+        for test_file in test_files.iter() {
+            let _ = remove_file(test_file.as_path());
         }
         let _ = remove_file(save_file);
     }
