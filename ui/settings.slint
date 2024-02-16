@@ -1,15 +1,19 @@
-import { GroupBox, Button, HorizontalBox, LineEdit } from "std-widgets.slint";
+import { GroupBox, Button, HorizontalBox, LineEdit, Switch } from "std-widgets.slint";
 
 import { Page } from "page.slint";
 
 export global SettingsLogic  {
     callback select_game_dir();
-    in property <string> game_path;
+    in property <string> game_path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
 }
 
 export component SettingsPage inherits Page {
+    preferred-height: 420px;
+    width: 310px;
+    has-back-button: true;
     title: @tr("Settings");
     description: @tr("Set path to eldenring.exe and register mods here");
+
 
     VerticalLayout {
         padding-left: 5px;
@@ -17,13 +21,18 @@ export component SettingsPage inherits Page {
         padding-bottom: 3px;
         spacing: 0px;
         preferred-width: 460px;
+        alignment: start;
         
-        GroupBox {
-            height: 95px;
+        game-path-box := GroupBox {
             title: @tr("Game Path");
+            padding: 0px;
+            
+            // height: 1px;
 
             HorizontalBox {
-                padding: 0px;
+                // padding: 0px;
+                row: 1;
+                width: game-path-box.width - 10px;
 
                 Text {
                     vertical-alignment: center;
@@ -31,8 +40,11 @@ export component SettingsPage inherits Page {
                     wrap: word-wrap;
                     text: SettingsLogic.game_path;
                 }
-    
-                select-game := Button {
+            }
+            HorizontalBox {
+                row: 2;
+                alignment: end;
+                select-game := Button { 
                     width: 105px;
                     height: 35px;
                     text: @tr("Set Path");
@@ -42,7 +54,14 @@ export component SettingsPage inherits Page {
                 }
             }
         }
-    
-
+        GroupBox {
+            title: @tr("Theme");
+            HorizontalBox {
+                padding-top: 7px;
+                Switch {
+                    text: @tr("DarkMode");
+                }
+            }
+        }
     }
 }

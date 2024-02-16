@@ -20,10 +20,13 @@ export global MainLogic {
 }
 
 export component MainPage inherits Page {
+    in-out property <int> current-subpage: 0;
     title: @tr("Mods");
     description: @tr("Edit state of registered mods here");
-    preferred-height: 500px;
+    preferred-height: 420px;
+    width: 310px;
 
+    callback mod_settings;
 
     VerticalLayout {
         preferred-width: 460px;
@@ -33,8 +36,11 @@ export component MainPage inherits Page {
             enabled: MainLogic.game_path_valid;
 
             list-view := ListView {
-                for mod in MainLogic.current-mods:  HorizontalLayout {
-                    CheckBox {
+                for mod in MainLogic.current-mods:  Rectangle {
+                    height: 31px;
+                    // alignment: space-between;
+                    mod-box := CheckBox {
+                        x: 0;
                         toggled => {
                             mod.enabled = self.enabled;
                             MainLogic.toggleMod(mod.name)
@@ -43,10 +49,19 @@ export component MainPage inherits Page {
                         checked: mod.enabled;
                         enabled: reg-mod-box.enabled;
                     }
-                    Button {
-                        text: "...";
-                        width: 40px;
-                        height: 15px;
+                    Image {
+                    x: 274px;
+                    y: 6px;
+                    image-fit: contain;
+                    height: 20px;
+                    source: @image-url("assets/arrow.png");
+                    colorize: #505150;
+                        TouchArea {
+                            clicked => { root.mod_settings() }
+                            height: 28px;
+                            x: mod-box.width - 280px;
+                            width: root.width - mod-box.width;
+                        }
                     }
 
                 }
@@ -70,7 +85,7 @@ export component MainPage inherits Page {
                     enabled: add-mod-box.enabled;
                 }
                 add-mod := Button {
-                    width: 105px;
+                    width: 89px;
                     height: 36px;
                     text: @tr("Select Files");
                     enabled: add-mod-box.enabled;
@@ -84,6 +99,7 @@ export component MainPage inherits Page {
                         }
                     }
                 }
+
             }
         }
     }

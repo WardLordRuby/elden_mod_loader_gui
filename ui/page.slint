@@ -3,9 +3,34 @@ import { Switch, GridBox, ListView, ScrollView, VerticalBox } from "std-widgets.
 export component Page inherits VerticalBox {
     in property<string> title: "title";
     in property<string> description: "description";
+    in property <bool> has-back-button: false;
+
+    callback back;
+    callback settings;
 
     HorizontalLayout {
         height: 28px;
+
+        if (root.has-back-button) : Image {
+            source: @image-url("assets/back-arrow.png");
+            image-fit: contain;
+            colorize: #ffffff;
+            y: 2px;
+            width: 30px;
+            height: 24px;
+    
+            TouchArea {
+                clicked => { root.back() }
+    
+                x:0;
+                width: 400%;
+            }
+        }
+
+        if (root.has-back-button) : Rectangle {
+            height: 28px;
+            width: 5px;
+        }
 
         Text {
             font-size: 24px;
@@ -14,6 +39,20 @@ export component Page inherits VerticalBox {
 
         // Spacer
         Rectangle {}
+
+        if (!root.has-back-button) : Image {
+            source: @image-url("assets/settings.png");
+            y: 2px;
+            colorize: #505150;
+            width: 40px;
+            // source-clip-x: ;
+            image-fit: contain;
+            TouchArea {
+                clicked => { root.settings() }
+                width: 45px;
+                height: 40px;
+            }
+        }
     }
 
     @children
