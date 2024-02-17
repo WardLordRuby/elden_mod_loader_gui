@@ -1,5 +1,6 @@
 import { CheckBox, GroupBox, ListView, LineEdit, HorizontalBox, Button } from "std-widgets.slint";
 import { Page } from "page.slint";
+import { SettingsPage } from "settings.slint";
 
 export struct DisplayMod  {
     name: string,
@@ -21,24 +22,31 @@ export global MainLogic {
 
 export component MainPage inherits Page {
     in-out property <int> current-subpage: 0;
+    has-back-button: false;
     title: @tr("Mods");
     description: @tr("Edit state of registered mods here");
-    preferred-height: 420px;
-    width: 310px;
+    // values for live preview editing - This will mess
+    //             up alignment if left on
+    // height: 400px;
+
+    settings => { root.current-subpage = 1; }
 
     callback mod_settings;
 
-    VerticalLayout {
+    top := VerticalLayout {
+        y: 38px;
+        height: parent.height - self.y;
         preferred-width: 460px;
+        padding: 8px;
 
         reg-mod-box := GroupBox {
             title: @tr("Registered-Mods:");
             enabled: MainLogic.game_path_valid;
 
             list-view := ListView {
-                for mod in MainLogic.current-mods:  Rectangle {
+                for mod in MainLogic.current-mods:  re := Rectangle {
                     height: 31px;
-                    // alignment: space-between;
+                    border-radius: 10px;
                     mod-box := CheckBox {
                         x: 0;
                         toggled => {
@@ -49,24 +57,32 @@ export component MainPage inherits Page {
                         checked: mod.enabled;
                         enabled: reg-mod-box.enabled;
                     }
-                    Image {
+                    im := Image {
                     x: 274px;
                     y: 6px;
                     image-fit: contain;
                     height: 20px;
                     source: @image-url("assets/arrow.png");
                     colorize: #505150;
-                        TouchArea {
+                        ta := TouchArea {
                             clicked => { root.mod_settings() }
                             height: 28px;
-                            x: mod-box.width - 280px;
+                            x: mod-box.width - 284px;
                             width: root.width - mod-box.width;
                         }
                     }
-
+                    states [
+                        hover when ta.has-hover && !ta.pressed: {
+                            re.background: #4b4b4b;
+                            im.colorize: #1f1f1f;
+                        }
+                        pressed when ta.pressed : {
+                            re.background: #3b3b3b;
+                            im.colorize: #292828;
+                        }
+                    ]
                 }
             }
-
         }
 
         add-mod-box := GroupBox {
@@ -102,5 +118,10 @@ export component MainPage inherits Page {
 
             }
         }
+    }
+    SettingsPage {
+        back => { root.current-subpage = 0 }
+        x: root.current-subpage == 1 ? 0 : parent.width + parent.x + 2px;
+        animate x { duration: 125ms; easing: ease; }
     }
 }

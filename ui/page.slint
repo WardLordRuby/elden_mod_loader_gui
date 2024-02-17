@@ -1,15 +1,24 @@
-import { Switch, GridBox, ListView, ScrollView, VerticalBox } from "std-widgets.slint";
+import { HorizontalBox } from "std-widgets.slint";
 
-export component Page inherits VerticalBox {
+export component Page inherits Rectangle {
     in property<string> title: "title";
     in property<string> description: "description";
-    in property <bool> has-back-button: false;
+    in property <bool> has-back-button;
+    width: 310px;
+    background: #1b1b1b;
 
     callback back;
     callback settings;
 
-    HorizontalLayout {
-        height: 28px;
+    TouchArea {} // Protect underneath controls
+
+    HorizontalBox {
+        x: 0;
+        y: 0;
+        height: 48px;
+        padding-left: 5px;
+        padding-right: 5px;
+
 
         if (root.has-back-button) : Image {
             source: @image-url("assets/back-arrow.png");
@@ -21,8 +30,8 @@ export component Page inherits VerticalBox {
     
             TouchArea {
                 clicked => { root.back() }
-    
                 x:0;
+                height: 37px;
                 width: 400%;
             }
         }
@@ -34,26 +43,41 @@ export component Page inherits VerticalBox {
 
         Text {
             font-size: 24px;
+            vertical-alignment: center;
             text <=> root.title;
         }
 
         // Spacer
         Rectangle {}
 
-        if (!root.has-back-button) : Image {
-            source: @image-url("assets/settings.png");
-            y: 2px;
-            colorize: #505150;
-            width: 40px;
-            // source-clip-x: ;
-            image-fit: contain;
-            TouchArea {
-                clicked => { root.settings() }
-                width: 45px;
-                height: 40px;
+        if (!root.has-back-button) : re := Rectangle {
+            width: 33px;
+            height: 33px;
+            border-radius: 4px;
+            y: -3px;
+            im := Image {
+                source: @image-url("assets/settings.png");
+                colorize: #505150;
+                width: 28px;
+                image-fit: contain;
+                ta := TouchArea {
+                    clicked => { root.settings() }
+                    width: 45px;
+                    height: 40px;
+                    
+                }
             }
+            states [
+                hover when ta.has-hover && !ta.pressed: {
+                    re.background: #4b4b4b;
+                    im.colorize: #1f1f1f;
+                }
+                pressed when ta.pressed : {
+                    re.background: #3b3b3b;
+                    im.colorize: #292828;
+                }
+            ]
         }
     }
-
     @children
 }

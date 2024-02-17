@@ -8,17 +8,15 @@ export global SettingsLogic  {
 }
 
 export component SettingsPage inherits Page {
-    preferred-height: 420px;
-    width: 310px;
     has-back-button: true;
     title: @tr("Settings");
     description: @tr("Set path to eldenring.exe and register mods here");
 
 
     VerticalLayout {
-        padding-left: 5px;
-        padding-right: 5px;
-        padding-bottom: 3px;
+        y: 38px;
+        height: parent.height - self.y;
+        padding-left: 8px;
         spacing: 0px;
         preferred-width: 460px;
         alignment: start;
@@ -26,11 +24,8 @@ export component SettingsPage inherits Page {
         game-path-box := GroupBox {
             title: @tr("Game Path");
             padding: 0px;
-            
-            // height: 1px;
 
             HorizontalBox {
-                // padding: 0px;
                 row: 1;
                 width: game-path-box.width - 10px;
 
