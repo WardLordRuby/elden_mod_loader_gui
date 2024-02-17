@@ -1,27 +1,8 @@
 import { CheckBox, GroupBox, ListView, LineEdit, HorizontalBox, Button } from "std-widgets.slint";
-import { Page } from "page.slint";
-import { SettingsPage } from "settings.slint";
-
-export struct DisplayMod  {
-    name: string,
-    enabled: bool,
-    files: string,
-}
-
-export global MainLogic {
-    callback toggleMod(string);
-    callback select_mod_files();
-    in-out property <bool> game_path_valid;
-    in-out property <string> mod_name;
-    in property <[DisplayMod]> current-mods: [
-        {name: "Placeholder Name", enabled: true, files: "\\placeholder\\path\\data"},
-        {name: "Placeholder Name Two", enabled: false, files: "\\placeholder\\path\\data"},
-        {name: "Placeholder Name Three", enabled: true, files: "\\placeholder\\path\\data"},
-    ];
-}
+import { SettingsPage, ModDetailsPage } from "subpages.slint";
+import { MainLogic, DisplayMod, Page } from "common.slint";
 
 export component MainPage inherits Page {
-    in-out property <int> current-subpage: 0;
     has-back-button: false;
     title: @tr("Mods");
     description: @tr("Edit state of registered mods here");
@@ -29,12 +10,10 @@ export component MainPage inherits Page {
     //             up alignment if left on
     // height: 400px;
 
-    settings => { root.current-subpage = 1; }
+    settings => { MainLogic.current-subpage = 1; }
 
-    callback mod_settings;
-
-    top := VerticalLayout {
-        y: 38px;
+    VerticalLayout {
+        y: 27px;
         height: parent.height - self.y;
         preferred-width: 460px;
         padding: 8px;
@@ -44,13 +23,13 @@ export component MainPage inherits Page {
             enabled: MainLogic.game_path_valid;
 
             list-view := ListView {
-                for mod in MainLogic.current-mods:  re := Rectangle {
+                for mod[idx] in MainLogic.current-mods:  re := Rectangle {
                     height: 31px;
                     border-radius: 10px;
                     mod-box := CheckBox {
-                        x: 0;
+                        x: -3px;
                         toggled => {
-                            mod.enabled = self.enabled;
+                            MainLogic.current_mods[idx].enabled = self.checked;
                             MainLogic.toggleMod(mod.name)
                         }
                         text: mod.name;
@@ -58,14 +37,17 @@ export component MainPage inherits Page {
                         enabled: reg-mod-box.enabled;
                     }
                     im := Image {
-                    x: 274px;
-                    y: 6px;
-                    image-fit: contain;
-                    height: 20px;
-                    source: @image-url("assets/arrow.png");
-                    colorize: #505150;
+                        x: 274px;
+                        y: 6px;
+                        image-fit: contain;
+                        height: 20px;
+                        source: @image-url("assets/arrow.png");
+                        colorize: #505150;
                         ta := TouchArea {
-                            clicked => { root.mod_settings() }
+                            clicked => { 
+                                MainLogic.current_subpage = 2;
+                                mod-settings.mod-details = MainLogic.current_mods[idx];
+                            }
                             height: 28px;
                             x: mod-box.width - 284px;
                             width: root.width - mod-box.width;
@@ -120,8 +102,13 @@ export component MainPage inherits Page {
         }
     }
     SettingsPage {
-        back => { root.current-subpage = 0 }
-        x: root.current-subpage == 1 ? 0 : parent.width + parent.x + 2px;
+        back => { MainLogic.current-subpage = 0 }
+        x: MainLogic.current-subpage == 1 ? 0 : parent.width + parent.x + 2px;
+        animate x { duration: 125ms; easing: ease; }
+    }
+    mod-settings := ModDetailsPage {
+        back => { MainLogic.current-subpage = 0 }
+        x: MainLogic.current-subpage == 2 ? 0 : parent.width + parent.x + 2px;
         animate x { duration: 125ms; easing: ease; }
     }
 }

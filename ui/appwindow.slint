@@ -1,12 +1,12 @@
-import { Button, StandardButton } from "std-widgets.slint";
-import { MainPage, MainLogic, DisplayMod } from "main.slint";
-import { SettingsLogic } from "settings.slint";
+import { MainPage } from "main.slint";
+import { MainLogic, SettingsLogic, DisplayMod } from "common.slint";
+import { StandardButton } from "std-widgets.slint";
 
 export { MainLogic, SettingsLogic, DisplayMod }
 
 export component App inherits Window {
-    in-out property <int> focus_page;
     in property <string> err-message;
+    title: @tr("Elden Mod Loader");
     preferred-height: 370px;
     min-height: 270px;
     width: 315px;
@@ -37,7 +37,7 @@ export component App inherits Window {
                 wrap: word-wrap;
             }
 
-            StandardButton { kind: ok; clicked => { err-popup.close(); } }
+            StandardButton { kind: ok; clicked => { err-popup.close() } }
         }
     }
 }
