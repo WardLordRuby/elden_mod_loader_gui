@@ -1,13 +1,11 @@
 import { GroupBox, Button, HorizontalBox, Switch } from "std-widgets.slint";
-import { DisplayMod, MainLogic, Page } from "common.slint";
+import { MainLogic, Page } from "common.slint";
 
 export component ModDetailsPage inherits Page {
     has-back-button: true;
     property <length> box-width: game-path-box.width - 10px;
     in property <int> mod-index;
-    in property <DisplayMod> mod_details: 
-    {name: "Placeholder Name Very Very long what happens", enabled: true, files: "\\placeholder\\path\\data\n\\placeholder\\path\\data_2\n\\placeholder\\path\\data_3"};
-    title: root.mod_details.name;
+    title: MainLogic.current_mods[mod-index].name;
     description: @tr("Edit registered mods here");
 
 
@@ -34,7 +32,7 @@ export component ModDetailsPage inherits Page {
                 Text {
                     font-size: 12pt;
                     wrap: word-wrap;
-                    text: root.mod_details.name;
+                    text: MainLogic.current_mods[mod-index].name;
                 }
             }
             Text {
@@ -50,7 +48,7 @@ export component ModDetailsPage inherits Page {
                 Text {
                     font-size: 12pt;
                     wrap: word-wrap;
-                    text: root.mod_details.files;
+                    text: MainLogic.current_mods[mod-index].files;
                 }
             }
         }

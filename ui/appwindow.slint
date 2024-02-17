@@ -40,4 +40,12 @@ export component App inherits Window {
             StandardButton { kind: ok; clicked => { err-popup.close() } }
         }
     }
+    FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                MainLogic.current-subpage = 0
+            }
+            accept
+        }
+    }
 }

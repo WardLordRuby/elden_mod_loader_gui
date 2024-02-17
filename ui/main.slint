@@ -10,7 +10,7 @@ export component MainPage inherits Page {
     //             up alignment if left on
     // height: 400px;
 
-    settings => { MainLogic.current-subpage = 1; }
+    settings => { MainLogic.current-subpage = 1 }
 
     VerticalLayout {
         y: 27px;
@@ -26,6 +26,7 @@ export component MainPage inherits Page {
                 for mod[idx] in MainLogic.current-mods:  re := Rectangle {
                     height: 31px;
                     border-radius: 10px;
+                    // mod-boxes need to have a max text length
                     mod-box := CheckBox {
                         x: -3px;
                         toggled => {
@@ -46,7 +47,7 @@ export component MainPage inherits Page {
                         ta := TouchArea {
                             clicked => { 
                                 MainLogic.current_subpage = 2;
-                                mod-settings.mod-details = MainLogic.current_mods[idx];
+                                mod-settings.mod-index = idx;
                             }
                             height: 28px;
                             x: mod-box.width - 284px;
