@@ -5,18 +5,22 @@ import { StandardButton } from "std-widgets.slint";
 export { MainLogic, SettingsLogic, DisplayMod }
 
 export component App inherits Window {
+    property <bool> popup_window_visible: false;
     in property <string> err-message;
     title: @tr("Elden Mod Loader");
     preferred-height: 370px;
     min-height: 270px;
     width: 315px;
     
-    MainPage {}
+    mp := MainPage {}
 
     callback show_error_popup;
-    show_error_popup => { err-popup.show() }
-    callback focus_page;
-    focus_page => { fs.focus() }
+    show_error_popup => { 
+        popup_window_visible = true;
+        err-popup.show()
+    }
+    callback focus_app;
+    focus_app => { fs.focus() }
 
     // Make popupWindow look nice 
     err_popup := PopupWindow {
@@ -32,6 +36,8 @@ export component App inherits Window {
         }
 
         err_popup_layout := Dialog {
+            no-frame: false;
+            title: @tr("Error");
             height:100%; width: 100%;
 
             err_popup_text := Text {
@@ -39,14 +45,24 @@ export component App inherits Window {
                 wrap: word-wrap;
             }
 
-            StandardButton { kind: ok; clicked => { err-popup.close() } }
+            StandardButton { kind: ok; clicked => { 
+                popup_window_visible = false;
+                err-popup.close()
+             } }
         }
     }
-    // Annoying we cant remove focus off a textbox
     fs := FocusScope {
         key-pressed(event) => {
             if (event.text == Key.Escape) {
-                MainLogic.current-subpage = 0
+                if (popup_window_visible) {
+                    popup_window_visible = false;
+                    err-popup.close()
+                } else {
+                    MainLogic.current-subpage = 0
+                }
+            }
+            if (event.text == Key.Tab) {
+                mp.focus_line_edit()
             }
             accept
         }

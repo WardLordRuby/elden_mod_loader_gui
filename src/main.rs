@@ -65,12 +65,11 @@ fn main() -> Result<(), slint::PlatformError> {
         let game_verified = ui.global::<MainLogic>().get_game_path_valid();
         let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
         let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
-        move || {
+        move |mod_name: SharedString| {
             if !game_verified {
                 return;
             }
             let ui = ui_handle.unwrap();
-            let mod_name: String = ui.global::<MainLogic>().get_mod_name().to_string();
             let mod_files: Result<Vec<PathBuf>, &'static str> = match get_user_files(&game_dir_ref)
             {
                 Ok(opt) => match opt.len() {
@@ -82,7 +81,6 @@ fn main() -> Result<(), slint::PlatformError> {
                     Err("Error selecting path")
                 }
             };
-            // let local_game_dir = PathBuf::from(game_dir.to_string_lossy().to_string());
             match mod_files {
                 Ok(files) => match shorten_paths(files, &game_dir) {
                     Ok(paths) => match paths.len() {
@@ -105,7 +103,7 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             save_bool(CONFIG_DIR, &mod_name, true);
             ui.global::<MainLogic>()
-                .set_mod_name(SharedString::from(""));
+                .set_line_edit_text(SharedString::from(""));
             ui.global::<MainLogic>()
                 .set_current_mods(deserialize(&RegMod::collect(CONFIG_DIR, false)));
         }
@@ -181,7 +179,29 @@ fn main() -> Result<(), slint::PlatformError> {
             };
         }
     });
-    ui.invoke_focus_page();
+    ui.global::<MainLogic>().on_force_app_focus({
+        let ui_handle = ui.as_weak();
+        move || {
+            let ui = ui_handle.unwrap();
+            ui.invoke_focus_app()
+        }
+    });
+    ui.global::<MainLogic>().on_add_to_mod({
+        // let ui_handle = ui.as_weak();
+        move |key: SharedString| {
+            // let ui = ui_handle.unwrap();
+            todo!()
+        }
+    });
+    ui.global::<MainLogic>().on_remove_mod({
+        // let ui_handle = ui.as_weak();
+        move |key: SharedString| {
+            // let ui = ui_handle.unwrap();
+            todo!()
+        }
+    });
+
+    ui.invoke_focus_app();
     ui.run()
 }
 

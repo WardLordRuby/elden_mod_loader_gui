@@ -1,3 +1,6 @@
+// TODO: Move all colors to single source here
+//       Create Light and dark theme colors
+
 export struct DisplayMod  {
     displayname: string,
     name: string,
@@ -7,9 +10,12 @@ export struct DisplayMod  {
 
 export global MainLogic {
     callback toggleMod(string);
-    callback select_mod_files();
+    callback select_mod_files(string);
+    callback add_to_mod(string);
+    callback remove_mod(string);
+    callback force_app_focus();
+    in property <string> line_edit_text;
     in-out property <bool> game_path_valid;
-    in-out property <string> mod_name;
     in-out property <int> current_subpage: 0;
     in-out property <[DisplayMod]> current_mods: [
         {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true, files: "\\placeholder\\path\\data"},

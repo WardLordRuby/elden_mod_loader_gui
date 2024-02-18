@@ -10,6 +10,8 @@ export component MainPage inherits Page {
     //             up alignment if left on
     // height: 400px;
 
+    callback focus_line_edit;
+    focus_line_edit => { input-mod.focus() }
     settings => { MainLogic.current-subpage = 1 }
 
     VerticalLayout {
@@ -27,6 +29,7 @@ export component MainPage inherits Page {
                     height: 31px;
                     border-radius: 10px;
                     // mod-boxes need to have a max text length
+                    // implmented a static way to elide text adding displayname property
                     mod-box := CheckBox {
                         x: -3px;
                         toggled => {
@@ -72,29 +75,42 @@ export component MainPage inherits Page {
             height: 95px;
             title: @tr("Add Mod");
             enabled: MainLogic.game_path_valid;
-    
-            HorizontalBox {
-                padding: 2px;
-                
-                input-mod := LineEdit {
-                    height: 36px;
-                    preferred-width: 100px;
-                    horizontal-alignment: left;
-                    placeholder-text: @tr("Mod Name");
-                    enabled: add-mod-box.enabled;
-                }
-                add-mod := Button {
-                    width: 89px;
-                    height: 36px;
-                    text: @tr("Select Files");
-                    enabled: add-mod-box.enabled;
-                    clicked => {
-                        if(input-mod.text != "") {
-                            MainLogic.mod_name = input-mod.text;
-                            MainLogic.select_mod_files();
-                            input-mod.text = MainLogic.mod_name;
+            FocusScope {
+                key-pressed(event) => {
+                    if (event.text == Key.Escape) {
+                        MainLogic.force_app_focus()
+                    }
+                    // && doesn't work in conditonal statements
+                    if (event.text == Key.Tab ) {
+                        if (input-mod.has-focus) {
+                            add-mod.focus()
                         } else {
-                            input-mod.focus();
+                            input-mod.focus()
+                        }
+                    }
+                    accept
+                }
+                HorizontalBox {
+                    padding: 2px;
+                    input-mod := LineEdit {
+                        height: 36px;
+                        preferred-width: 100px;
+                        horizontal-alignment: left;
+                        placeholder-text: @tr("Mod Name");
+                        enabled: add-mod-box.enabled;
+                    }
+                    add-mod := Button {
+                        width: 89px;
+                        height: 36px;
+                        text: @tr("Select Files");
+                        enabled: add-mod-box.enabled;
+                        clicked => {
+                            if(input-mod.text != "") {
+                                MainLogic.select_mod_files(input-mod.text);
+                                input-mod.text = MainLogic.line_edit_text;
+                            } else {
+                                input-mod.focus();
+                            }
                         }
                     }
                 }

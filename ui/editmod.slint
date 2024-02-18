@@ -62,13 +62,13 @@ export component ModDetailsPage inherits Page {
                     width: 105px;
                     height: 35px;
                     text: @tr("Add Files");
-                    clicked => {}
+                    clicked => { MainLogic.add_to_mod(MainLogic.current_mods[mod-index].name) }
                 }
                 Button { 
                     width: 105px;
                     height: 35px;
                     text: @tr("De-register");
-                    clicked => {}
+                    clicked => { MainLogic.remove_mod(MainLogic.current_mods[mod-index].name) }
                 }
             }
         }
