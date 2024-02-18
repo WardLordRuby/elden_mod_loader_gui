@@ -23,13 +23,12 @@ export component ModDetailsPage inherits Page {
             title: @tr("Details");
             padding: 0px;
             GridLayout {
-                // spacing-horizontal: parent.width - 50px;
                 Text {
-                    // horizontal-alignment: left;
+                    width: root.width * 0.56;
                     vertical-alignment: bottom;
                     col: 0;
                     font-size: 8pt;
-                    text: @tr("Name:                                                      ");
+                    text: @tr("Name:");
                 }
                 Text {
                     horizontal-alignment: right;
