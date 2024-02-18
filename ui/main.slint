@@ -33,7 +33,7 @@ export component MainPage inherits Page {
                             MainLogic.current_mods[idx].enabled = self.checked;
                             MainLogic.toggleMod(mod.name)
                         }
-                        text: mod.name;
+                        text: mod.displayname;
                         checked: mod.enabled;
                         enabled: reg-mod-box.enabled;
                     }
@@ -98,18 +98,17 @@ export component MainPage inherits Page {
                         }
                     }
                 }
-
             }
         }
     }
     SettingsPage {
         back => { MainLogic.current-subpage = 0 }
         x: MainLogic.current-subpage == 1 ? 0 : parent.width + parent.x + 2px;
-        animate x { duration: 125ms; easing: ease; }
+        animate x { duration: 150ms; easing: ease; }
     }
     mod-settings := ModDetailsPage {
         back => { MainLogic.current-subpage = 0 }
         x: MainLogic.current-subpage == 2 ? 0 : parent.width + parent.x + 2px;
-        animate x { duration: 125ms; easing: ease; }
+        animate x { duration: 150ms; easing: ease; }
     }
 }

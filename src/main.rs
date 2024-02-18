@@ -48,13 +48,10 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         };
         if !game_verified {
-            ui.set_focus_page(1);
-        } else {
-            ui.set_focus_page(0);
-        };
-        let reg_mods = RegMod::collect(CONFIG_DIR, false);
+            ui.global::<MainLogic>().set_current_subpage(1);
+        }
         ui.global::<MainLogic>()
-            .set_current_mods(deserialize(&reg_mods));
+            .set_current_mods(deserialize(&RegMod::collect(CONFIG_DIR, false)));
         ui.global::<MainLogic>().set_game_path_valid(game_verified);
         ui.global::<SettingsLogic>()
             .set_game_path(game_dir.to_string_lossy().to_string().into());
@@ -107,11 +104,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             save_bool(CONFIG_DIR, &mod_name, true);
-            let reg_mods = RegMod::collect(CONFIG_DIR, false);
             ui.global::<MainLogic>()
                 .set_mod_name(SharedString::from(""));
             ui.global::<MainLogic>()
-                .set_current_mods(deserialize(&reg_mods));
+                .set_current_mods(deserialize(&RegMod::collect(CONFIG_DIR, false)));
         }
     });
     ui.global::<SettingsLogic>().on_select_game_dir({
@@ -185,6 +181,7 @@ fn main() -> Result<(), slint::PlatformError> {
             };
         }
     });
+    ui.invoke_focus_page();
     ui.run()
 }
 
@@ -202,6 +199,21 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
     let display_mod: Rc<VecModel<DisplayMod>> = Default::default();
     for mod_data in data.iter() {
         display_mod.push(DisplayMod {
+            displayname: SharedString::from(if mod_data.name.chars().count() > 20 {
+                mod_data
+                    .name
+                    .clone()
+                    .chars()
+                    .enumerate()
+                    .filter_map(|(i, c)| match i {
+                        ..=17 => Some(c),
+                        _ => None,
+                    })
+                    .chain("...".chars())
+                    .collect()
+            } else {
+                mod_data.name.clone()
+            }),
             name: SharedString::from(mod_data.name.clone()),
             enabled: mod_data.state,
             files: SharedString::from(
@@ -210,7 +222,7 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
                     .iter()
                     .map(|path_buf| path_buf.to_string_lossy().to_string())
                     .collect::<Vec<String>>()
-                    .join("\r\n"),
+                    .join("\n"),
             ),
         })
     }

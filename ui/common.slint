@@ -1,4 +1,5 @@
 export struct DisplayMod  {
+    displayname: string,
     name: string,
     enabled: bool,
     files: string,
@@ -11,9 +12,9 @@ export global MainLogic {
     in-out property <string> mod_name;
     in-out property <int> current_subpage: 0;
     in-out property <[DisplayMod]> current_mods: [
-        {name: "Placeholder Name", enabled: true, files: "\\placeholder\\path\\data"},
-        {name: "Placeholder Name Two", enabled: false, files: "\\placeholder\\path\\data"},
-        {name: "Placeholder Name Three", enabled: true, files: "\\placeholder\\path\\data"},
+        {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true, files: "\\placeholder\\path\\data"},
+        {displayname: "Placeholder Name", name: "Placeholder Name Two", enabled: false, files: "\\placeholder\\path\\data"},
+        {displayname: "Placeholder Name", name: "Placeholder Name Three", enabled: true, files: "\\placeholder\\path\\data"},
     ];
 }
 

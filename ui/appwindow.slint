@@ -14,7 +14,9 @@ export component App inherits Window {
     MainPage {}
 
     callback show_error_popup;
-    show_error_popup => { err-popup.show(); }
+    show_error_popup => { err-popup.show() }
+    callback focus_page;
+    focus_page => { fs.focus() }
 
     // Make popupWindow look nice 
     err_popup := PopupWindow {
@@ -40,7 +42,8 @@ export component App inherits Window {
             StandardButton { kind: ok; clicked => { err-popup.close() } }
         }
     }
-    FocusScope {
+    // Annoying we cant remove focus off a textbox
+    fs := FocusScope {
         key-pressed(event) => {
             if (event.text == Key.Escape) {
                 MainLogic.current-subpage = 0
