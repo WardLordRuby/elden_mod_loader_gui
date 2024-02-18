@@ -1,13 +1,14 @@
-import { GroupBox, Button, HorizontalBox, Switch } from "std-widgets.slint";
+import { GroupBox, Button, HorizontalBox, Switch, VerticalBox } from "std-widgets.slint";
 import { MainLogic, Page } from "common.slint";
 
 export component ModDetailsPage inherits Page {
     has-back-button: true;
-    property <length> box-width: game-path-box.width - 10px;
-    in property <int> mod-index;
     title: MainLogic.current_mods[mod-index].name;
     description: @tr("Edit registered mods here");
-
+    property <length> box-width: game-path-box.width - 10px;
+    in property <int> mod-index;
+    in property <color> state-color;
+    in property <string> state;
 
     VerticalLayout {
         y: 38px;
@@ -21,9 +22,29 @@ export component ModDetailsPage inherits Page {
         game-path-box := GroupBox {
             title: @tr("Details");
             padding: 0px;
-            Text {
-                font-size: 8pt;
-                text: @tr("Name:");
+            GridLayout {
+                // spacing-horizontal: parent.width - 50px;
+                Text {
+                    // horizontal-alignment: left;
+                    vertical-alignment: bottom;
+                    col: 0;
+                    font-size: 8pt;
+                    text: @tr("Name:                                                      ");
+                }
+                Text {
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                    col: 1;
+                    font-size: 8pt;
+                    text: @tr("Enabled:  ");
+                }
+                Text {
+                    horizontal-alignment: left;
+                    col: 2;
+                    font-size: 16pt;
+                    color: state-color;
+                    text: state;
+                }
             }
             HorizontalBox {
                 row: 1;

@@ -51,6 +51,13 @@ export component MainPage inherits Page {
                             clicked => { 
                                 MainLogic.current_subpage = 2;
                                 mod-settings.mod-index = idx;
+                                if (MainLogic.current_mods[idx].enabled) {
+                                    mod-settings.state = @tr("True");
+                                    mod-settings.state-color = #206816;
+                                } else {
+                                    mod-settings.state = @tr("False");
+                                    mod-settings.state-color = #d01616;
+                                }
                             }
                             height: 28px;
                             x: mod-box.width - 284px;
