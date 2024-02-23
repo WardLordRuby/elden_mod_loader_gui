@@ -1,34 +1,36 @@
-import { GroupBox, Button, HorizontalBox, Switch, VerticalBox } from "std-widgets.slint";
+import { GroupBox, Button, HorizontalBox, VerticalBox, ScrollView } from "std-widgets.slint";
 import { MainLogic, Page } from "common.slint";
 
 export component ModDetailsPage inherits Page {
     has-back-button: true;
     title: MainLogic.current_mods[mod-index].name;
     description: @tr("Edit registered mods here");
-    property <length> box-width: game-path-box.width - 10px;
+    property <length> box-width: details.width - 10px;
     in property <int> mod-index;
     in property <color> state-color;
     in property <string> state;
 
     VerticalLayout {
         y: 38px;
-        height: parent.height - self.y;
+        height: root.height - self.y - edit-mod-box.height;
         padding-left: 8px;
         padding-right: 0px;
         spacing: 0px;
         preferred-width: 460px;
         alignment: start;
         
-        game-path-box := GroupBox {
+        details := GroupBox {
             title: @tr("Details");
             padding: 0px;
+            height: parent.height;
             GridLayout {
+                height: 25px;
                 Text {
                     width: root.width * 0.56;
                     vertical-alignment: bottom;
                     col: 0;
                     font-size: 8pt;
-                    text: @tr("Name:");
+                    text: @tr("  Name:");
                 }
                 Text {
                     horizontal-alignment: right;
@@ -45,38 +47,46 @@ export component ModDetailsPage inherits Page {
                     text: state;
                 }
             }
-            HorizontalBox {
+            VerticalBox {
                 row: 1;
                 width: box-width;
-
-                Text {
+                mod-name-txt := Text {
                     font-size: 12pt;
                     wrap: word-wrap;
                     text: MainLogic.current_mods[mod-index].name;
                 }
-            }
-            Text {
-                row: 2;
-                font-size: 8pt;
-                text: @tr("Files:");
-            }
-            HorizontalBox {
-                row: 2;
-                width: box-width;
-                padding-top: 16px;
-
                 Text {
-                    font-size: 12pt;
-                    wrap: word-wrap;
-                    text: MainLogic.current_mods[mod-index].files;
+                    font-size: 8pt;
+                    text: @tr("Files:");
+                }
+                ScrollView {
+                    viewport-height: files-txt.height;
+                    files-txt := Text {
+                        x: 5px;
+                        y: 4px;
+                        font-size: 12pt;
+                        wrap: word-wrap;
+                        text: MainLogic.current_mods[mod-index].files;
+                    }
                 }
             }
         }
-        GroupBox {
+    }
+    HorizontalBox {
+        y: root.height - edit-mod-box.height - 5px ;
+        height: root.height - self.y ;
+        padding-left: 8px;
+        padding-right: 0px;
+        spacing: 0px;
+        preferred-width: 460px;
+        edit-mod-box := GroupBox {
             title: @tr("Edit Mod");
-            HorizontalBox {
+            height: 95px;
+            HorizontalLayout {
                 width: box-width;
                 padding-top: 7px;
+                padding-bottom: 5px;
+                spacing: 7px;
                 alignment: end;
                 Button {
                     width: 105px;
