@@ -1,4 +1,4 @@
-import { GroupBox, Button, HorizontalBox, VerticalBox, ScrollView } from "std-widgets.slint";
+import { GroupBox, Button, ScrollView } from "std-widgets.slint";
 import { MainLogic, Page } from "common.slint";
 
 export component ModDetailsPage inherits Page {
@@ -12,7 +12,7 @@ export component ModDetailsPage inherits Page {
 
     VerticalLayout {
         y: 38px;
-        height: root.height - self.y - edit-mod-box.height;
+        height: root.height - edit-mod-box.height - 27px;
         padding-left: 8px;
         padding-right: 0px;
         spacing: 0px;
@@ -21,7 +21,6 @@ export component ModDetailsPage inherits Page {
         
         details := GroupBox {
             title: @tr("Details");
-            padding: 0px;
             height: parent.height;
             GridLayout {
                 height: 25px;
@@ -30,7 +29,7 @@ export component ModDetailsPage inherits Page {
                     vertical-alignment: bottom;
                     col: 0;
                     font-size: 8pt;
-                    text: @tr("  Name:");
+                    text: @tr("Name:");
                 }
                 Text {
                     horizontal-alignment: right;
@@ -47,10 +46,13 @@ export component ModDetailsPage inherits Page {
                     text: state;
                 }
             }
-            VerticalBox {
+            VerticalLayout {
+                spacing: 2px;
                 row: 1;
                 width: box-width;
                 mod-name-txt := Text {
+                    vertical-alignment: center;
+                    min-height: 24px;
                     font-size: 12pt;
                     wrap: word-wrap;
                     text: MainLogic.current_mods[mod-index].name;
@@ -72,20 +74,18 @@ export component ModDetailsPage inherits Page {
             }
         }
     }
-    HorizontalBox {
-        y: root.height - edit-mod-box.height - 5px ;
-        height: root.height - self.y ;
+    HorizontalLayout {
+        y: root.height - edit-mod-box.height;
+        height: root.height - self.y;
         padding-left: 8px;
-        padding-right: 0px;
         spacing: 0px;
         preferred-width: 460px;
         edit-mod-box := GroupBox {
             title: @tr("Edit Mod");
+            width: parent.width - parent.padding-left;
             height: 95px;
             HorizontalLayout {
                 width: box-width;
-                padding-top: 7px;
-                padding-bottom: 5px;
                 spacing: 7px;
                 alignment: end;
                 Button {
