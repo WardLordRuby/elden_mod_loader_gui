@@ -60,6 +60,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // Error check input text for invalid symbols | If mod_name already exists confirm overwrite dialog -> if array into entry -> remove_array fist
     // if selected file already exists as reg_mod -> error dialog | else success dialog mod_name with mod_files Registered
     // need fn for checking state of the files are all the same, if all files disabled need to save state as false
+    // Error check for if selected file is already contained in a regested mod
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
         let game_verified = ui.global::<MainLogic>().get_game_path_valid();
@@ -102,6 +103,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             save_bool(CONFIG_DIR, &mod_name, true);
+            // Add conditons here to keep line edit text the same
             ui.global::<MainLogic>()
                 .set_line_edit_text(SharedString::from(""));
             ui.global::<MainLogic>()
@@ -194,10 +196,35 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
     ui.global::<MainLogic>().on_remove_mod({
-        // let ui_handle = ui.as_weak();
+        let ui_handle = ui.as_weak();
         move |key: SharedString| {
-            // let ui = ui_handle.unwrap();
-            todo!()
+            let ui = ui_handle.unwrap();
+            let key = key.to_string();
+            let reg_mods = RegMod::collect(CONFIG_DIR, false);
+            if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
+                if found_mod
+                    .files
+                    .iter()
+                    .any(|file| file.extension().expect("file with extention") == "disabled")
+                {
+                    let game_dir =
+                        PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
+                    toggle_files(
+                        &found_mod.name,
+                        &game_dir,
+                        true,
+                        found_mod.files.clone(),
+                        CONFIG_DIR,
+                    );
+                }
+                remove_entry(CONFIG_DIR, Some("registered-mods"), &found_mod.name);
+                // we can let sync keys take care of removing files from ini
+                ui.global::<MainLogic>()
+                    .set_current_mods(deserialize(&RegMod::collect(CONFIG_DIR, false)));
+            } else {
+                error!("Mod: \"{}\" not found", key);
+            };
+            ui.global::<MainLogic>().set_current_subpage(0);
         }
     });
 
@@ -240,7 +267,12 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
                 mod_data
                     .files
                     .iter()
-                    .map(|path_buf| path_buf.to_string_lossy().to_string())
+                    .map(|path_buf| {
+                        path_buf
+                            .to_string_lossy()
+                            .to_string()
+                            .replace(".disabled", "")
+                    })
                     .collect::<Vec<String>>()
                     .join("\n"),
             ),
