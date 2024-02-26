@@ -79,7 +79,7 @@ pub fn remove_array(file_name: &str, key: &str) -> io::Result<()> {
             skip_next_line = false;
             key_found = false;
         }
-        if line.starts_with(&format_key) {
+        if line.starts_with(&format_key) && line.ends_with("=array") {
             skip_next_line = true;
             key_found = true;
         }
