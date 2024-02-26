@@ -71,17 +71,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 return;
             }
             let ui = ui_handle.unwrap();
-            let mod_files: Result<Vec<PathBuf>, &'static str> = match get_user_files(&game_dir_ref)
-            {
-                Ok(opt) => match opt.len() {
-                    0 => Err("No files selected"),
-                    _ => Ok(opt),
-                },
-                Err(err) => {
-                    error!("{}", err);
-                    Err("Error selecting path")
-                }
-            };
+            let mod_files = get_user_files(&game_dir_ref);
             match mod_files {
                 Ok(files) => match shorten_paths(files, &game_dir) {
                     Ok(paths) => match paths.len() {
@@ -189,17 +179,42 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
     ui.global::<MainLogic>().on_add_to_mod({
-        // let ui_handle = ui.as_weak();
+        let ui_handle = ui.as_weak();
         move |key: SharedString| {
-            // let ui = ui_handle.unwrap();
-            todo!()
+            let ui = ui_handle.unwrap();
+            let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
+            match get_user_files(&game_dir) {
+                Ok(files) => {
+                    let reg_mods = RegMod::collect(CONFIG_DIR, false);
+                    if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
+                        let mut new_data = found_mod.files.clone();
+                        match shorten_paths(files, &game_dir) {
+                            Ok(short_paths) => {
+                                new_data.extend(short_paths.iter().cloned());
+                                if found_mod.files.len() == 1 {
+                                    remove_entry(CONFIG_DIR, Some("mod-files"), &found_mod.name);
+                                } else {
+                                    remove_array(CONFIG_DIR, &found_mod.name);
+                                }
+                                save_path_bufs(CONFIG_DIR, &found_mod.name, &new_data);
+                                ui.global::<MainLogic>().set_current_mods(deserialize(
+                                    &RegMod::collect(CONFIG_DIR, false),
+                                ));
+                            }
+                            Err(err) => error!("{}", err),
+                        }
+                    } else {
+                        error!("Mod: \"{}\" not found", key);
+                    };
+                }
+                Err(err) => error!("{}", err),
+            }
         }
     });
     ui.global::<MainLogic>().on_remove_mod({
         let ui_handle = ui.as_weak();
         move |key: SharedString| {
             let ui = ui_handle.unwrap();
-            let key = key.to_string();
             let reg_mods = RegMod::collect(CONFIG_DIR, false);
             if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
                 if found_mod
@@ -236,10 +251,20 @@ fn get_user_folder(path: &Path) -> Result<Option<PathBuf>, native_dialog::Error>
     FileDialog::new().set_location(path).show_open_single_dir()
 }
 
-fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, native_dialog::Error> {
-    FileDialog::new()
+fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, &'static str> {
+    match FileDialog::new()
         .set_location(path)
         .show_open_multiple_file()
+    {
+        Ok(opt) => match opt.len() {
+            0 => Err("No files selected"),
+            _ => Ok(opt),
+        },
+        Err(err) => {
+            error!("{}", err);
+            Err("Error selecting path")
+        }
+    }
 }
 
 fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
