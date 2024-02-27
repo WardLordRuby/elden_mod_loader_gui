@@ -1340,12 +1340,14 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "env_logger",
+ "i-slint-backend-winit",
  "log",
  "native-dialog",
  "rand",
  "rust-ini",
  "slint",
  "slint-build",
+ "winit",
 ]
 
 [[package]]
