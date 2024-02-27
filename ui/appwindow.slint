@@ -10,12 +10,13 @@ export component App inherits Window {
     title: @tr("Elden Mod Loader");
     preferred-height: 370px;
     min-height: 310px;
-    width: 315px;
+    min-width: 315px;
+    max-width: 315px;
     
     mp := MainPage {}
 
     callback show_error_popup;
-    show_error_popup => { 
+    show_error_popup => {
         popup_window_visible = true;
         err-popup.show()
     }

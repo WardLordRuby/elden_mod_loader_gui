@@ -3,11 +3,7 @@
 
 slint::include_modules!();
 
-mod ini_tools {
-    pub mod parser;
-    pub mod writer;
-}
-
+use i_slint_backend_winit::WinitWindowAccessor;
 use ini_tools::{parser::RegMod, writer::*};
 use log::{debug, error, info, warn};
 use native_dialog::FileDialog;
@@ -22,8 +18,15 @@ use elden_mod_loader_gui::*;
 
 fn main() -> Result<(), slint::PlatformError> {
     env_logger::init();
+    slint::platform::set_platform(Box::new(i_slint_backend_winit::Backend::new().unwrap()))
+        .expect("This app uses the winit backend");
     let ui = App::new()?;
-
+    ui.window()
+        .with_winit_window(|window: &winit::window::Window| {
+            window.set_enabled_buttons(
+                winit::window::WindowButtons::CLOSE | winit::window::WindowButtons::MINIMIZE,
+            );
+        });
     {
         // Error check for if cfg exists but contains no data or no mod data but valid game_dir
         match get_cfg(CONFIG_DIR) {
@@ -31,7 +34,7 @@ fn main() -> Result<(), slint::PlatformError> {
             Err(err) => {
                 error!("Error: {}", err);
                 warn!("Ini not found. Creating new Ini");
-                let _ = new_cfg(CONFIG_DIR);
+                new_cfg(CONFIG_DIR);
                 get_cfg(CONFIG_DIR).unwrap();
             }
         };
@@ -200,6 +203,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                 ui.global::<MainLogic>().set_current_mods(deserialize(
                                     &RegMod::collect(CONFIG_DIR, false),
                                 ));
+                                // Make sure that user remains on correct page if mod order changes apon set_current_mods
                             }
                             Err(err) => error!("{}", err),
                         }
