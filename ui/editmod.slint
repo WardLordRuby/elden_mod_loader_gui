@@ -95,7 +95,8 @@ export component ModDetailsPage inherits Page {
                     text: @tr("Add Files");
                     clicked => { MainLogic.add_to_mod(MainLogic.current_mods[mod-index].name) }
                 }
-                Button { 
+                // Needs a confirm popup dialog
+                Button {
                     width: 105px;
                     height: 35px;
                     text: @tr("De-register");

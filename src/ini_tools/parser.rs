@@ -245,15 +245,15 @@ impl RegMod {
                 section
                     .iter()
                     .enumerate()
-                    .filter(|(_, v)| v.0 != "array[]")
-                    .map(|(i, v)| {
+                    .filter(|(_, (k, _))| *k != "array[]")
+                    .map(|(i, (k, v))| {
                         let paths = section
                             .iter()
                             .skip(i + 1)
-                            .take_while(|v| v.0 == "array[]")
-                            .map(|v| v.1)
+                            .take_while(|(k, _)| *k == "array[]")
+                            .map(|(_, v)| v)
                             .collect();
-                        (v.0, if v.1 == "array" { paths } else { vec![v.1] })
+                        (k, if v == "array" { paths } else { vec![v] })
                     })
                     .collect()
             }
@@ -263,13 +263,13 @@ impl RegMod {
             ) -> HashMap<&'a str, (Result<bool, ParseBoolError>, Vec<PathBuf>)> {
                 state_map
                     .iter()
-                    .filter_map(|(&key, &value1)| {
-                        file_map.get(&key).map(|value2| {
+                    .filter_map(|(&key, &state_str)| {
+                        file_map.get(&key).map(|file_strs| {
                             (
                                 key,
                                 (
-                                    value1.parse::<bool>(),
-                                    value2.iter().map(PathBuf::from).collect::<Vec<_>>(),
+                                    state_str.parse::<bool>(),
+                                    file_strs.iter().map(PathBuf::from).collect::<Vec<_>>(),
                                 ),
                             )
                         })
@@ -288,7 +288,7 @@ impl RegMod {
             for key in invalid_state {
                 state_data.remove(key);
                 remove_entry(path, Some("registered-mods"), key);
-                warn!("\"{}\" has no matching files", &key);
+                warn!("\"{}\" has no matching files", key);
             }
             let invalid_files: Vec<_> = file_data
                 .keys()
@@ -302,7 +302,7 @@ impl RegMod {
                     remove_entry(path, Some("mod-files"), key);
                 }
                 file_data.remove(key);
-                warn!("\"{}\" has no matching state", &key);
+                warn!("\"{}\" has no matching state", key);
             }
             combine_map_data(state_data, file_data)
         }
@@ -312,16 +312,16 @@ impl RegMod {
             mod_files_data
                 .iter()
                 .enumerate()
-                .filter(|(_, v)| v.0 != "array[]")
-                .map(|(i, v)| {
+                .filter(|(_, (k, _))| *k != "array[]")
+                .map(|(i, (k, v))| {
                     let paths: Vec<&str> = mod_files_data
                         .iter()
                         .skip(i + 1)
-                        .take_while(|v| v.0 == "array[]")
-                        .map(|v| v.1)
+                        .take_while(|(k, _)| *k == "array[]")
+                        .map(|(_, v)| v)
                         .collect();
-                    let state = mod_state_data.get(v.0).unwrap();
-                    (v.0, state, if v.1 == "array" { paths } else { vec![v.1] })
+                    let s = mod_state_data.get(k).unwrap();
+                    (k, s, if v == "array" { paths } else { vec![v] })
                 })
                 .collect()
         }
@@ -331,24 +331,23 @@ impl RegMod {
             let parsed_data = collect_data_unsafe(&ini);
             parsed_data
                 .iter()
-                .map(|v| RegMod {
-                    name: v.0.replace('_', " ").to_string(),
-                    state: v.1.parse::<bool>().unwrap(),
-                    files: v.2.iter().map(PathBuf::from).collect(),
+                .map(|(n, s, f)| RegMod {
+                    name: n.replace('_', " ").to_string(),
+                    state: s.parse::<bool>().unwrap(),
+                    files: f.iter().map(PathBuf::from).collect(),
                 })
                 .collect()
         } else {
             let parsed_data = sync_keys(&ini, path);
             parsed_data
                 .iter()
-                .filter_map(|(k, v)| match &v.0 {
-                    Ok(bool) => {
-                        match v.1.len() {
-                            1 => match v.1[0].to_owned().validate(
-                                &ini,
-                                Some("mod-files"),
-                                skip_validation,
-                            ) {
+                .filter_map(|(k, (s, f))| match &s {
+                    Ok(bool) => match f.len() {
+                        1 => {
+                            match f[0]
+                                .to_owned()
+                                .validate(&ini, Some("mod-files"), skip_validation)
+                            {
                                 Ok(path) => Some(RegMod {
                                     name: k.replace('_', " ").to_string(),
                                     state: *bool,
@@ -358,28 +357,27 @@ impl RegMod {
                                     error!("Error: {}", err);
                                     None
                                 }
-                            },
-                            2.. => match v.1.to_owned().validate(
-                                &ini,
-                                Some("mod-files"),
-                                skip_validation,
-                            ) {
-                                Ok(paths) => Some(RegMod {
-                                    name: k.replace('_', " ").to_string(),
-                                    state: *bool,
-                                    files: paths,
-                                }),
-                                Err(err) => {
-                                    error!("Error: {}", err);
-                                    None
-                                }
-                            },
-                            0 => {
-                                error!("Error: Tried to validate a Path in a Vec with size 0");
-                                None
                             }
                         }
-                    }
+                        2.. => match f
+                            .to_owned()
+                            .validate(&ini, Some("mod-files"), skip_validation)
+                        {
+                            Ok(paths) => Some(RegMod {
+                                name: k.replace('_', " ").to_string(),
+                                state: *bool,
+                                files: paths,
+                            }),
+                            Err(err) => {
+                                error!("Error: {}", err);
+                                None
+                            }
+                        },
+                        0 => {
+                            error!("Error: Tried to validate a Path in a Vec with size 0");
+                            None
+                        }
+                    },
                     Err(err) => {
                         error!("Error: {}", err);
                         None
