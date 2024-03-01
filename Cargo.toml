@@ -10,9 +10,9 @@ build = "build.rs"
 [dependencies]
 slint = "1.4.1"
 i-slint-backend-winit = "1.4.1"
-winit = "0.29.10"
+winit = "0.29.12"
 native-dialog = "0.7.0"
-log = "0.4.20"
+log = "0.4.21"
 env_logger = "0.11.2"
 rust-ini = "0.20.0"
 
