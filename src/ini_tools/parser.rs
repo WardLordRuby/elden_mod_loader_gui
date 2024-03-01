@@ -229,6 +229,25 @@ impl<T: ValueType> IniProperty<T> {
     }
 }
 
+pub trait Valitidity {
+    fn is_setup(&self) -> bool;
+}
+
+impl Valitidity for Ini {
+    fn is_setup(&self) -> bool {
+        if self.section(Some("paths")).is_none() {
+            return false;
+        }
+        if self.section(Some("registered-mods")).is_none() {
+            return false;
+        }
+        if self.section(Some("mod-files")).is_none() {
+            return false;
+        }
+        true
+    }
+}
+
 pub struct RegMod {
     pub name: String,
     pub state: bool,

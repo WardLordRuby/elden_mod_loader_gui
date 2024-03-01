@@ -15,6 +15,7 @@ use std::{
 };
 
 use elden_mod_loader_gui::*;
+use ini_tools::parser::Valitidity;
 
 fn main() -> Result<(), slint::PlatformError> {
     env_logger::init();
@@ -28,16 +29,24 @@ fn main() -> Result<(), slint::PlatformError> {
             );
         });
     {
-        // Error check for if cfg exists but contains no data or no mod data but valid game_dir
-        match get_cfg(CONFIG_DIR) {
-            Ok(_) => info!("Config file found at \"{}\"", &CONFIG_DIR),
+        let ini_valid = match get_cfg(CONFIG_DIR) {
+            Ok(ini) => {
+                if ini.is_setup() {
+                    info!("Config file found at \"{}\"", &CONFIG_DIR);
+                    true
+                } else {
+                    false
+                }
+            }
             Err(err) => {
                 error!("Error: {}", err);
-                warn!("Ini not found. Creating new Ini");
-                new_cfg(CONFIG_DIR);
-                get_cfg(CONFIG_DIR).unwrap();
+                false
             }
         };
+        if !ini_valid {
+            warn!("Ini not setup correctly. Creating new Ini");
+            new_cfg(CONFIG_DIR);
+        }
 
         let game_verified: bool;
         let game_dir = match attempt_locate_game(CONFIG_DIR) {
