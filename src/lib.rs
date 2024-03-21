@@ -20,7 +20,7 @@ use std::{
     thread,
 };
 
-pub const DEFAULT_GAME_DIR: [&str; 6] = [
+const DEFAULT_GAME_DIR: [&str; 6] = [
     "Program Files (x86)",
     "Steam",
     "steamapps",
@@ -219,7 +219,7 @@ pub fn attempt_locate_game(file_name: &str) -> PathResult {
     PathResult::None(try_locate)
 }
 
-pub fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
+fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
     let drive: String = match get_current_drive() {
         Some(drive) => drive,
         None => {
