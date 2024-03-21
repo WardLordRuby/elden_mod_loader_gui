@@ -57,17 +57,18 @@ pub fn toggle_files(
         file_paths
             .iter()
             .map(|path| {
+                let off_state = ".disabled";
                 let file_name = match path.file_name() {
                     Some(name) => name,
                     None => path.as_os_str(),
                 };
                 let mut new_name = file_name.to_string_lossy().to_string();
-                if let Some(index) = new_name.to_lowercase().find(".disabled") {
+                if let Some(index) = new_name.to_lowercase().find(off_state) {
                     if new_state {
-                        new_name.replace_range(index..index + ".disabled".len(), "");
+                        new_name.replace_range(index..index + off_state.len(), "");
                     }
                 } else if !new_state {
-                    new_name.push_str(".disabled");
+                    new_name.push_str(off_state);
                 }
                 let mut new_path = path.clone();
                 new_path.set_file_name(new_name);
@@ -79,11 +80,11 @@ pub fn toggle_files(
         join_to.iter().map(|path| base_path.join(path)).collect()
     }
     fn rename_files(
-        num_files: usize,
+        num_files: &usize,
         paths: Vec<PathBuf>,
         new_paths: Vec<PathBuf>,
     ) -> Result<(), io::Error> {
-        if num_files != paths.len() || num_files != new_paths.len() {
+        if *num_files != paths.len() || *num_files != new_paths.len() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Number of files and new paths must match",
@@ -99,19 +100,19 @@ pub fn toggle_files(
             })
     }
     fn update_cfg(
-        num_file: usize,
+        num_file: &usize,
         path_to_save: Vec<PathBuf>,
         state: bool,
         key: &str,
         save_file: &str,
     ) {
-        if num_file == 1 {
+        if *num_file == 1 {
             save_path(save_file, Some("mod-files"), key, &path_to_save[0]);
         } else {
             remove_array(save_file, key);
             save_path_bufs(save_file, key, &path_to_save);
         }
-        save_bool(save_file, key, state);
+        save_bool(save_file, Some("registered-mods"), key, state);
     }
     let num_of_files = file_paths.len();
 
@@ -127,9 +128,9 @@ pub fn toggle_files(
     let full_path_new = join_paths(PathBuf::from(game_dir), short_path_new.clone());
     let full_path_original = original_full_paths_thread.join().unwrap();
 
-    rename_files(num_of_files, full_path_original, full_path_new);
+    rename_files(&num_of_files, full_path_original, full_path_new);
 
-    update_cfg(num_of_files, short_path_new, new_state, key, save_file);
+    update_cfg(&num_of_files, short_path_new, new_state, key, save_file);
 }
 
 pub fn get_cfg(input_file: &str) -> Result<Ini, ini::Error> {
@@ -242,9 +243,9 @@ pub fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
 }
 
 fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> Option<PathBuf> {
-    for (index, folder) in target_path.iter().enumerate() {
-        path.push(folder);
-        info!("Testing Path: {}", &path.display());
+    for (index, dir) in target_path.iter().enumerate() {
+        path.push(dir);
+        trace!("Testing Path: {}", &path.display());
         if !path.exists() && index > 1 {
             path.pop();
             break;
