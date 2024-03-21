@@ -7,8 +7,8 @@ export component ModDetailsPage inherits Page {
     description: @tr("Edit registered mods here");
     property <length> box-width: details.width - 10px;
     in property <int> mod-index;
-    in property <color> state-color;
-    in property <string> state;
+    property <color> state-color: MainLogic.current_mods[mod-index].enabled ? #206816 : #d01616;
+    property <string> state: MainLogic.current_mods[mod-index].enabled ? @tr("True") : @tr("False");
 
     VerticalLayout {
         y: 38px;
