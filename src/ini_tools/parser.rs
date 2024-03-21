@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     get_cfg,
-    ini_tools::writer::{remove_array, remove_entry},
+    ini_tools::writer::{remove_array, remove_entry, INI_SECTIONS},
 };
 
 pub trait ValueType: Sized {
@@ -235,16 +235,10 @@ pub trait Valitidity {
 
 impl Valitidity for Ini {
     fn is_setup(&self) -> bool {
-        if self.section(Some("paths")).is_none() {
-            return false;
-        }
-        if self.section(Some("registered-mods")).is_none() {
-            return false;
-        }
-        if self.section(Some("mod-files")).is_none() {
-            return false;
-        }
-        true
+        INI_SECTIONS.iter().all(|section| {
+            let trimmed_section: String = section.trim_matches(|c| c == '[' || c == ']').to_owned();
+            self.section(Some(trimmed_section)).is_some()
+        })
     }
 }
 

@@ -8,6 +8,13 @@ use std::{
 
 use crate::get_cfg;
 
+pub const INI_SECTIONS: [&str; 4] = [
+    "[app-settings]",
+    "[paths]",
+    "[registered-mods]",
+    "[mod-files]",
+];
+
 const WRITE_OPTIONS: WriteOption = WriteOption {
     escape_policy: EscapePolicy::Nothing,
     line_separator: LineSeparator::CRLF,
@@ -46,11 +53,16 @@ pub fn save_path(
         .map_err(ini::Error::Io)
 }
 
-pub fn save_bool(file_name: &str, key: &str, value: bool) -> Result<(), ini::Error> {
+pub fn save_bool(
+    file_name: &str,
+    section: Option<&str>,
+    key: &str,
+    value: bool,
+) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
     let format_key = key.trim().replace(' ', "_");
     config
-        .with_section(Some("registered-mods"))
+        .with_section(section)
         .set(&format_key, value.to_string());
     config
         .write_to_file_opt(file_name, WRITE_OPTIONS)
@@ -60,9 +72,9 @@ pub fn save_bool(file_name: &str, key: &str, value: bool) -> Result<(), ini::Err
 pub fn new_cfg(path: &str) -> io::Result<()> {
     let mut new_ini = File::create(path)?;
 
-    writeln!(new_ini, "[paths]")?;
-    writeln!(new_ini, "[registered-mods]")?;
-    writeln!(new_ini, "[mod-files]")?;
+    for section in INI_SECTIONS {
+        writeln!(new_ini, "{}", section)?;
+    }
 
     Ok(())
 }

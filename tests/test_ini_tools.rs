@@ -67,9 +67,9 @@ mod tests {
                 Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
 
             let _ = save_path_bufs(test_file, mod_1_key, &mod_1);
-            let _ = save_bool(test_file, mod_1_key, mod_1_state);
+            let _ = save_bool(test_file, Some("registered-mods"), mod_1_key, mod_1_state);
             let _ = save_path(test_file, Some("mod-files"), mod_2_key, &mod_2);
-            let _ = save_bool(test_file, mod_2_key, mod_2_state);
+            let _ = save_bool(test_file, Some("registered-mods"), mod_2_key, mod_2_state);
             let _ = save_path_bufs(test_file, "no_matching_state_1", &invalid_format_1);
             let _ = save_path(
                 test_file,
@@ -77,7 +77,7 @@ mod tests {
                 "no_matching_state_2",
                 &invalid_format_2,
             );
-            let _ = save_bool(test_file, "no_matching_path", true);
+            let _ = save_bool(test_file, Some("registered-mods"), "no_matching_path", true);
 
             let _ = save_path(test_file, Some("paths"), "game_dir", game_path);
         }
