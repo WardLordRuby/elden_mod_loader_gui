@@ -2,6 +2,7 @@ use ini::{Ini, Properties};
 use log::{debug, error, info, warn};
 use std::{
     collections::HashMap,
+    ffi::OsStr,
     fmt::Debug,
     io,
     path::{Path, PathBuf},
@@ -11,6 +12,7 @@ use std::{
 use crate::{
     get_cfg,
     ini_tools::writer::{remove_array, remove_entry, INI_SECTIONS},
+    toggle_files, CONFIG_DIR,
 };
 
 pub trait ValueType: Sized {
@@ -180,7 +182,7 @@ impl<T: ValueType> IniProperty<T> {
         let format_key = key.replace(' ', "_");
         match IniProperty::is_valid(ini, section, &format_key, skip_validation) {
             Ok(value) => {
-                debug!(
+                info!(
                     "Success: read key: \"{}\" Section: \"{}\" from ini",
                     key,
                     section.unwrap()
@@ -397,6 +399,32 @@ impl RegMod {
                     }
                 })
                 .collect()
+        }
+    }
+    pub fn verify_state(&self, game_dir: &Path) {
+        let off_state = OsStr::new("disabled");
+        if (!self.state
+            && self
+                .files
+                .iter()
+                .any(|path| path.extension() != Some(off_state)))
+            || (self.state
+                && self
+                    .files
+                    .iter()
+                    .any(|path| path.extension() == Some(off_state)))
+        {
+            warn!(
+                "wrong file state for \"{}\" chaning file extentions",
+                self.name
+            );
+            toggle_files(
+                &self.name.replace(' ', "_"),
+                game_dir,
+                self.state,
+                self.files.to_owned(),
+                CONFIG_DIR,
+            )
         }
     }
 }

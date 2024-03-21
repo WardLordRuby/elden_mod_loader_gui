@@ -54,6 +54,9 @@ fn main() -> Result<(), slint::PlatformError> {
         let game_verified: bool;
         let game_dir = match attempt_locate_game(CONFIG_DIR) {
             PathResult::Full(path) => {
+                RegMod::collect(CONFIG_DIR, false)
+                    .iter()
+                    .for_each(|data: &RegMod| data.verify_state(&path));
                 game_verified = true;
                 path
             }
@@ -76,12 +79,15 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         };
 
+        ui.global::<MainLogic>().set_game_path_valid(game_verified);
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
+            ui.global::<MainLogic>()
+                .set_current_mods(deserialize(&RegMod::collect(CONFIG_DIR, false)));
+        } else {
+            ui.global::<MainLogic>()
+                .set_current_mods(deserialize(&RegMod::collect(CONFIG_DIR, true)));
         }
-        ui.global::<MainLogic>()
-            .set_current_mods(deserialize(&RegMod::collect(CONFIG_DIR, false)));
-        ui.global::<MainLogic>().set_game_path_valid(game_verified);
         ui.global::<SettingsLogic>()
             .set_game_path(game_dir.to_string_lossy().to_string().into());
     }
