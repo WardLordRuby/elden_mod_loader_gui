@@ -50,6 +50,10 @@ export component SettingsPage inherits Page {
                 padding-top: 7px;
                 Switch {
                     text: @tr("DarkMode");
+                    checked <=> SettingsLogic.dark_mode;
+                    toggled => {
+                        SettingsLogic.toggle_theme(self.checked);
+                    }
                 }
             }
         }

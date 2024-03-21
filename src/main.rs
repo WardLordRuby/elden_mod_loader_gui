@@ -4,7 +4,10 @@
 slint::include_modules!();
 
 use i_slint_backend_winit::WinitWindowAccessor;
-use ini_tools::{parser::RegMod, writer::*};
+use ini_tools::{
+    parser::{IniProperty, RegMod},
+    writer::*,
+};
 use log::{debug, error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
@@ -59,6 +62,20 @@ fn main() -> Result<(), slint::PlatformError> {
                 path
             }
         };
+
+        match IniProperty::<bool>::read(
+            &get_cfg(CONFIG_DIR).unwrap(),
+            Some("app-settings"),
+            "dark-mode",
+            false,
+        ) {
+            Some(bool) => ui.global::<SettingsLogic>().set_dark_mode(bool.value),
+            None => {
+                ui.global::<SettingsLogic>().set_dark_mode(true);
+                save_bool(CONFIG_DIR, Some("app-settings"), "dark-mode", true);
+            }
+        };
+
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
         }
@@ -104,7 +121,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
-            save_bool(CONFIG_DIR, &mod_name, true);
+            save_bool(CONFIG_DIR, Some("registered-mods"), &mod_name, true);
             // Add conditons here to keep line edit text the same
             ui.global::<MainLogic>()
                 .set_line_edit_text(SharedString::from(""));
@@ -253,6 +270,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 error!("Mod: \"{}\" not found", key);
             };
             ui.global::<MainLogic>().set_current_subpage(0);
+        }
+    });
+    ui.global::<SettingsLogic>().on_toggle_theme({
+        move |state| {
+            save_bool(CONFIG_DIR, Some("app-settings"), "dark-mode", state);
         }
     });
 
