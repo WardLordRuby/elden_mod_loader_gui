@@ -1,6 +1,6 @@
 import { CheckBox, GroupBox, ListView, LineEdit, HorizontalBox, Button } from "std-widgets.slint";
 import { SettingsPage, ModDetailsPage } from "subpages.slint";
-import { MainLogic, DisplayMod, Page } from "common.slint";
+import { MainLogic, DisplayMod, Page, ColorPalette } from "common.slint";
 
 export component MainPage inherits Page {
     has-back-button: false;
@@ -46,18 +46,11 @@ export component MainPage inherits Page {
                         image-fit: contain;
                         height: 20px;
                         source: @image-url("assets/arrow.png");
-                        colorize: #505150;
+                        colorize: ColorPalette.button-image-base;
                         ta := TouchArea {
                             clicked => { 
                                 MainLogic.current_subpage = 2;
                                 mod-settings.mod-index = idx;
-                                if (MainLogic.current_mods[idx].enabled) {
-                                    mod-settings.state = @tr("True");
-                                    mod-settings.state-color = #206816;
-                                } else {
-                                    mod-settings.state = @tr("False");
-                                    mod-settings.state-color = #d01616;
-                                }
                             }
                             height: 28px;
                             x: mod-box.width - 284px;
@@ -66,12 +59,12 @@ export component MainPage inherits Page {
                     }
                     states [
                         hover when ta.has-hover && !ta.pressed: {
-                            re.background: #4b4b4b;
-                            im.colorize: #1f1f1f;
+                            re.background: ColorPalette.button-background-colors.hovered;
+                            im.colorize: ColorPalette.button-image-colors.hovered;
                         }
                         pressed when ta.pressed : {
-                            re.background: #3b3b3b;
-                            im.colorize: #292828;
+                            re.background: ColorPalette.button-background-colors.pressed;
+                            im.colorize: ColorPalette.button-image-colors.pressed;
                         }
                     ]
                 }

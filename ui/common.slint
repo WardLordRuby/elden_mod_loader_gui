@@ -26,7 +26,52 @@ export global MainLogic {
 
 export global SettingsLogic  {
     callback select_game_dir();
+    callback toggle_theme(bool);
     in property <string> game_path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
+    in-out property <bool> dark_mode;
+}
+
+struct ButtonColors  {
+    base: color,
+    pressed: color,
+    hovered: color,
+}
+
+export global ColorPalette  {
+    in property <bool> night-mode: false;
+
+    // Color of the home/settings/ink buttons on the left side bar
+    out property <color> active-page-icon-color: SettingsLogic.dark_mode ? #6284FF : #122F7B;
+    out property <color> inactive-page-icon-color: #BDC0D1;
+    out property <color> main-background: #0E133F;
+    out property <color> neutral-box: #BDC0D1;
+    out property <color> page-background-color: SettingsLogic.dark_mode ? #1b1b1b : #ffffff;
+    out property <color> text-foreground-color: SettingsLogic.dark_mode ? #ffffff : #000000;
+    out property <color> secondary-foreground-color: SettingsLogic.dark_mode ? #505150 : #6C6E7A;
+    out property <color> printer-action-background-color: SettingsLogic.dark_mode ? root.main-background : white;
+    out property <color> printer-queue-item-background-color: root.page-background-color;
+    out property <color> status-label-text-color: SettingsLogic.dark_mode ? #F1FF98 : #6284FF;
+
+    // Color used for the border / outline of items that can be clicked on, such as the
+    // "Print"/"Scan" buttons, the printer queue items (for expansion) or controls such
+    // as the combo box or spin box.
+    out property <color> control-outline-color: #FFBF63;
+    out property <color> control-secondary: #6284FF;
+    out property <color> control-foreground: SettingsLogic.dark_mode ? white : #122F7B;  // FIXME: the night mode color was not part of the design
+    out property <color> button-image-base: root.secondary-foreground-color;
+    out property <ButtonColors> button-image-colors: {
+        base: root.button-image-base,
+        pressed: root.button-image-base.darker(40%), // #292828
+        hovered: root.button-image-base.brighter(20%), // #1f1f1f
+    };
+    out property <color> button-background-base: #4b4b4b83;
+    out property <ButtonColors> button-background-colors: {
+        base: root.button-background-base,
+        pressed: root.button-background-base.darker(40%), // #3b3b3b
+        hovered: root.button-background-base.darker(20%), // #4b4b4b
+    };
+    out property <color> push-button-text-color: white;
+    out property <length> base-font-size: 16px;
 }
 
 export component Page inherits Rectangle {
@@ -34,7 +79,7 @@ export component Page inherits Rectangle {
     in property<string> description: "description";
     in property <bool> has-back-button;
     width: 310px;
-    background: #1b1b1b;
+    background: ColorPalette.page-background-color;
 
     callback back;
     callback settings;
@@ -52,7 +97,7 @@ export component Page inherits Rectangle {
         if (root.has-back-button) : Image {
             source: @image-url("assets/back-arrow.png");
             image-fit: contain;
-            colorize: #ffffff;
+            colorize: ColorPalette.text-foreground-color;
             source-clip-y: -50;
             width: 30px;
             height: 24px;
@@ -80,7 +125,7 @@ export component Page inherits Rectangle {
             border-radius: 4px;
             im := Image {
                 source: @image-url("assets/settings.png");
-                colorize: #505150;
+                colorize: ColorPalette.button-image-base;
                 width: 28px;
                 image-fit: contain;
                 ta := TouchArea {
@@ -92,12 +137,12 @@ export component Page inherits Rectangle {
             }
             states [
                 hover when ta.has-hover && !ta.pressed: {
-                    re.background: #4b4b4b;
-                    im.colorize: #1f1f1f;
+                    re.background: ColorPalette.button-background-colors.hovered;
+                    im.colorize: ColorPalette.button-image-colors.hovered;
                 }
                 pressed when ta.pressed : {
-                    re.background: #3b3b3b;
-                    im.colorize: #292828;
+                    re.background: ColorPalette.button-background-colors.pressed;
+                    im.colorize: ColorPalette.button-image-colors.pressed;
                 }
             ]
         }
