@@ -3,11 +3,14 @@
 
 slint::include_modules!();
 
-use i_slint_backend_winit::WinitWindowAccessor;
-use ini_tools::{
-    parser::{IniProperty, RegMod},
-    writer::*,
+use elden_mod_loader_gui::{
+    ini_tools::{
+        parser::{IniProperty, RegMod, Valitidity},
+        writer::*,
+    },
+    *,
 };
+use i_slint_backend_winit::WinitWindowAccessor;
 use log::{debug, error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
@@ -16,9 +19,6 @@ use std::{
     path::{Path, PathBuf},
     rc::Rc,
 };
-
-use elden_mod_loader_gui::*;
-use ini_tools::parser::Valitidity;
 
 fn main() -> Result<(), slint::PlatformError> {
     env_logger::init();

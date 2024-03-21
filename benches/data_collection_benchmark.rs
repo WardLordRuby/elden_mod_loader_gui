@@ -11,7 +11,7 @@ fn populate_non_valid_ini(len: u32, file: &str) {
         let bool_value = rand::thread_rng().gen_bool(0.5);
         let paths = generate_test_paths();
 
-        let _ = save_bool(BENCH_TEST_FILE, Some("app-settings"), &key, bool_value);
+        let _ = save_bool(BENCH_TEST_FILE, Some("registered-mods"), &key, bool_value);
         if paths.len() > 1 {
             let _ = save_path_bufs(BENCH_TEST_FILE, &key, &paths);
         } else {
