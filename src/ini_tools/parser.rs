@@ -1,5 +1,5 @@
 use ini::{Ini, Properties};
-use log::{debug, error, info, warn};
+use log::{error, trace, warn};
 use std::{
     collections::HashMap,
     ffi::OsStr,
@@ -182,7 +182,7 @@ impl<T: ValueType> IniProperty<T> {
         let format_key = key.replace(' ', "_");
         match IniProperty::is_valid(ini, section, &format_key, skip_validation) {
             Ok(value) => {
-                info!(
+                trace!(
                     "Success: read key: \"{}\" Section: \"{}\" from ini",
                     key,
                     section.unwrap()
