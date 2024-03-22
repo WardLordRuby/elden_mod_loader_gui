@@ -15,6 +15,7 @@ export global MainLogic {
     callback remove_mod(string);
     callback force_app_focus();
     in property <string> line_edit_text;
+    in property <bool> popup_window_visible: false;
     in-out property <bool> game_path_valid;
     in-out property <int> current_subpage: 0;
     in-out property <[DisplayMod]> current_mods: [

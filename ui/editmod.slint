@@ -1,10 +1,11 @@
-import { GroupBox, Button, ScrollView } from "std-widgets.slint";
+import { GroupBox, Button, ScrollView, StandardButton } from "std-widgets.slint";
 import { MainLogic, SettingsLogic, Page } from "common.slint";
 
 export component ModDetailsPage inherits Page {
     has-back-button: true;
     title: MainLogic.current_mods[mod-index].name;
     description: @tr("Edit registered mods here");
+    
     property <length> box-width: details.width - 10px;
     in property <int> mod-index;
     property <color> state-color: MainLogic.current_mods[mod-index].enabled ? #206816 : #d01616;
@@ -96,13 +97,54 @@ export component ModDetailsPage inherits Page {
                     text: @tr("Add Files");
                     clicked => { MainLogic.add_to_mod(MainLogic.current_mods[mod-index].name) }
                 }
-                // Needs a confirm popup dialog
                 Button {
                     width: 105px;
                     height: 35px;
                     primary: !SettingsLogic.dark_mode;
                     text: @tr("De-register");
-                    clicked => { MainLogic.remove_mod(MainLogic.current_mods[mod-index].name) }
+                    clicked => {
+                        MainLogic.popup_window_visible = true;
+                        confirm-popup.show()
+                    }
+                }
+            }
+        }
+    }
+    // Make popupWindow look nice 
+    confirm_popup := PopupWindow {
+        x: root.width / 6.5;
+        y: root.height / 2.7;
+        width: min(confirm_popup_layout.preferred-width, root.width - 80px);
+        close-on-click: false;
+
+        Rectangle {
+            background: root.background;
+            border-color: confirm_popup_text.color;
+            border-width: 1px;
+        }
+
+        confirm_popup_layout := Dialog {
+            no-frame: false;
+            title: @tr("Confirm");
+            height:100%; width: 100%;
+
+            confirm_popup_text := Text {
+                text: @tr("Are you sure you want to de-register this mod?");
+                wrap: word-wrap;
+            }
+            StandardButton {
+                kind: ok; 
+                clicked => { 
+                    MainLogic.popup_window_visible = false;
+                    MainLogic.remove_mod(MainLogic.current_mods[mod-index].name);
+                    confirm-popup.close()
+                }
+            }
+            StandardButton {
+                kind: cancel; 
+                clicked => { 
+                    MainLogic.popup_window_visible = false;
+                    confirm-popup.close()
                 }
             }
         }

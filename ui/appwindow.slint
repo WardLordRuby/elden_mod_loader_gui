@@ -5,7 +5,6 @@ import { StandardButton } from "std-widgets.slint";
 export { MainLogic, SettingsLogic, DisplayMod }
 
 export component App inherits Window {
-    property <bool> popup_window_visible: false;
     in property <string> err-message;
     title: @tr("Elden Mod Loader");
     preferred-height: 370px;
@@ -17,7 +16,7 @@ export component App inherits Window {
 
     callback show_error_popup;
     show_error_popup => {
-        popup_window_visible = true;
+        MainLogic.popup_window_visible = true;
         err-popup.show()
     }
     callback focus_app;
@@ -46,17 +45,20 @@ export component App inherits Window {
                 wrap: word-wrap;
             }
 
-            StandardButton { kind: ok; clicked => { 
-                popup_window_visible = false;
-                err-popup.close()
-             } }
+            StandardButton {
+                kind: ok; 
+                clicked => { 
+                    MainLogic.popup_window_visible = false;
+                    err-popup.close()
+                }
+            }
         }
     }
     fs := FocusScope {
         key-pressed(event) => {
             if (event.text == Key.Escape) {
-                if (popup_window_visible) {
-                    popup_window_visible = false;
+                if (MainLogic.popup_window_visible) {
+                    MainLogic.popup_window_visible = false;
                     err-popup.close()
                 } else {
                     MainLogic.current-subpage = 0
