@@ -1,5 +1,5 @@
 import { GroupBox, Button, ScrollView } from "std-widgets.slint";
-import { MainLogic, Page } from "common.slint";
+import { MainLogic, SettingsLogic, Page } from "common.slint";
 
 export component ModDetailsPage inherits Page {
     has-back-button: true;
@@ -92,6 +92,7 @@ export component ModDetailsPage inherits Page {
                 Button {
                     width: 105px;
                     height: 35px;
+                    primary: !SettingsLogic.dark_mode;
                     text: @tr("Add Files");
                     clicked => { MainLogic.add_to_mod(MainLogic.current_mods[mod-index].name) }
                 }
@@ -99,6 +100,7 @@ export component ModDetailsPage inherits Page {
                 Button {
                     width: 105px;
                     height: 35px;
+                    primary: !SettingsLogic.dark_mode;
                     text: @tr("De-register");
                     clicked => { MainLogic.remove_mod(MainLogic.current_mods[mod-index].name) }
                 }

@@ -37,6 +37,7 @@ export component SettingsPage inherits Page {
                 select-game := Button { 
                     width: 105px;
                     height: 35px;
+                    primary: !SettingsLogic.dark_mode;
                     text: @tr("Set Path");
                     clicked => {
                         SettingsLogic.select_game_dir();
