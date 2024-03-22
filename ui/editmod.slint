@@ -1,13 +1,13 @@
 import { GroupBox, Button, ScrollView, StandardButton } from "std-widgets.slint";
-import { MainLogic, SettingsLogic, Page } from "common.slint";
+import { MainLogic, SettingsLogic, Page, ColorPalette } from "common.slint";
 
 export component ModDetailsPage inherits Page {
     has-back-button: true;
     title: MainLogic.current_mods[mod-index].name;
     description: @tr("Edit registered mods here");
     
-    property <length> box-width: details.width - 10px;
     in property <int> mod-index;
+    property <length> box-width: details.width - 10px;
     property <color> state-color: MainLogic.current_mods[mod-index].enabled ? #206816 : #d01616;
     property <string> state: MainLogic.current_mods[mod-index].enabled ? @tr("True") : @tr("False");
 
@@ -118,8 +118,8 @@ export component ModDetailsPage inherits Page {
         close-on-click: false;
 
         Rectangle {
-            background: root.background;
-            border-color: confirm_popup_text.color;
+            background: ColorPalette.popup-background-color;
+            border-color: ColorPalette.popup-border-color;
             border-width: 1px;
         }
 
@@ -128,7 +128,7 @@ export component ModDetailsPage inherits Page {
             title: @tr("Confirm");
             height:100%; width: 100%;
 
-            confirm_popup_text := Text {
+            Text {
                 text: @tr("Are you sure you want to de-register this mod?");
                 wrap: word-wrap;
             }

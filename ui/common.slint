@@ -1,6 +1,3 @@
-// TODO: Move all colors to single source here
-//       Create Light and dark theme colors
-
 export struct DisplayMod  {
     displayname: string,
     name: string,
@@ -38,7 +35,10 @@ struct ButtonColors  {
 }
 
 export global ColorPalette  {
-    out property <color> page-background-color: SettingsLogic.dark_mode ? #1b1b1b : #5c8a8d;
+    out property <color> page-background-color: SettingsLogic.dark_mode ? #1b1b1b : #60a0a4;
+    out property <color> popup-background-color: SettingsLogic.dark_mode ? #00393d : #1b1b1b;
+    out property <color> popup-border-color: SettingsLogic.dark_mode ? #17575c : #1b1b1b;
+
     out property <color> text-foreground-color: #ffffff;
 
     out property <color> button-image-base: SettingsLogic.dark_mode ? #505150 : #aeaeae;
@@ -97,8 +97,8 @@ export component Page inherits Rectangle {
             overflow: elide;
         }
 
-        // Spacer
-        Rectangle {}
+        Rectangle {} // Spacer
+        
         if (!root.has-back-button) : re := Rectangle {
             width: 33px;
             height: 33px;

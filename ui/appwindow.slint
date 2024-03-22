@@ -1,5 +1,5 @@
 import { MainPage } from "main.slint";
-import { MainLogic, SettingsLogic, DisplayMod } from "common.slint";
+import { MainLogic, SettingsLogic, DisplayMod, ColorPalette } from "common.slint";
 import { StandardButton } from "std-widgets.slint";
 
 export { MainLogic, SettingsLogic, DisplayMod }
@@ -30,8 +30,8 @@ export component App inherits Window {
         close-on-click: false;
 
         Rectangle {
-            background: root.background;
-            border-color: err_popup_text.color;
+            background: ColorPalette.popup-background-color;
+            border-color: ColorPalette.popup-border-color;
             border-width: 1px;
         }
 
@@ -40,7 +40,7 @@ export component App inherits Window {
             title: @tr("Error");
             height:100%; width: 100%;
 
-            err_popup_text := Text {
+            Text {
                 text: root.err-message;
                 wrap: word-wrap;
             }

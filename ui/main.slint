@@ -1,6 +1,6 @@
 import { CheckBox, GroupBox, ListView, LineEdit, HorizontalBox, Button } from "std-widgets.slint";
 import { SettingsPage, ModDetailsPage } from "subpages.slint";
-import { MainLogic, SettingsLogic, DisplayMod, Page, ColorPalette } from "common.slint";
+import { MainLogic, SettingsLogic, Page, ColorPalette } from "common.slint";
 
 export component MainPage inherits Page {
     has-back-button: false;
@@ -11,8 +11,13 @@ export component MainPage inherits Page {
     // height: 400px;
 
     callback focus_line_edit;
+    callback edit_mod(int);
     focus_line_edit => { input-mod.focus() }
     settings => { MainLogic.current-subpage = 1 }
+    edit_mod(i) => {
+        mod-settings.mod-index = i;
+        MainLogic.current_subpage = 2
+    }
 
     VerticalLayout {
         y: 27px;
@@ -48,10 +53,7 @@ export component MainPage inherits Page {
                         source: @image-url("assets/arrow.png");
                         colorize: ColorPalette.button-image-base;
                         ta := TouchArea {
-                            clicked => { 
-                                MainLogic.current_subpage = 2;
-                                mod-settings.mod-index = idx;
-                            }
+                            clicked => { edit_mod(idx) }
                             height: 28px;
                             x: mod-box.width - 284px;
                             width: root.width - mod-box.width;
@@ -70,7 +72,6 @@ export component MainPage inherits Page {
                 }
             }
         }
-
         add-mod-box := GroupBox {
             height: 95px;
             title: @tr("Add Mod");
@@ -80,7 +81,7 @@ export component MainPage inherits Page {
                     if (event.text == Key.Escape) {
                         MainLogic.force_app_focus()
                     }
-                    // && doesn't work in conditonal statements
+                    // && doesn't work in slint conditonal statements
                     if (event.text == Key.Tab ) {
                         if (input-mod.has-focus) {
                             add-mod.focus()
