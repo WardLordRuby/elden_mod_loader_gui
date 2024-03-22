@@ -119,11 +119,13 @@ fn main() -> Result<(), slint::PlatformError> {
                     },
                     Err(err) => {
                         error!("Error: {}", err);
+                        ui.display_err(&err.to_string());
                         return;
                     }
                 },
                 Err(err) => {
                     info!("{}", err);
+                    ui.display_err(&err.to_string());
                     return;
                 }
             };
@@ -145,11 +147,15 @@ fn main() -> Result<(), slint::PlatformError> {
             let user_path: Result<String, &'static str> = match get_user_folder(&game_dir_ref) {
                 Ok(opt) => match opt {
                     Some(selected_path) => Ok(selected_path.to_string_lossy().to_string()),
-                    None => Err("No Path Selected"),
+                    None => {
+                        ui.display_err("No Path Selected");
+                        Err("No Path Selected")
+                    }
                 },
                 Err(err) => {
                     error!("Error selecting path");
                     error!("{}", err);
+                    ui.display_err(&err.to_string());
                     Err("Error selecting path")
                 }
             };
@@ -176,15 +182,13 @@ fn main() -> Result<(), slint::PlatformError> {
                                 ErrorKind::NotFound => warn!("{}", err),
                                 _ => error!("Error: {}", err),
                             }
-                            ui.set_err_message(SharedString::from(err.to_string()));
-                            ui.invoke_show_error_popup();
+                            ui.display_err(&err.to_string())
                         }
                     }
                 }
                 Err(err) => {
                     info!("{}", err);
-                    ui.set_err_message(SharedString::from(err));
-                    ui.invoke_show_error_popup();
+                    ui.display_err(err)
                 }
             }
         }
@@ -237,13 +241,20 @@ fn main() -> Result<(), slint::PlatformError> {
                                 ));
                                 // Make sure that user remains on correct page if mod order changes apon set_current_mods
                             }
-                            Err(err) => error!("{}", err),
+                            Err(err) => {
+                                error!("{}", err);
+                                ui.display_err(&err.to_string());
+                            }
                         }
                     } else {
                         error!("Mod: \"{}\" not found", key);
+                        ui.display_err(&format!("Mod: \"{}\" not found", key));
                     };
                 }
-                Err(err) => error!("{}", err),
+                Err(err) => {
+                    error!("{}", err);
+                    ui.display_err(err);
+                }
             }
         }
     });
@@ -286,6 +297,17 @@ fn main() -> Result<(), slint::PlatformError> {
 
     ui.invoke_focus_app();
     ui.run()
+}
+
+trait DisplayMessage {
+    fn display_err(&self, msg: &str);
+}
+
+impl DisplayMessage for App {
+    fn display_err(&self, msg: &str) {
+        self.set_err_message(SharedString::from(msg));
+        self.invoke_show_error_popup();
+    }
 }
 
 fn get_user_folder(path: &Path) -> Result<Option<PathBuf>, native_dialog::Error> {
