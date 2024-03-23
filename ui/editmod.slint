@@ -112,9 +112,10 @@ export component ModDetailsPage inherits Page {
     }
     // Make popupWindow look nice 
     confirm_popup := PopupWindow {
-        x: root.width / 6.5;
+        x: 22px;
         y: root.height / 2.7;
-        width: min(confirm_popup_layout.preferred-width, root.width - 80px);
+        width: confirm-popup-text.width + 20px;
+        height: confirm-popup-text.height + 20px;
         close-on-click: false;
 
         Rectangle {
@@ -126,9 +127,8 @@ export component ModDetailsPage inherits Page {
         confirm_popup_layout := Dialog {
             no-frame: false;
             title: @tr("Confirm");
-            height:100%; width: 100%;
 
-            Text {
+            confirm_popup_text := Text {
                 text: @tr("Are you sure you want to de-register this mod?");
                 wrap: word-wrap;
             }

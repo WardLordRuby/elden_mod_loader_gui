@@ -22,11 +22,17 @@ export component App inherits Window {
     callback focus_app;
     focus_app => { fs.focus() }
 
+    err_msg_size := Text {
+        visible: false;
+        text: root.err-message;
+    }
+
     // Make popupWindow look nice 
     err_popup := PopupWindow {
-        x: root.width / 2.7;
-        y: root.height / 2.7;
-        width: min(err_popup_layout.preferred-width, root.width - 80px);
+        x: (mp.width - err-msg-size.width - 13px) / 2;
+        y: 135px;
+        height: err-msg-size.height + 20px;
+        width: err-msg-size.width + 20px;
         close-on-click: false;
 
         Rectangle {
@@ -38,7 +44,6 @@ export component App inherits Window {
         err_popup_layout := Dialog {
             no-frame: false;
             title: @tr("Error");
-            height:100%; width: 100%;
 
             Text {
                 text: root.err-message;
