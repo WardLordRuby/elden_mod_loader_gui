@@ -28,7 +28,7 @@ const DEFAULT_GAME_DIR: [&str; 6] = [
     "ELDEN RING",
     "Game",
 ];
-pub const CONFIG_DIR: &str = "test_files\\cfg.ini";
+pub const CONFIG_DIR: &str = "mod_loader_config.ini";
 pub const REQUIRED_GAME_FILES: [&str; 3] = [
     "eldenring.exe",
     "oo2core_6_win64.dll",
