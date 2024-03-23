@@ -20,7 +20,7 @@ mod tests {
         let dir_to_test_files =
             Path::new("C:\\Users\\cal_b\\Documents\\School\\code\\elden_mod_loader_gui");
         let save_file = "test_files\\file_toggle_test.ini";
-        let _ = new_cfg(save_file);
+        new_cfg(save_file).unwrap();
 
         let test_files = vec![
             PathBuf::from("test_files\\test1.txt"),
@@ -39,10 +39,10 @@ mod tests {
         ];
 
         for test_file in test_files.iter() {
-            let _ = File::create(test_file.to_string_lossy().to_string());
+            File::create(test_file.to_string_lossy().to_string()).unwrap();
         }
 
-        toggle_files(key, dir_to_test_files, false, test_files.clone(), save_file);
+        toggle_files(key, dir_to_test_files, false, test_files.clone(), save_file).unwrap();
 
         for path_to_test in test_files_disabled.iter() {
             assert!(file_exists(path_to_test.as_path()));
@@ -54,15 +54,16 @@ mod tests {
             true,
             test_files_disabled.clone(),
             save_file,
-        );
+        )
+        .unwrap();
 
         for path_to_test in test_files.iter() {
             assert!(file_exists(path_to_test.as_path()));
         }
 
         for test_file in test_files.iter() {
-            let _ = remove_file(test_file.as_path());
+            remove_file(test_file.as_path()).unwrap();
         }
-        let _ = remove_file(save_file);
+        remove_file(save_file).unwrap();
     }
 }

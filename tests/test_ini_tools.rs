@@ -18,9 +18,9 @@ mod tests {
         let test_file = "test_files\\test_path.ini";
 
         {
-            let _ = new_cfg(test_file);
-            let _ = save_path(test_file, Some("paths"), "game_dir", test_path_1);
-            let _ = save_path(test_file, Some("paths"), "random_dir", test_path_2);
+            new_cfg(test_file).unwrap();
+            save_path(test_file, Some("paths"), "game_dir", test_path_1).unwrap();
+            save_path(test_file, Some("paths"), "random_dir", test_path_2).unwrap();
         }
 
         let config = get_cfg(test_file).unwrap();
@@ -35,7 +35,7 @@ mod tests {
         // Tests if paths stored in Section("paths") will parse correctly | these are full length paths
         assert_eq!(test_path_1, parse_test_1);
         assert_eq!(test_path_2, parse_test_2);
-        let _ = remove_file(test_file);
+        remove_file(test_file).unwrap();
     }
 
     #[test]
@@ -52,7 +52,7 @@ mod tests {
         let mod_2 = PathBuf::from("mods\\SkipTheIntro.dll");
 
         {
-            let _ = new_cfg(test_file);
+            new_cfg(test_file).unwrap();
 
             let invalid_format_1 = vec![
                 PathBuf::from("mods\\UnlockTheFps.dll"),
@@ -66,26 +66,27 @@ mod tests {
             let game_path =
                 Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
 
-            let _ = save_path_bufs(test_file, mod_1_key, &mod_1);
-            let _ = save_bool(test_file, Some("registered-mods"), mod_1_key, mod_1_state);
-            let _ = save_path(test_file, Some("mod-files"), mod_2_key, &mod_2);
-            let _ = save_bool(test_file, Some("registered-mods"), mod_2_key, mod_2_state);
-            let _ = save_path_bufs(test_file, "no_matching_state_1", &invalid_format_1);
-            let _ = save_path(
+            save_path_bufs(test_file, mod_1_key, &mod_1).unwrap();
+            save_bool(test_file, Some("registered-mods"), mod_1_key, mod_1_state).unwrap();
+            save_path(test_file, Some("mod-files"), mod_2_key, &mod_2).unwrap();
+            save_bool(test_file, Some("registered-mods"), mod_2_key, mod_2_state).unwrap();
+            save_path_bufs(test_file, "no_matching_state_1", &invalid_format_1).unwrap();
+            save_path(
                 test_file,
                 Some("mod-files"),
                 "no_matching_state_2",
                 &invalid_format_2,
-            );
-            let _ = save_bool(test_file, Some("registered-mods"), "no_matching_path", true);
+            )
+            .unwrap();
+            save_bool(test_file, Some("registered-mods"), "no_matching_path", true).unwrap();
 
-            let _ = save_path(test_file, Some("paths"), "game_dir", game_path);
+            save_path(test_file, Some("paths"), "game_dir", game_path).unwrap();
         }
 
         // -------------------------------------sync_keys runs from inside RegMod::collect()------------------------------------------------
         // ----this deletes any keys that do not have a matching state eg. (key has state but no files, or key has files but no state)-----
         // this tests delete_entry && delete_array in this case we delete "no_matching_path", "no_matching_state_1", and "no_matching_state_2"
-        let registered_mods = RegMod::collect(test_file, false);
+        let registered_mods = RegMod::collect(test_file, false).unwrap();
         assert_eq!(registered_mods.len(), 2);
 
         // Tests name format is correct
@@ -106,6 +107,6 @@ mod tests {
         assert_eq!(mod_1_state, reg_mod_1.state);
         assert_eq!(mod_2_state, reg_mod_2.state);
 
-        let _ = remove_file(test_file);
+        remove_file(test_file).unwrap();
     }
 }

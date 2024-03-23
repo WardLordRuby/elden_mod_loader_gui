@@ -79,7 +79,7 @@ pub fn new_cfg(path: &str) -> io::Result<()> {
     Ok(())
 }
 
-pub fn remove_array(file_name: &str, key: &str) -> io::Result<()> {
+pub fn remove_array(file_name: &str, key: &str) -> Result<(), ini::Error> {
     let format_key = key.trim().replace(' ', "_");
     let content = read_to_string(file_name)?;
 
@@ -100,7 +100,7 @@ pub fn remove_array(file_name: &str, key: &str) -> io::Result<()> {
 
     let lines: Vec<&str> = content.lines().filter(|&line| filter_lines(line)).collect();
 
-    write(file_name, lines.join("\r\n"))
+    write(file_name, lines.join("\r\n")).map_err(ini::Error::Io)
 }
 
 pub fn remove_entry(file_name: &str, section: Option<&str>, key: &str) -> Result<(), ini::Error> {

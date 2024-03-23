@@ -5,17 +5,17 @@ use rand::{distributions::Alphanumeric, Rng};
 use std::{fs::remove_file, path::PathBuf};
 
 fn populate_non_valid_ini(len: u32, file: &str) {
-    let _ = new_cfg(file);
+    new_cfg(file).unwrap();
     for i in 0..len {
         let key = format!("key_{}", i);
         let bool_value = rand::thread_rng().gen_bool(0.5);
         let paths = generate_test_paths();
 
-        let _ = save_bool(BENCH_TEST_FILE, Some("registered-mods"), &key, bool_value);
+        save_bool(BENCH_TEST_FILE, Some("registered-mods"), &key, bool_value).unwrap();
         if paths.len() > 1 {
-            let _ = save_path_bufs(BENCH_TEST_FILE, &key, &paths);
+            save_path_bufs(BENCH_TEST_FILE, &key, &paths).unwrap();
         } else {
-            let _ = save_path(BENCH_TEST_FILE, Some("mod-files"), &key, paths[0].as_path());
+            save_path(BENCH_TEST_FILE, Some("mod-files"), &key, paths[0].as_path()).unwrap();
         }
     }
 }
@@ -44,7 +44,7 @@ fn data_collection_benchmark(c: &mut Criterion) {
     c.bench_function("data_collection", |b| {
         b.iter(|| black_box(RegMod::collect(BENCH_TEST_FILE, true)));
     });
-    let _ = remove_file(BENCH_TEST_FILE);
+    remove_file(BENCH_TEST_FILE).unwrap();
 }
 
 criterion_group!(benches, data_collection_benchmark);

@@ -244,6 +244,7 @@ impl Valitidity for Ini {
     }
 }
 
+#[derive(Default)]
 pub struct RegMod {
     pub name: String,
     pub state: bool,
@@ -251,11 +252,9 @@ pub struct RegMod {
 }
 
 impl RegMod {
-    pub fn collect(path: &str, skip_validation: bool) -> Vec<Self> {
-        fn sync_keys<'a>(
-            ini: &'a Ini,
-            path: &str,
-        ) -> HashMap<&'a str, (Result<bool, ParseBoolError>, Vec<PathBuf>)> {
+    pub fn collect(path: &str, skip_validation: bool) -> Result<Vec<Self>, ini::Error> {
+        type HashData<'a> = HashMap<&'a str, (Result<bool, ParseBoolError>, Vec<PathBuf>)>;
+        fn sync_keys<'a>(ini: &'a Ini, path: &str) -> Result<HashData<'a>, ini::Error> {
             fn collect_file_data(section: &Properties) -> HashMap<&str, Vec<&str>> {
                 section
                     .iter()
@@ -302,7 +301,7 @@ impl RegMod {
                 .collect();
             for key in invalid_state {
                 state_data.remove(key);
-                remove_entry(path, Some("registered-mods"), key);
+                remove_entry(path, Some("registered-mods"), key)?;
                 warn!("\"{}\" has no matching files", key);
             }
             let invalid_files: Vec<_> = file_data
@@ -312,14 +311,14 @@ impl RegMod {
                 .collect();
             for key in invalid_files {
                 if file_data.get(key).unwrap().len() > 1 {
-                    remove_array(path, key);
+                    remove_array(path, key)?;
                 } else {
-                    remove_entry(path, Some("mod-files"), key);
+                    remove_entry(path, Some("mod-files"), key)?;
                 }
                 file_data.remove(key);
                 warn!("\"{}\" has no matching state", key);
             }
-            combine_map_data(state_data, file_data)
+            Ok(combine_map_data(state_data, file_data))
         }
         fn collect_data_unsafe(ini: &Ini) -> Vec<(&str, &str, Vec<&str>)> {
             let mod_state_data = ini.section(Some("registered-mods")).unwrap();
@@ -344,17 +343,17 @@ impl RegMod {
 
         if skip_validation {
             let parsed_data = collect_data_unsafe(&ini);
-            parsed_data
+            Ok(parsed_data
                 .iter()
                 .map(|(n, s, f)| RegMod {
                     name: n.replace('_', " ").to_string(),
                     state: s.parse::<bool>().unwrap(),
                     files: f.iter().map(PathBuf::from).collect(),
                 })
-                .collect()
+                .collect())
         } else {
-            let parsed_data = sync_keys(&ini, path);
-            parsed_data
+            let parsed_data = sync_keys(&ini, path)?;
+            Ok(parsed_data
                 .iter()
                 .filter_map(|(k, (s, f))| match &s {
                     Ok(bool) => match f.len() {
@@ -398,10 +397,10 @@ impl RegMod {
                         None
                     }
                 })
-                .collect()
+                .collect())
         }
     }
-    pub fn verify_state(&self, game_dir: &Path) {
+    pub fn verify_state(&self, game_dir: &Path) -> Result<(), ini::Error> {
         let off_state = OsStr::new("disabled");
         if (!self.state
             && self
@@ -424,8 +423,9 @@ impl RegMod {
                 self.state,
                 self.files.to_owned(),
                 CONFIG_DIR,
-            )
+            )?
         }
+        Ok(())
     }
 }
 // ----------------------Optimized original implementation-------------------------------

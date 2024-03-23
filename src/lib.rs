@@ -8,7 +8,7 @@ use ini_tools::{
     parser::IniProperty,
     writer::{remove_array, save_bool, save_path, save_path_bufs},
 };
-use log::{debug, error, info, trace, warn};
+use log::{error, info, trace, warn};
 
 use std::{
     env,
@@ -51,7 +51,7 @@ pub fn toggle_files(
     new_state: bool,
     file_paths: Vec<PathBuf>,
     save_file: &str,
-) {
+) -> Result<(), ini::Error> {
     // Takes in a potential pathBuf, finds file_name name and outputs the new_state version
     fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
         file_paths
@@ -105,14 +105,15 @@ pub fn toggle_files(
         state: bool,
         key: &str,
         save_file: &str,
-    ) {
+    ) -> Result<(), ini::Error> {
         if *num_file == 1 {
-            save_path(save_file, Some("mod-files"), key, &path_to_save[0]);
+            save_path(save_file, Some("mod-files"), key, &path_to_save[0])?;
         } else {
-            remove_array(save_file, key);
-            save_path_bufs(save_file, key, &path_to_save);
+            remove_array(save_file, key)?;
+            save_path_bufs(save_file, key, &path_to_save)?;
         }
-        save_bool(save_file, Some("registered-mods"), key, state);
+        save_bool(save_file, Some("registered-mods"), key, state)?;
+        Ok(())
     }
     let num_of_files = file_paths.len();
 
@@ -128,9 +129,10 @@ pub fn toggle_files(
     let full_path_new = join_paths(PathBuf::from(game_dir), short_path_new.clone());
     let full_path_original = original_full_paths_thread.join().unwrap();
 
-    rename_files(&num_of_files, full_path_original, full_path_new);
+    rename_files(&num_of_files, full_path_original, full_path_new)?;
 
-    update_cfg(&num_of_files, short_path_new, new_state, key, save_file);
+    update_cfg(&num_of_files, short_path_new, new_state, key, save_file)?;
+    Ok(())
 }
 
 pub fn get_cfg(input_file: &str) -> Result<Ini, ini::Error> {
@@ -173,7 +175,7 @@ pub enum PathResult {
     Partial(PathBuf),
     None(PathBuf),
 }
-pub fn attempt_locate_game(file_name: &str) -> PathResult {
+pub fn attempt_locate_game(file_name: &str) -> Result<PathResult, ini::Error> {
     let config: Ini = match get_cfg(file_name) {
         Ok(ini) => {
             trace!(
@@ -188,7 +190,7 @@ pub fn attempt_locate_game(file_name: &str) -> PathResult {
                 file_name
             );
             error!("Error: {}", err);
-            return PathResult::None(PathBuf::from(""));
+            return Ok(PathResult::None(PathBuf::from("")));
         }
     };
     if let Some(path) = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
@@ -203,20 +205,20 @@ pub fn attempt_locate_game(file_name: &str) -> PathResult {
         })
     {
         info!("Success: \"game_dir\" from ini is valid");
-        return PathResult::Full(path);
+        return Ok(PathResult::Full(path));
     }
     let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or_else(|| "".into());
     if does_dir_contain(&try_locate, &REQUIRED_GAME_FILES).is_ok() {
         info!("Success: located \"game_dir\" on drive");
-        save_path(CONFIG_DIR, Some("paths"), "game_dir", try_locate.as_path());
-        return PathResult::Full(try_locate);
+        save_path(CONFIG_DIR, Some("paths"), "game_dir", try_locate.as_path())?;
+        return Ok(PathResult::Full(try_locate));
     }
     if try_locate.components().count() > 1 {
         info!("Partial \"game_dir\" found");
-        return PathResult::Partial(try_locate);
+        return Ok(PathResult::Partial(try_locate));
     }
     warn!("Could not locate \"game_dir\"");
-    PathResult::None(try_locate)
+    Ok(PathResult::None(try_locate))
 }
 
 fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {

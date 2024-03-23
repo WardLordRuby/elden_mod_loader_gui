@@ -11,7 +11,7 @@ use elden_mod_loader_gui::{
     *,
 };
 use i_slint_backend_winit::WinitWindowAccessor;
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use std::{
@@ -42,27 +42,43 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
             Err(err) => {
+                ui.display_err(&err.to_string());
                 error!("Error: {}", err);
                 false
             }
         };
         if !ini_valid {
             warn!("Ini not setup correctly. Creating new Ini");
-            new_cfg(CONFIG_DIR);
+            new_cfg(CONFIG_DIR).unwrap();
         }
 
         let game_verified: bool;
-        let game_dir = match attempt_locate_game(CONFIG_DIR) {
-            PathResult::Full(path) => {
-                RegMod::collect(CONFIG_DIR, false)
-                    .iter()
-                    .for_each(|data: &RegMod| data.verify_state(&path));
-                game_verified = true;
-                path
-            }
-            PathResult::Partial(path) | PathResult::None(path) => {
+        let game_dir: Option<PathBuf> = match attempt_locate_game(CONFIG_DIR) {
+            Ok(path_result) => match path_result {
+                PathResult::Full(path) => match RegMod::collect(CONFIG_DIR, false) {
+                    Ok(reg_mods) => {
+                        reg_mods.iter().for_each(|data| {
+                            data.verify_state(&path)
+                                .unwrap_or_else(|err| ui.display_err(&err.to_string()))
+                        });
+                        game_verified = true;
+                        Some(path)
+                    }
+                    Err(err) => {
+                        game_verified = false;
+                        ui.display_err(&err.to_string());
+                        None
+                    }
+                },
+                PathResult::Partial(path) | PathResult::None(path) => {
+                    game_verified = false;
+                    Some(path)
+                }
+            },
+            Err(err) => {
+                ui.display_err(&err.to_string());
                 game_verified = false;
-                path
+                None
             }
         };
 
@@ -75,21 +91,35 @@ fn main() -> Result<(), slint::PlatformError> {
             Some(bool) => ui.global::<SettingsLogic>().set_dark_mode(bool.value),
             None => {
                 ui.global::<SettingsLogic>().set_dark_mode(true);
-                save_bool(CONFIG_DIR, Some("app-settings"), "dark-mode", true);
+                save_bool(CONFIG_DIR, Some("app-settings"), "dark-mode", true)
+                    .unwrap_or_else(|err| ui.display_err(&err.to_string()));
             }
         };
 
         ui.global::<MainLogic>().set_game_path_valid(game_verified);
+        ui.global::<SettingsLogic>().set_game_path(
+            game_dir
+                .unwrap_or(PathBuf::from(""))
+                .to_string_lossy()
+                .to_string()
+                .into(),
+        );
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
-            ui.global::<MainLogic>()
-                .set_current_mods(deserialize(&RegMod::collect(CONFIG_DIR, false)));
+            ui.global::<MainLogic>().set_current_mods(deserialize(
+                &RegMod::collect(CONFIG_DIR, false).unwrap_or_else(|err| {
+                    ui.display_err(&err.to_string());
+                    vec![RegMod::default()]
+                }),
+            ));
         } else {
-            ui.global::<MainLogic>()
-                .set_current_mods(deserialize(&RegMod::collect(CONFIG_DIR, true)));
+            ui.global::<MainLogic>().set_current_mods(deserialize(
+                &RegMod::collect(CONFIG_DIR, true).unwrap_or_else(|err| {
+                    ui.display_err(&err.to_string());
+                    vec![RegMod::default()]
+                }),
+            ));
         }
-        ui.global::<SettingsLogic>()
-            .set_game_path(game_dir.to_string_lossy().to_string().into());
     }
 
     // Error check input text for invalid symbols | If mod_name already exists confirm overwrite dialog -> if array into entry -> remove_array fist
@@ -111,10 +141,12 @@ fn main() -> Result<(), slint::PlatformError> {
                 Ok(files) => match shorten_paths(files, &game_dir) {
                     Ok(paths) => match paths.len() {
                         1 => {
-                            save_path(CONFIG_DIR, Some("mod-files"), &mod_name, paths[0].as_path());
+                            save_path(CONFIG_DIR, Some("mod-files"), &mod_name, paths[0].as_path())
+                                .unwrap_or_else(|err| ui.display_err(&err.to_string()));
                         }
                         _ => {
-                            save_path_bufs(CONFIG_DIR, &mod_name, &paths);
+                            save_path_bufs(CONFIG_DIR, &mod_name, &paths)
+                                .unwrap_or_else(|err| ui.display_err(&err.to_string()));
                         }
                     },
                     Err(err) => {
@@ -125,16 +157,21 @@ fn main() -> Result<(), slint::PlatformError> {
                 },
                 Err(err) => {
                     info!("{}", err);
-                    ui.display_err(&err.to_string());
+                    ui.display_err(err);
                     return;
                 }
             };
-            save_bool(CONFIG_DIR, Some("registered-mods"), &mod_name, true);
+            save_bool(CONFIG_DIR, Some("registered-mods"), &mod_name, true)
+                .unwrap_or_else(|err| ui.display_err(&err.to_string()));
             // Add conditons here to keep line edit text the same
             ui.global::<MainLogic>()
                 .set_line_edit_text(SharedString::from(""));
-            ui.global::<MainLogic>()
-                .set_current_mods(deserialize(&RegMod::collect(CONFIG_DIR, false)));
+            ui.global::<MainLogic>().set_current_mods(deserialize(
+                &RegMod::collect(CONFIG_DIR, false).unwrap_or_else(|err| {
+                    ui.display_err(&err.to_string());
+                    vec![RegMod::default()]
+                }),
+            ));
         }
     });
     ui.global::<SettingsLogic>().on_select_game_dir({
@@ -175,7 +212,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             ui.global::<MainLogic>().set_game_path_valid(true);
                             ui.global::<SettingsLogic>()
                                 .set_game_path(try_path.to_string_lossy().to_string().into());
-                            save_path(CONFIG_DIR, Some("paths"), "game_dir", &try_path);
+                            save_path(CONFIG_DIR, Some("paths"), "game_dir", &try_path)
+                                .unwrap_or_else(|err| ui.display_err(&err.to_string()));
                         }
                         Err(err) => {
                             match err.kind() {
@@ -194,20 +232,27 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
     ui.global::<MainLogic>().on_toggleMod({
+        let ui_handle = ui.as_weak();
         let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
         move |key: SharedString| {
-            let reg_mods = RegMod::collect(CONFIG_DIR, false);
-            if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
-                toggle_files(
-                    &found_mod.name,
-                    &game_dir,
-                    !found_mod.state,
-                    found_mod.files.clone(),
-                    CONFIG_DIR,
-                );
-            } else {
-                error!("Mod: \"{}\" not found", key);
-            };
+            let ui = ui_handle.unwrap();
+            match RegMod::collect(CONFIG_DIR, false) {
+                Ok(reg_mods) => {
+                    if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
+                        toggle_files(
+                            &found_mod.name,
+                            &game_dir,
+                            !found_mod.state,
+                            found_mod.files.clone(),
+                            CONFIG_DIR,
+                        )
+                        .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                    } else {
+                        error!("Mod: \"{}\" not found", key);
+                    };
+                }
+                Err(err) => ui.display_err(&err.to_string()),
+            }
         }
     });
     ui.global::<MainLogic>().on_force_app_focus({
@@ -224,31 +269,51 @@ fn main() -> Result<(), slint::PlatformError> {
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
             match get_user_files(&game_dir) {
                 Ok(files) => {
-                    let reg_mods = RegMod::collect(CONFIG_DIR, false);
-                    if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
-                        let mut new_data = found_mod.files.clone();
-                        match shorten_paths(files, &game_dir) {
-                            Ok(short_paths) => {
-                                new_data.extend(short_paths.iter().cloned());
-                                if found_mod.files.len() == 1 {
-                                    remove_entry(CONFIG_DIR, Some("mod-files"), &found_mod.name);
-                                } else {
-                                    remove_array(CONFIG_DIR, &found_mod.name);
+                    match RegMod::collect(CONFIG_DIR, false) {
+                        Ok(reg_mods) => {
+                            if let Some(found_mod) =
+                                reg_mods.iter().find(|reg_mod| key == reg_mod.name)
+                            {
+                                let mut new_data = found_mod.files.clone();
+                                match shorten_paths(files, &game_dir) {
+                                    Ok(short_paths) => {
+                                        new_data.extend(short_paths.iter().cloned());
+                                        if found_mod.files.len() == 1 {
+                                            remove_entry(
+                                                CONFIG_DIR,
+                                                Some("mod-files"),
+                                                &found_mod.name,
+                                            )
+                                            .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                                        } else {
+                                            remove_array(CONFIG_DIR, &found_mod.name)
+                                                .unwrap_or_else(|err| {
+                                                    ui.display_err(&err.to_string())
+                                                });
+                                        }
+                                        save_path_bufs(CONFIG_DIR, &found_mod.name, &new_data)
+                                            .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                                        ui.global::<MainLogic>().set_current_mods(deserialize(
+                                            &RegMod::collect(CONFIG_DIR, false).unwrap_or_else(
+                                                |err| {
+                                                    ui.display_err(&err.to_string());
+                                                    vec![RegMod::default()]
+                                                },
+                                            ),
+                                        ));
+                                        // Make sure that user remains on correct page if mod order changes apon set_current_mods
+                                    }
+                                    Err(err) => {
+                                        error!("{}", err);
+                                        ui.display_err(&err.to_string());
+                                    }
                                 }
-                                save_path_bufs(CONFIG_DIR, &found_mod.name, &new_data);
-                                ui.global::<MainLogic>().set_current_mods(deserialize(
-                                    &RegMod::collect(CONFIG_DIR, false),
-                                ));
-                                // Make sure that user remains on correct page if mod order changes apon set_current_mods
-                            }
-                            Err(err) => {
-                                error!("{}", err);
-                                ui.display_err(&err.to_string());
-                            }
+                            } else {
+                                error!("Mod: \"{}\" not found", key);
+                                ui.display_err(&format!("Mod: \"{}\" not found", key));
+                            };
                         }
-                    } else {
-                        error!("Mod: \"{}\" not found", key);
-                        ui.display_err(&format!("Mod: \"{}\" not found", key));
+                        Err(err) => ui.display_err(&err.to_string()),
                     };
                 }
                 Err(err) => {
@@ -262,36 +327,48 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |key: SharedString| {
             let ui = ui_handle.unwrap();
-            let reg_mods = RegMod::collect(CONFIG_DIR, false);
-            if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
-                if found_mod
-                    .files
-                    .iter()
-                    .any(|file| file.extension().expect("file with extention") == "disabled")
-                {
-                    let game_dir =
-                        PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-                    toggle_files(
-                        &found_mod.name,
-                        &game_dir,
-                        true,
-                        found_mod.files.clone(),
-                        CONFIG_DIR,
-                    );
+            match RegMod::collect(CONFIG_DIR, false) {
+                Ok(reg_mods) => {
+                    if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
+                        if found_mod.files.iter().any(|file| {
+                            file.extension().expect("file with extention") == "disabled"
+                        }) {
+                            let game_dir = PathBuf::from(
+                                ui.global::<SettingsLogic>().get_game_path().to_string(),
+                            );
+                            toggle_files(
+                                &found_mod.name,
+                                &game_dir,
+                                true,
+                                found_mod.files.clone(),
+                                CONFIG_DIR,
+                            )
+                            .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                        }
+                        remove_entry(CONFIG_DIR, Some("registered-mods"), &found_mod.name)
+                            .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                        // we can let sync keys take care of removing files from ini
+                        ui.global::<MainLogic>().set_current_mods(deserialize(
+                            &RegMod::collect(CONFIG_DIR, false).unwrap_or_else(|err| {
+                                ui.display_err(&err.to_string());
+                                vec![RegMod::default()]
+                            }),
+                        ));
+                    } else {
+                        error!("Mod: \"{}\" not found", key);
+                    };
                 }
-                remove_entry(CONFIG_DIR, Some("registered-mods"), &found_mod.name);
-                // we can let sync keys take care of removing files from ini
-                ui.global::<MainLogic>()
-                    .set_current_mods(deserialize(&RegMod::collect(CONFIG_DIR, false)));
-            } else {
-                error!("Mod: \"{}\" not found", key);
+                Err(err) => ui.display_err(&err.to_string()),
             };
             ui.global::<MainLogic>().set_current_subpage(0);
         }
     });
     ui.global::<SettingsLogic>().on_toggle_theme({
+        let ui_handle = ui.as_weak();
         move |state| {
-            save_bool(CONFIG_DIR, Some("app-settings"), "dark-mode", state);
+            let ui = ui_handle.unwrap();
+            save_bool(CONFIG_DIR, Some("app-settings"), "dark-mode", state)
+                .unwrap_or_else(|err| ui.display_err(&err.to_string()));
         }
     });
 
@@ -299,11 +376,7 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.run()
 }
 
-trait DisplayMessage {
-    fn display_err(&self, msg: &str);
-}
-
-impl DisplayMessage for App {
+impl App {
     fn display_err(&self, msg: &str) {
         self.set_err_message(SharedString::from(msg));
         self.invoke_show_error_popup();
