@@ -28,7 +28,6 @@ const DEFAULT_GAME_DIR: [&str; 6] = [
     "ELDEN RING",
     "Game",
 ];
-pub const CONFIG_DIR: &str = "mod_loader_config.ini";
 pub const REQUIRED_GAME_FILES: [&str; 3] = [
     "eldenring.exe",
     "oo2core_6_win64.dll",
@@ -50,7 +49,7 @@ pub fn toggle_files(
     game_dir: &Path,
     new_state: bool,
     file_paths: Vec<PathBuf>,
-    save_file: &str,
+    save_file: &Path,
 ) -> Result<(), ini::Error> {
     // Takes in a potential pathBuf, finds file_name name and outputs the new_state version
     fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
@@ -104,7 +103,7 @@ pub fn toggle_files(
         path_to_save: Vec<PathBuf>,
         state: bool,
         key: &str,
-        save_file: &str,
+        save_file: &Path,
     ) -> Result<(), ini::Error> {
         if *num_file == 1 {
             save_path(save_file, Some("mod-files"), key, &path_to_save[0])?;
@@ -135,8 +134,8 @@ pub fn toggle_files(
     Ok(())
 }
 
-pub fn get_cfg(input_file: &str) -> Result<Ini, ini::Error> {
-    Ini::load_from_file_noescape(Path::new(input_file))
+pub fn get_cfg(input_file: &Path) -> Result<Ini, ini::Error> {
+    Ini::load_from_file_noescape(input_file)
 }
 
 pub fn does_dir_contain(path: &Path, list: &[&str]) -> Result<(), io::Error> {
@@ -175,19 +174,19 @@ pub enum PathResult {
     Partial(PathBuf),
     None(PathBuf),
 }
-pub fn attempt_locate_game(file_name: &str) -> Result<PathResult, ini::Error> {
+pub fn attempt_locate_game(file_name: &Path) -> Result<PathResult, ini::Error> {
     let config: Ini = match get_cfg(file_name) {
         Ok(ini) => {
             trace!(
                 "Success: (attempt_locate_game) Read ini from \"{}\"",
-                file_name
+                file_name.display()
             );
             ini
         }
         Err(err) => {
             error!(
                 "Failure: (attempt_locate_game) Could not complete. Could not read ini from \"{}\"",
-                file_name
+                file_name.display()
             );
             error!("Error: {}", err);
             return Ok(PathResult::None(PathBuf::from("")));
@@ -210,7 +209,7 @@ pub fn attempt_locate_game(file_name: &str) -> Result<PathResult, ini::Error> {
     let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or_else(|| "".into());
     if does_dir_contain(&try_locate, &REQUIRED_GAME_FILES).is_ok() {
         info!("Success: located \"game_dir\" on drive");
-        save_path(CONFIG_DIR, Some("paths"), "game_dir", try_locate.as_path())?;
+        save_path(file_name, Some("paths"), "game_dir", try_locate.as_path())?;
         return Ok(PathResult::Full(try_locate));
     }
     if try_locate.components().count() > 1 {

@@ -21,7 +21,7 @@ const WRITE_OPTIONS: WriteOption = WriteOption {
     kv_separator: "=",
 };
 
-pub fn save_path_bufs(file_name: &str, key: &str, files: &[PathBuf]) -> Result<(), ini::Error> {
+pub fn save_path_bufs(file_name: &Path, key: &str, files: &[PathBuf]) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
     let format_key = key.trim().replace(' ', "_");
     let save_paths = files
@@ -38,7 +38,7 @@ pub fn save_path_bufs(file_name: &str, key: &str, files: &[PathBuf]) -> Result<(
 }
 
 pub fn save_path(
-    file_name: &str,
+    file_name: &Path,
     section: Option<&str>,
     key: &str,
     path: &Path,
@@ -54,7 +54,7 @@ pub fn save_path(
 }
 
 pub fn save_bool(
-    file_name: &str,
+    file_name: &Path,
     section: Option<&str>,
     key: &str,
     value: bool,
@@ -69,7 +69,7 @@ pub fn save_bool(
         .map_err(ini::Error::Io)
 }
 
-pub fn new_cfg(path: &str) -> io::Result<()> {
+pub fn new_cfg(path: &Path) -> io::Result<()> {
     let mut new_ini = File::create(path)?;
 
     for section in INI_SECTIONS {
@@ -79,7 +79,7 @@ pub fn new_cfg(path: &str) -> io::Result<()> {
     Ok(())
 }
 
-pub fn remove_array(file_name: &str, key: &str) -> Result<(), ini::Error> {
+pub fn remove_array(file_name: &Path, key: &str) -> Result<(), ini::Error> {
     let format_key = key.trim().replace(' ', "_");
     let content = read_to_string(file_name)?;
 
@@ -103,7 +103,7 @@ pub fn remove_array(file_name: &str, key: &str) -> Result<(), ini::Error> {
     write(file_name, lines.join("\r\n")).map_err(ini::Error::Io)
 }
 
-pub fn remove_entry(file_name: &str, section: Option<&str>, key: &str) -> Result<(), ini::Error> {
+pub fn remove_entry(file_name: &Path, section: Option<&str>, key: &str) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
     let format_key = key.trim().replace(' ', "_");
     config

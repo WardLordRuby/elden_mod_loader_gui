@@ -21,10 +21,18 @@ use std::{
     rc::Rc,
 };
 
+#[macro_use]
+extern crate lazy_static;
+
+const CONFIG_NAME: &str = "mod_loader_config.ini";
+
 fn main() -> Result<(), slint::PlatformError> {
     env_logger::init();
     slint::platform::set_platform(Box::new(i_slint_backend_winit::Backend::new().unwrap()))
         .expect("This app uses the winit backend");
+    lazy_static! {
+        static ref CURRENT_INI: PathBuf = get_ini_dir();
+    }
     let ui = App::new()?;
     ui.window()
         .with_winit_window(|window: &winit::window::Window| {
@@ -33,11 +41,10 @@ fn main() -> Result<(), slint::PlatformError> {
             );
         });
     {
-        let ini_dir = get_ini_dir();
-        let ini_valid = match get_cfg(&ini_dir) {
+        let ini_valid = match get_cfg(&CURRENT_INI) {
             Ok(ini) => {
                 if ini.is_setup() {
-                    info!("Config file found at \"{}\"", &ini_dir);
+                    info!("Config file found at \"{}\"", &CURRENT_INI.display());
                     true
                 } else {
                     false
@@ -51,16 +58,16 @@ fn main() -> Result<(), slint::PlatformError> {
         };
         if !ini_valid {
             warn!("Ini not setup correctly. Creating new Ini");
-            new_cfg(&ini_dir).unwrap();
+            new_cfg(&CURRENT_INI).unwrap();
         }
 
         let game_verified: bool;
-        let game_dir: Option<PathBuf> = match attempt_locate_game(&ini_dir) {
+        let game_dir: Option<PathBuf> = match attempt_locate_game(&CURRENT_INI) {
             Ok(path_result) => match path_result {
-                PathResult::Full(path) => match RegMod::collect(&ini_dir, false) {
+                PathResult::Full(path) => match RegMod::collect(&CURRENT_INI, false) {
                     Ok(reg_mods) => {
                         reg_mods.iter().for_each(|data| {
-                            data.verify_state(&path)
+                            data.verify_state(&path, &CURRENT_INI)
                                 .unwrap_or_else(|err| ui.display_err(&err.to_string()))
                         });
                         game_verified = true;
@@ -85,7 +92,7 @@ fn main() -> Result<(), slint::PlatformError> {
         };
 
         match IniProperty::<bool>::read(
-            &get_cfg(&ini_dir).unwrap(),
+            &get_cfg(&CURRENT_INI).unwrap(),
             Some("app-settings"),
             "dark-mode",
             false,
@@ -93,7 +100,7 @@ fn main() -> Result<(), slint::PlatformError> {
             Some(bool) => ui.global::<SettingsLogic>().set_dark_mode(bool.value),
             None => {
                 ui.global::<SettingsLogic>().set_dark_mode(true);
-                save_bool(&ini_dir, Some("app-settings"), "dark-mode", true)
+                save_bool(&CURRENT_INI, Some("app-settings"), "dark-mode", true)
                     .unwrap_or_else(|err| ui.display_err(&err.to_string()));
             }
         };
@@ -109,14 +116,14 @@ fn main() -> Result<(), slint::PlatformError> {
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
             ui.global::<MainLogic>().set_current_mods(deserialize(
-                &RegMod::collect(&ini_dir, false).unwrap_or_else(|err| {
+                &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
                     ui.display_err(&err.to_string());
                     vec![RegMod::default()]
                 }),
             ));
         } else {
             ui.global::<MainLogic>().set_current_mods(deserialize(
-                &RegMod::collect(&ini_dir, true).unwrap_or_else(|err| {
+                &RegMod::collect(&CURRENT_INI, true).unwrap_or_else(|err| {
                     ui.display_err(&err.to_string());
                     vec![RegMod::default()]
                 }),
@@ -134,7 +141,6 @@ fn main() -> Result<(), slint::PlatformError> {
         let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
         let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
         move |mod_name: SharedString| {
-            let ini_dir = get_ini_dir();
             if !game_verified {
                 return;
             }
@@ -144,11 +150,16 @@ fn main() -> Result<(), slint::PlatformError> {
                 Ok(files) => match shorten_paths(files, &game_dir) {
                     Ok(paths) => match paths.len() {
                         1 => {
-                            save_path(&ini_dir, Some("mod-files"), &mod_name, paths[0].as_path())
-                                .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                            save_path(
+                                &CURRENT_INI,
+                                Some("mod-files"),
+                                &mod_name,
+                                paths[0].as_path(),
+                            )
+                            .unwrap_or_else(|err| ui.display_err(&err.to_string()));
                         }
                         _ => {
-                            save_path_bufs(&ini_dir, &mod_name, &paths)
+                            save_path_bufs(&CURRENT_INI, &mod_name, &paths)
                                 .unwrap_or_else(|err| ui.display_err(&err.to_string()));
                         }
                     },
@@ -164,13 +175,13 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
-            save_bool(&ini_dir, Some("registered-mods"), &mod_name, true)
+            save_bool(&CURRENT_INI, Some("registered-mods"), &mod_name, true)
                 .unwrap_or_else(|err| ui.display_err(&err.to_string()));
             // Add conditons here to keep line edit text the same
             ui.global::<MainLogic>()
                 .set_line_edit_text(SharedString::from(""));
             ui.global::<MainLogic>().set_current_mods(deserialize(
-                &RegMod::collect(&ini_dir, false).unwrap_or_else(|err| {
+                &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
                     ui.display_err(&err.to_string());
                     vec![RegMod::default()]
                 }),
@@ -184,7 +195,6 @@ fn main() -> Result<(), slint::PlatformError> {
 
         move || {
             let ui = ui_handle.unwrap();
-            let ini_dir = get_ini_dir();
             let user_path: Result<String, &'static str> = match get_user_folder(&game_dir_ref) {
                 Ok(opt) => match opt {
                     Some(selected_path) => Ok(selected_path.to_string_lossy().to_string()),
@@ -216,7 +226,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             ui.global::<MainLogic>().set_game_path_valid(true);
                             ui.global::<SettingsLogic>()
                                 .set_game_path(try_path.to_string_lossy().to_string().into());
-                            save_path(&ini_dir, Some("paths"), "game_dir", &try_path)
+                            save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path)
                                 .unwrap_or_else(|err| ui.display_err(&err.to_string()));
                         }
                         Err(err) => {
@@ -240,8 +250,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
         move |key: SharedString| {
             let ui = ui_handle.unwrap();
-            let ini_dir = get_ini_dir();
-            match RegMod::collect(&ini_dir, false) {
+            match RegMod::collect(&CURRENT_INI, false) {
                 Ok(reg_mods) => {
                     if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
                         toggle_files(
@@ -249,7 +258,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             &game_dir,
                             !found_mod.state,
                             found_mod.files.clone(),
-                            &ini_dir,
+                            &CURRENT_INI,
                         )
                         .unwrap_or_else(|err| ui.display_err(&err.to_string()));
                     } else {
@@ -269,13 +278,12 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_add_to_mod({
         let ui_handle = ui.as_weak();
-        let ini_dir = get_ini_dir();
         move |key: SharedString| {
             let ui = ui_handle.unwrap();
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
             match get_user_files(&game_dir) {
                 Ok(files) => {
-                    match RegMod::collect(&ini_dir, false) {
+                    match RegMod::collect(&CURRENT_INI, false) {
                         Ok(reg_mods) => {
                             if let Some(found_mod) =
                                 reg_mods.iter().find(|reg_mod| key == reg_mod.name)
@@ -286,20 +294,21 @@ fn main() -> Result<(), slint::PlatformError> {
                                         new_data.extend(short_paths.iter().cloned());
                                         if found_mod.files.len() == 1 {
                                             remove_entry(
-                                                &ini_dir,
+                                                &CURRENT_INI,
                                                 Some("mod-files"),
                                                 &found_mod.name,
                                             )
                                             .unwrap_or_else(|err| ui.display_err(&err.to_string()));
                                         } else {
-                                            remove_array(&ini_dir, &found_mod.name).unwrap_or_else(
-                                                |err| ui.display_err(&err.to_string()),
-                                            );
+                                            remove_array(&CURRENT_INI, &found_mod.name)
+                                                .unwrap_or_else(|err| {
+                                                    ui.display_err(&err.to_string())
+                                                });
                                         }
-                                        save_path_bufs(&ini_dir, &found_mod.name, &new_data)
+                                        save_path_bufs(&CURRENT_INI, &found_mod.name, &new_data)
                                             .unwrap_or_else(|err| ui.display_err(&err.to_string()));
                                         ui.global::<MainLogic>().set_current_mods(deserialize(
-                                            &RegMod::collect(&ini_dir, false).unwrap_or_else(
+                                            &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(
                                                 |err| {
                                                     ui.display_err(&err.to_string());
                                                     vec![RegMod::default()]
@@ -332,8 +341,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |key: SharedString| {
             let ui = ui_handle.unwrap();
-            let ini_dir = get_ini_dir();
-            match RegMod::collect(&ini_dir, false) {
+            match RegMod::collect(&CURRENT_INI, false) {
                 Ok(reg_mods) => {
                     if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
                         if found_mod.files.iter().any(|file| {
@@ -347,15 +355,15 @@ fn main() -> Result<(), slint::PlatformError> {
                                 &game_dir,
                                 true,
                                 found_mod.files.clone(),
-                                &ini_dir,
+                                &CURRENT_INI,
                             )
                             .unwrap_or_else(|err| ui.display_err(&err.to_string()));
                         }
-                        remove_entry(&ini_dir, Some("registered-mods"), &found_mod.name)
+                        remove_entry(&CURRENT_INI, Some("registered-mods"), &found_mod.name)
                             .unwrap_or_else(|err| ui.display_err(&err.to_string()));
                         // we can let sync keys take care of removing files from ini
                         ui.global::<MainLogic>().set_current_mods(deserialize(
-                            &RegMod::collect(&ini_dir, false).unwrap_or_else(|err| {
+                            &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
                                 ui.display_err(&err.to_string());
                                 vec![RegMod::default()]
                             }),
@@ -373,8 +381,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |state| {
             let ui = ui_handle.unwrap();
-            let ini_dir = get_ini_dir();
-            save_bool(&ini_dir, Some("app-settings"), "dark-mode", state)
+            save_bool(&CURRENT_INI, Some("app-settings"), "dark-mode", state)
                 .unwrap_or_else(|err| ui.display_err(&err.to_string()));
         }
     });
@@ -394,9 +401,9 @@ fn get_user_folder(path: &Path) -> Result<Option<PathBuf>, native_dialog::Error>
     FileDialog::new().set_location(path).show_open_single_dir()
 }
 
-fn get_ini_dir() -> String {
+fn get_ini_dir() -> PathBuf {
     let exe_dir = env::current_dir().expect("Failed to get current dir");
-    exe_dir.join(CONFIG_DIR).to_string_lossy().to_string()
+    exe_dir.join(CONFIG_NAME)
 }
 
 fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, &'static str> {

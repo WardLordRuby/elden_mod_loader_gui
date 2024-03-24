@@ -12,7 +12,7 @@ use std::{
 use crate::{
     get_cfg,
     ini_tools::writer::{remove_array, remove_entry, INI_SECTIONS},
-    toggle_files, CONFIG_DIR,
+    toggle_files,
 };
 
 pub trait ValueType: Sized {
@@ -252,9 +252,9 @@ pub struct RegMod {
 }
 
 impl RegMod {
-    pub fn collect(path: &str, skip_validation: bool) -> Result<Vec<Self>, ini::Error> {
+    pub fn collect(path: &Path, skip_validation: bool) -> Result<Vec<Self>, ini::Error> {
         type HashData<'a> = HashMap<&'a str, (Result<bool, ParseBoolError>, Vec<PathBuf>)>;
-        fn sync_keys<'a>(ini: &'a Ini, path: &str) -> Result<HashData<'a>, ini::Error> {
+        fn sync_keys<'a>(ini: &'a Ini, path: &Path) -> Result<HashData<'a>, ini::Error> {
             fn collect_file_data(section: &Properties) -> HashMap<&str, Vec<&str>> {
                 section
                     .iter()
@@ -400,7 +400,7 @@ impl RegMod {
                 .collect())
         }
     }
-    pub fn verify_state(&self, game_dir: &Path) -> Result<(), ini::Error> {
+    pub fn verify_state(&self, game_dir: &Path, ini_file: &Path) -> Result<(), ini::Error> {
         let off_state = OsStr::new("disabled");
         if (!self.state
             && self
@@ -422,7 +422,7 @@ impl RegMod {
                 game_dir,
                 self.state,
                 self.files.to_owned(),
-                CONFIG_DIR,
+                ini_file,
             )?
         }
         Ok(())

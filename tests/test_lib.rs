@@ -19,7 +19,7 @@ mod tests {
         let key = "test_files";
         let dir_to_test_files =
             Path::new("C:\\Users\\cal_b\\Documents\\School\\code\\elden_mod_loader_gui");
-        let save_file = "test_files\\file_toggle_test.ini";
+        let save_file = Path::new("test_files\\file_toggle_test.ini");
         new_cfg(save_file).unwrap();
 
         let test_files = vec![
