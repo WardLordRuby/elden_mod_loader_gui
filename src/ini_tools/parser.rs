@@ -39,7 +39,9 @@ impl ValueType for bool {
         key: &str,
         _skip_validation: bool,
     ) -> Result<Self, Self::ParseError> {
-        ini.get_from(section, key).unwrap().parse::<bool>()
+        ini.get_from(section, key)
+            .expect("Validated by IniProperty::is_valid")
+            .parse::<bool>()
     }
     /// Do not use | no extra steps needed for validating a bool, .parse already handles validation or ParseBoolError
     fn validate(
@@ -61,13 +63,16 @@ impl ValueType for PathBuf {
         skip_validation: bool,
     ) -> Result<Self, Self::ParseError> {
         if skip_validation {
-            Ok(PathBuf::from(ini.get_from(section, key).unwrap()))
+            Ok(PathBuf::from(
+                ini.get_from(section, key)
+                    .expect("Validated by IniProperty::is_valid"),
+            ))
         } else {
-            PathBuf::from(ini.get_from(section, key).unwrap()).validate(
-                ini,
-                section,
-                skip_validation,
+            PathBuf::from(
+                ini.get_from(section, key)
+                    .expect("Validated by IniProperty::is_valid"),
             )
+            .validate(ini, section, skip_validation)
         }
     }
     fn validate(
@@ -79,7 +84,7 @@ impl ValueType for PathBuf {
         if !disable {
             if section == Some("mod-files") {
                 let game_dir = IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
-                    .unwrap()
+                    .expect("game_dir is already checked to be valid")
                     .value;
                 match validate_path(&game_dir.join(&self)) {
                     Ok(()) => Ok(self),
@@ -115,9 +120,18 @@ impl ValueType for Vec<PathBuf> {
                 .collect()
         }
         if skip_validation {
-            Ok(read_array(ini.section(section).unwrap(), key))
+            Ok(read_array(
+                ini.section(section)
+                    .expect("Validated by IniProperty::is_valid"),
+                key,
+            ))
         } else {
-            read_array(ini.section(section).unwrap(), key).validate(ini, section, skip_validation)
+            read_array(
+                ini.section(section)
+                    .expect("Validated by IniProperty::is_valid"),
+                key,
+            )
+            .validate(ini, section, skip_validation)
         }
     }
     fn validate(
@@ -128,7 +142,7 @@ impl ValueType for Vec<PathBuf> {
     ) -> Result<Self, Self::ParseError> {
         if !disable {
             let game_dir = IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
-                .unwrap()
+                .expect("game_dir is already checked to be valid")
                 .value;
             if let Some(err) = self
                 .iter()
@@ -185,7 +199,7 @@ impl<T: ValueType> IniProperty<T> {
                 trace!(
                     "Success: read key: \"{}\" Section: \"{}\" from ini",
                     key,
-                    section.unwrap()
+                    section.expect("Passed in section should be valid")
                 );
                 Some(IniProperty {
                     //section: Some(section.unwrap().to_string()),
@@ -198,7 +212,7 @@ impl<T: ValueType> IniProperty<T> {
                     "{}",
                     format!(
                         "Value stored in Section: \"{}\", Key: \"{}\" is not valid",
-                        section.unwrap(),
+                        section.expect("Passed in section should be valid"),
                         key
                     )
                 );
@@ -224,7 +238,7 @@ impl<T: ValueType> IniProperty<T> {
             },
             None => Err(format!(
                 "Section: \"{}\" not found in {:?}",
-                section.unwrap(),
+                section.expect("Passed in section should be valid"),
                 ini
             )),
         }
@@ -290,8 +304,12 @@ impl RegMod {
                     })
                     .collect()
             }
-            let mod_state_data = ini.section(Some("registered-mods")).unwrap();
-            let mod_files_data = ini.section(Some("mod-files")).unwrap();
+            let mod_state_data = ini
+                .section(Some("registered-mods"))
+                .expect("Validated by Ini::is_setup on startup");
+            let mod_files_data = ini
+                .section(Some("mod-files"))
+                .expect("Validated by Ini::is_setup on startup");
             let mut state_data = mod_state_data.iter().collect::<HashMap<&str, &str>>();
             let mut file_data = collect_file_data(mod_files_data);
             let invalid_state: Vec<_> = state_data
@@ -310,7 +328,7 @@ impl RegMod {
                 .cloned()
                 .collect();
             for key in invalid_files {
-                if file_data.get(key).unwrap().len() > 1 {
+                if file_data.get(key).expect("key exists").len() > 1 {
                     remove_array(path, key)?;
                 } else {
                     remove_entry(path, Some("mod-files"), key)?;
@@ -321,8 +339,12 @@ impl RegMod {
             Ok(combine_map_data(state_data, file_data))
         }
         fn collect_data_unsafe(ini: &Ini) -> Vec<(&str, &str, Vec<&str>)> {
-            let mod_state_data = ini.section(Some("registered-mods")).unwrap();
-            let mod_files_data = ini.section(Some("mod-files")).unwrap();
+            let mod_state_data = ini
+                .section(Some("registered-mods"))
+                .expect("Validated by Ini::is_setup on startup");
+            let mod_files_data = ini
+                .section(Some("mod-files"))
+                .expect("Validated by Ini::is_setup on startup");
             mod_files_data
                 .iter()
                 .enumerate()
@@ -334,12 +356,12 @@ impl RegMod {
                         .take_while(|(k, _)| *k == "array[]")
                         .map(|(_, v)| v)
                         .collect();
-                    let s = mod_state_data.get(k).unwrap();
+                    let s = mod_state_data.get(k).expect("key exists");
                     (k, s, if v == "array" { paths } else { vec![v] })
                 })
                 .collect()
         }
-        let ini = get_cfg(path).unwrap();
+        let ini = get_cfg(path).expect("Validated by Ini::is_setup on startup");
 
         if skip_validation {
             let parsed_data = collect_data_unsafe(&ini);
@@ -347,7 +369,9 @@ impl RegMod {
                 .iter()
                 .map(|(n, s, f)| RegMod {
                     name: n.replace('_', " ").to_string(),
-                    state: s.parse::<bool>().unwrap(),
+                    state: s
+                        .parse::<bool>()
+                        .expect("Only run during test or previously ran validation"),
                     files: f.iter().map(PathBuf::from).collect(),
                 })
                 .collect())

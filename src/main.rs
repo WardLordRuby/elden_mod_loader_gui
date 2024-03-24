@@ -31,8 +31,10 @@ lazy_static! {
 
 fn main() -> Result<(), slint::PlatformError> {
     env_logger::init();
-    slint::platform::set_platform(Box::new(i_slint_backend_winit::Backend::new().unwrap()))
-        .expect("This app uses the winit backend");
+    slint::platform::set_platform(Box::new(
+        i_slint_backend_winit::Backend::new().expect("This app is being run on windows"),
+    ))
+    .expect("This app uses the winit backend");
     let ui = App::new()?;
     ui.window()
         .with_winit_window(|window: &winit::window::Window| {
@@ -95,7 +97,7 @@ fn main() -> Result<(), slint::PlatformError> {
         };
 
         match IniProperty::<bool>::read(
-            &get_cfg(&CURRENT_INI).unwrap(),
+            &get_cfg(&CURRENT_INI).expect("ini file is verified"),
             Some("app-settings"),
             "dark-mode",
             false,

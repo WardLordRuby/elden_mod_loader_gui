@@ -124,9 +124,9 @@ pub fn toggle_files(
         thread::spawn(move || toggle_name_state(&file_paths_clone, *state_clone));
     let original_full_paths_thread = thread::spawn(move || join_paths(game_dir_clone, file_paths));
 
-    let short_path_new = new_short_paths_thread.join().unwrap();
+    let short_path_new = new_short_paths_thread.join().unwrap_or(Vec::new());
     let full_path_new = join_paths(PathBuf::from(game_dir), short_path_new.clone());
-    let full_path_original = original_full_paths_thread.join().unwrap();
+    let full_path_original = original_full_paths_thread.join().unwrap_or(Vec::new());
 
     rename_files(&num_of_files, full_path_original, full_path_new)?;
 
@@ -206,7 +206,7 @@ pub fn attempt_locate_game(file_name: &Path) -> Result<PathResult, ini::Error> {
         info!("Success: \"game_dir\" from ini is valid");
         return Ok(PathResult::Full(path));
     }
-    let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or_else(|| "".into());
+    let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
     if does_dir_contain(&try_locate, &REQUIRED_GAME_FILES).is_ok() {
         info!("Success: located \"game_dir\" on drive");
         save_path(file_name, Some("paths"), "game_dir", try_locate.as_path())?;

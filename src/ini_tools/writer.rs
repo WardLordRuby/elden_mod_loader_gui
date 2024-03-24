@@ -113,7 +113,7 @@ pub fn remove_entry(file_name: &Path, section: Option<&str>, key: &str) -> Resul
             format!(
                 "Could not delete \"{}\" from Section: \"{}\"",
                 &format_key,
-                &section.unwrap()
+                &section.expect("Passed in section should be valid")
             ),
         )))?;
     config
