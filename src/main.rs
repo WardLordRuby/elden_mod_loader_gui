@@ -137,14 +137,14 @@ fn main() -> Result<(), slint::PlatformError> {
     // Error check for if selected file is already contained in a regested mod
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
-        let game_verified = ui.global::<MainLogic>().get_game_path_valid();
-        let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-        let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
         move |mod_name: SharedString| {
+            let ui = ui_handle.unwrap();
+            let game_verified = ui.global::<MainLogic>().get_game_path_valid();
             if !game_verified {
                 return;
             }
-            let ui = ui_handle.unwrap();
+            let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
+            let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
             let mod_files = get_user_files(&game_dir_ref);
             match mod_files {
                 Ok(files) => match shorten_paths(files, &game_dir) {
@@ -190,11 +190,10 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<SettingsLogic>().on_select_game_dir({
         let ui_handle = ui.as_weak();
-        let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-        let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
-
         move || {
             let ui = ui_handle.unwrap();
+            let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
+            let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
             let user_path: Result<String, &'static str> = match get_user_folder(&game_dir_ref) {
                 Ok(opt) => match opt {
                     Some(selected_path) => Ok(selected_path.to_string_lossy().to_string()),
@@ -247,9 +246,9 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_toggleMod({
         let ui_handle = ui.as_weak();
-        let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
         move |key: SharedString| {
             let ui = ui_handle.unwrap();
+            let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
             match RegMod::collect(&CURRENT_INI, false) {
                 Ok(reg_mods) => {
                     if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
