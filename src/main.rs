@@ -41,18 +41,21 @@ fn main() -> Result<(), slint::PlatformError> {
             );
         });
     {
+        let first_startup: bool;
         let ini_valid = match get_cfg(&CURRENT_INI) {
             Ok(ini) => {
                 if ini.is_setup() {
                     info!("Config file found at \"{}\"", &CURRENT_INI.display());
+                    first_startup = false;
                     true
                 } else {
+                    first_startup = false;
                     false
                 }
             }
             Err(err) => {
                 error!("Error: {}", err);
-                ui.display_err("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs");
+                first_startup = true;
                 false
             }
         };
@@ -113,6 +116,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 .to_string()
                 .into(),
         );
+        if first_startup && !game_verified {
+            ui.display_err(
+                "Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nPlease select the game directory containing \"eldenring.exe\"",
+            );
+        } else if first_startup && game_verified {
+            ui.display_err("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
+        }
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
             ui.global::<MainLogic>().set_current_mods(deserialize(
@@ -227,6 +237,8 @@ fn main() -> Result<(), slint::PlatformError> {
                                 .set_game_path(try_path.to_string_lossy().to_string().into());
                             save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path)
                                 .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                            ui.global::<MainLogic>().set_current_subpage(0);
+                            ui.display_err("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app")
                         }
                         Err(err) => {
                             match err.kind() {

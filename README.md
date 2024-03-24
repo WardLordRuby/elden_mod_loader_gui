@@ -8,10 +8,8 @@ Work in progress
 
 ### To-do:
 
-* Work on GUI:  
-* Polish Error dialog  
-* Create confirm dialog   
-* Better error handling  
+* App Icon  
+* Handle edge cases for selecting mod files  
 
 ### feats:
 
