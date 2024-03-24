@@ -177,7 +177,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     },
                     Err(err) => {
                         error!("Error: {}", err);
-                        ui.display_msg(&err.to_string());
+                        ui.display_msg("Mod files must be within the selected game directory");
                         return;
                     }
                 },
@@ -332,7 +332,9 @@ fn main() -> Result<(), slint::PlatformError> {
                                     }
                                     Err(err) => {
                                         error!("{}", err);
-                                        ui.display_msg(&err.to_string());
+                                        ui.display_msg(
+                                            "Mod files must be within the selected game directory",
+                                        );
                                     }
                                 }
                             } else {
