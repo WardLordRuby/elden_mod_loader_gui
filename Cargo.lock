@@ -1342,6 +1342,7 @@ dependencies = [
  "criterion",
  "env_logger",
  "i-slint-backend-winit",
+ "lazy_static",
  "log",
  "native-dialog",
  "rand",
