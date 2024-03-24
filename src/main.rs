@@ -1,5 +1,5 @@
 // Hides console on --release | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 slint::include_modules!();
 
@@ -25,14 +25,14 @@ use std::{
 extern crate lazy_static;
 
 const CONFIG_NAME: &str = "mod_loader_config.ini";
+lazy_static! {
+    static ref CURRENT_INI: PathBuf = get_ini_dir();
+}
 
 fn main() -> Result<(), slint::PlatformError> {
     env_logger::init();
     slint::platform::set_platform(Box::new(i_slint_backend_winit::Backend::new().unwrap()))
         .expect("This app uses the winit backend");
-    lazy_static! {
-        static ref CURRENT_INI: PathBuf = get_ini_dir();
-    }
     let ui = App::new()?;
     ui.window()
         .with_winit_window(|window: &winit::window::Window| {

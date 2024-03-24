@@ -406,12 +406,12 @@ impl RegMod {
             && self
                 .files
                 .iter()
-                .any(|path| path.extension() != Some(off_state)))
+                .any(|path| path.extension().expect("file with extention") != off_state))
             || (self.state
                 && self
                     .files
                     .iter()
-                    .any(|path| path.extension() == Some(off_state)))
+                    .any(|path| path.extension().expect("file with extention") == off_state))
         {
             warn!(
                 "wrong file state for \"{}\" chaning file extentions",
