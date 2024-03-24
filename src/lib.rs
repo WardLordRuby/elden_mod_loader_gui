@@ -155,13 +155,13 @@ pub fn does_dir_contain(path: &Path, list: &[&str]) -> Result<(), io::Error> {
             if all_files_exist {
                 Ok(())
             } else {
+                error!(
+                    "{}",
+                    format!("Failure: {:?} not found in: \"{}\"", list, path.display(),)
+                );
                 Err(io::Error::new(
                     io::ErrorKind::NotFound,
-                    format!(
-                        "Failure: {:?} not found in: \"{}\"",
-                        list,
-                        path.to_string_lossy(),
-                    ),
+                    format!("Game files not found in selected path\n{}", path.display()),
                 ))
             }
         }

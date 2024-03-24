@@ -6,6 +6,13 @@ export { MainLogic, SettingsLogic, DisplayMod }
 
 export component App inherits Window {
     in property <string> err-message;
+    property <length> popup-window-x-pos: {
+        if ((mp.width - err-msg-size.width - 13px) / 2) < 0 {
+            10px
+        } else {
+            (mp.width - err-msg-size.width - 13px) / 2
+        }
+    };
     title: @tr("Elden Mod Loader");
     preferred-height: 370px;
     min-height: 310px;
@@ -25,28 +32,30 @@ export component App inherits Window {
     err_msg_size := Text {
         visible: false;
         text: root.err-message;
+        max-width: mp.width - 30px;
     }
 
     // Make popupWindow look nice 
     err_popup := PopupWindow {
-        x: (mp.width - err-msg-size.width - 13px) / 2;
+        x: popup-window-x-pos;
         y: 135px;
         height: err-msg-size.height + 20px;
         width: err-msg-size.width + 20px;
         close-on-click: false;
-
+        
         Rectangle {
             background: ColorPalette.popup-background-color;
             border-color: ColorPalette.popup-border-color;
             border-width: 1px;
         }
-
+        
         err_popup_layout := Dialog {
             no-frame: false;
             title: @tr("Error");
-
+            
             Text {
                 text: root.err-message;
+                max-width: mp.width - 30px;
                 wrap: word-wrap;
             }
 
