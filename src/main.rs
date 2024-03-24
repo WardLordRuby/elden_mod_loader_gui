@@ -71,14 +71,14 @@ fn main() -> Result<(), slint::PlatformError> {
                     Ok(reg_mods) => {
                         reg_mods.iter().for_each(|data| {
                             data.verify_state(&path, &CURRENT_INI)
-                                .unwrap_or_else(|err| ui.display_err(&err.to_string()))
+                                .unwrap_or_else(|err| ui.display_msg(&err.to_string()))
                         });
                         game_verified = true;
                         Some(path)
                     }
                     Err(err) => {
                         game_verified = false;
-                        ui.display_err(&err.to_string());
+                        ui.display_msg(&err.to_string());
                         None
                     }
                 },
@@ -88,7 +88,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             },
             Err(err) => {
-                ui.display_err(&err.to_string());
+                ui.display_msg(&err.to_string());
                 game_verified = false;
                 None
             }
@@ -104,7 +104,7 @@ fn main() -> Result<(), slint::PlatformError> {
             None => {
                 ui.global::<SettingsLogic>().set_dark_mode(true);
                 save_bool(&CURRENT_INI, Some("app-settings"), "dark-mode", true)
-                    .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                    .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
             }
         };
 
@@ -117,24 +117,24 @@ fn main() -> Result<(), slint::PlatformError> {
                 .into(),
         );
         if first_startup && !game_verified {
-            ui.display_err(
+            ui.display_msg(
                 "Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nPlease select the game directory containing \"eldenring.exe\"",
             );
         } else if first_startup && game_verified {
-            ui.display_err("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
+            ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
         }
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
             ui.global::<MainLogic>().set_current_mods(deserialize(
                 &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
-                    ui.display_err(&err.to_string());
+                    ui.display_msg(&err.to_string());
                     vec![RegMod::default()]
                 }),
             ));
         } else {
             ui.global::<MainLogic>().set_current_mods(deserialize(
                 &RegMod::collect(&CURRENT_INI, true).unwrap_or_else(|err| {
-                    ui.display_err(&err.to_string());
+                    ui.display_msg(&err.to_string());
                     vec![RegMod::default()]
                 }),
             ));
@@ -166,33 +166,33 @@ fn main() -> Result<(), slint::PlatformError> {
                                 &mod_name,
                                 paths[0].as_path(),
                             )
-                            .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                            .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                         }
                         _ => {
                             save_path_bufs(&CURRENT_INI, &mod_name, &paths)
-                                .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                                .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                         }
                     },
                     Err(err) => {
                         error!("Error: {}", err);
-                        ui.display_err(&err.to_string());
+                        ui.display_msg(&err.to_string());
                         return;
                     }
                 },
                 Err(err) => {
                     info!("{}", err);
-                    ui.display_err(err);
+                    ui.display_msg(err);
                     return;
                 }
             };
             save_bool(&CURRENT_INI, Some("registered-mods"), &mod_name, true)
-                .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
             // Add conditons here to keep line edit text the same
             ui.global::<MainLogic>()
                 .set_line_edit_text(SharedString::from(""));
             ui.global::<MainLogic>().set_current_mods(deserialize(
                 &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
-                    ui.display_err(&err.to_string());
+                    ui.display_msg(&err.to_string());
                     vec![RegMod::default()]
                 }),
             ));
@@ -208,14 +208,14 @@ fn main() -> Result<(), slint::PlatformError> {
                 Ok(opt) => match opt {
                     Some(selected_path) => Ok(selected_path.to_string_lossy().to_string()),
                     None => {
-                        ui.display_err("No Path Selected");
+                        ui.display_msg("No Path Selected");
                         Err("No Path Selected")
                     }
                 },
                 Err(err) => {
                     error!("Error selecting path");
                     error!("{}", err);
-                    ui.display_err(&err.to_string());
+                    ui.display_msg(&err.to_string());
                     Err("Error selecting path")
                 }
             };
@@ -236,22 +236,22 @@ fn main() -> Result<(), slint::PlatformError> {
                             ui.global::<SettingsLogic>()
                                 .set_game_path(try_path.to_string_lossy().to_string().into());
                             save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path)
-                                .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                                .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                             ui.global::<MainLogic>().set_current_subpage(0);
-                            ui.display_err("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app")
+                            ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app")
                         }
                         Err(err) => {
                             match err.kind() {
                                 ErrorKind::NotFound => warn!("{}", err),
                                 _ => error!("Error: {}", err),
                             }
-                            ui.display_err(&err.to_string())
+                            ui.display_msg(&err.to_string())
                         }
                     }
                 }
                 Err(err) => {
                     info!("{}", err);
-                    ui.display_err(err)
+                    ui.display_msg(err)
                 }
             }
         }
@@ -271,12 +271,12 @@ fn main() -> Result<(), slint::PlatformError> {
                             found_mod.files.clone(),
                             &CURRENT_INI,
                         )
-                        .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                        .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                     } else {
                         error!("Mod: \"{}\" not found", key);
                     };
                 }
-                Err(err) => ui.display_err(&err.to_string()),
+                Err(err) => ui.display_msg(&err.to_string()),
             }
         }
     });
@@ -309,19 +309,19 @@ fn main() -> Result<(), slint::PlatformError> {
                                                 Some("mod-files"),
                                                 &found_mod.name,
                                             )
-                                            .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                                            .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                                         } else {
                                             remove_array(&CURRENT_INI, &found_mod.name)
                                                 .unwrap_or_else(|err| {
-                                                    ui.display_err(&err.to_string())
+                                                    ui.display_msg(&err.to_string())
                                                 });
                                         }
                                         save_path_bufs(&CURRENT_INI, &found_mod.name, &new_data)
-                                            .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                                            .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                                         ui.global::<MainLogic>().set_current_mods(deserialize(
                                             &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(
                                                 |err| {
-                                                    ui.display_err(&err.to_string());
+                                                    ui.display_msg(&err.to_string());
                                                     vec![RegMod::default()]
                                                 },
                                             ),
@@ -330,20 +330,20 @@ fn main() -> Result<(), slint::PlatformError> {
                                     }
                                     Err(err) => {
                                         error!("{}", err);
-                                        ui.display_err(&err.to_string());
+                                        ui.display_msg(&err.to_string());
                                     }
                                 }
                             } else {
                                 error!("Mod: \"{}\" not found", key);
-                                ui.display_err(&format!("Mod: \"{}\" not found", key));
+                                ui.display_msg(&format!("Mod: \"{}\" not found", key));
                             };
                         }
-                        Err(err) => ui.display_err(&err.to_string()),
+                        Err(err) => ui.display_msg(&err.to_string()),
                     };
                 }
                 Err(err) => {
                     error!("{}", err);
-                    ui.display_err(err);
+                    ui.display_msg(err);
                 }
             }
         }
@@ -368,14 +368,14 @@ fn main() -> Result<(), slint::PlatformError> {
                                 found_mod.files.clone(),
                                 &CURRENT_INI,
                             )
-                            .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                            .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                         }
                         remove_entry(&CURRENT_INI, Some("registered-mods"), &found_mod.name)
-                            .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                            .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                         // we can let sync keys take care of removing files from ini
                         ui.global::<MainLogic>().set_current_mods(deserialize(
                             &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
-                                ui.display_err(&err.to_string());
+                                ui.display_msg(&err.to_string());
                                 vec![RegMod::default()]
                             }),
                         ));
@@ -383,7 +383,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         error!("Mod: \"{}\" not found", key);
                     };
                 }
-                Err(err) => ui.display_err(&err.to_string()),
+                Err(err) => ui.display_msg(&err.to_string()),
             };
             ui.global::<MainLogic>().set_current_subpage(0);
         }
@@ -393,7 +393,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move |state| {
             let ui = ui_handle.unwrap();
             save_bool(&CURRENT_INI, Some("app-settings"), "dark-mode", state)
-                .unwrap_or_else(|err| ui.display_err(&err.to_string()));
+                .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
         }
     });
 
@@ -402,7 +402,7 @@ fn main() -> Result<(), slint::PlatformError> {
 }
 
 impl App {
-    fn display_err(&self, msg: &str) {
+    fn display_msg(&self, msg: &str) {
         self.set_err_message(SharedString::from(msg));
         self.invoke_show_error_popup();
     }
