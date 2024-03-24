@@ -51,7 +51,7 @@ pub fn toggle_files(
     file_paths: Vec<PathBuf>,
     save_file: &Path,
 ) -> Result<(), ini::Error> {
-    // Takes in a potential pathBuf, finds file_name name and outputs the new_state version
+    /// Takes in a potential pathBuf, finds file_name name and outputs the new_state version
     fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
         file_paths
             .iter()

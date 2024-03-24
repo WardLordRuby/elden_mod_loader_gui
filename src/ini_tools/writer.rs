@@ -69,7 +69,7 @@ pub fn save_bool(
         .map_err(ini::Error::Io)
 }
 
-pub fn new_cfg(path: &Path) -> io::Result<()> {
+pub fn new_cfg(path: &Path) -> Result<(), ini::Error> {
     let mut new_ini = File::create(path)?;
 
     for section in INI_SECTIONS {

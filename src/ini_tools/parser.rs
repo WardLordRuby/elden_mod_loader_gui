@@ -41,7 +41,7 @@ impl ValueType for bool {
     ) -> Result<Self, Self::ParseError> {
         ini.get_from(section, key).unwrap().parse::<bool>()
     }
-    // Do not use | no extra steps needed for validating a bool, .parse already handles validation or ParseBoolError
+    /// Do not use | no extra steps needed for validating a bool, .parse already handles validation or ParseBoolError
     fn validate(
         self,
         _ini: &Ini,
