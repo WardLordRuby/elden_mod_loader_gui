@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console| cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 slint::include_modules!();
 
@@ -12,7 +12,7 @@ use elden_mod_loader_gui::{
     *,
 };
 use i_slint_backend_winit::WinitWindowAccessor;
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use std::{
@@ -22,11 +22,8 @@ use std::{
     rc::Rc,
 };
 
-#[macro_use]
-extern crate lazy_static;
-
 const CONFIG_NAME: &str = "mod_loader_config.ini";
-lazy_static! {
+lazy_static::lazy_static! {
     static ref CURRENT_INI: PathBuf = get_ini_dir();
 }
 
@@ -170,39 +167,39 @@ fn main() -> Result<(), slint::PlatformError> {
             let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
             let mod_files = get_user_files(&game_dir_ref);
             match mod_files {
-                Ok(files) => match shorten_paths(files, &game_dir) {
-                    Ok(paths) => {
-                        if file_registered(&registered_mods, &paths) {
+                Ok(file_paths) => match shorten_paths(file_paths, &game_dir) {
+                    Ok(files) => {
+                        if file_registered(&registered_mods, &files) {
                             ui.display_msg("A selected file is already registered to a mod");
                         } else {
-                            let mut new_mod = RegMod::default();
-                            let state = !paths.iter().all(|file| {
+                            let state = !files.iter().all(|file| {
                                 file.extension().expect("file has extention") == "disabled"
                             });
                             save_bool(&CURRENT_INI, Some("registered-mods"), &mod_name, state)
                                 .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-                            match paths.len() {
+                            match files.len() {
                                 0 => unreachable!(),
                                 1 => {
                                     save_path(
                                         &CURRENT_INI,
                                         Some("mod-files"),
                                         &mod_name,
-                                        paths[0].as_path(),
+                                        files[0].as_path(),
                                     )
                                     .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                                 }
                                 2.. => {
-                                    save_path_bufs(&CURRENT_INI, &mod_name, &paths)
+                                    save_path_bufs(&CURRENT_INI, &mod_name, &files)
                                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                                 }
                             }
-                            new_mod.name = mod_name.trim().to_string();
-                            new_mod.state = state;
-                            new_mod.files = paths;
-                            new_mod
-                                .verify_state(&game_dir, &CURRENT_INI)
-                                .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                            RegMod {
+                                name: mod_name.trim().to_string(),
+                                state,
+                                files,
+                            }
+                            .verify_state(&game_dir, &CURRENT_INI)
+                            .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                             ui.global::<MainLogic>()
                                 .set_line_edit_text(SharedString::from(""));
                             ui.global::<MainLogic>().set_current_mods(deserialize(
@@ -327,19 +324,19 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             match get_user_files(&game_dir) {
-                Ok(files) => {
+                Ok(file_paths) => {
                     if let Some(found_mod) =
                         registered_mods.iter().find(|reg_mod| key == reg_mod.name)
                     {
-                        match shorten_paths(files, &game_dir) {
-                            Ok(paths) => {
-                                if file_registered(&registered_mods, &paths) {
+                        match shorten_paths(file_paths, &game_dir) {
+                            Ok(files) => {
+                                if file_registered(&registered_mods, &files) {
                                     ui.display_msg(
                                         "A selected file is already registered to a mod",
                                     );
                                 } else {
                                     let mut new_data = found_mod.clone();
-                                    new_data.files.extend(paths.iter().cloned());
+                                    new_data.files.extend(files.iter().cloned());
                                     if found_mod.files.len() == 1 {
                                         remove_entry(
                                             &CURRENT_INI,
