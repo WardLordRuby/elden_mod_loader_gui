@@ -220,19 +220,14 @@ fn main() -> Result<(), slint::PlatformError> {
         move || {
             let ui = ui_handle.unwrap();
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-            let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
-            let user_path: Result<String, &'static str> = match get_user_folder(&game_dir_ref) {
+            let game_dir_ref = Rc::from(game_dir.as_path());
+            let user_path = match get_user_folder(&game_dir_ref) {
                 Ok(opt) => match opt {
                     Some(selected_path) => Ok(selected_path.to_string_lossy().to_string()),
-                    None => {
-                        ui.display_msg("No Path Selected");
-                        Err("No Path Selected")
-                    }
+                    None => Err("No Path Selected"),
                 },
                 Err(err) => {
-                    error!("Error selecting path");
                     error!("{}", err);
-                    ui.display_msg(&err.to_string());
                     Err("Error selecting path")
                 }
             };
@@ -291,6 +286,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                     } else {
                         error!("Mod: \"{}\" not found", key);
+                        ui.display_msg(&format!("Mod: \"{key}\" not found"))
                     };
                 }
                 Err(err) => ui.display_msg(&err.to_string()),
