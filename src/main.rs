@@ -144,60 +144,85 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     }
 
-    // Error check input text for invalid symbols | If mod_name already exists confirm overwrite dialog -> if array into entry -> remove_array fist
-    // if selected file already exists as reg_mod -> error dialog | else success dialog mod_name with mod_files Registered
-    // need fn for checking state of the files are all the same, if all files disabled need to save state as false
-    // Error check for if selected file is already contained in a regested mod
+    // Error check input text for invalid symbols
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
         move |mod_name: SharedString| {
             let ui = ui_handle.unwrap();
-            let game_verified = ui.global::<MainLogic>().get_game_path_valid();
-            if !game_verified {
-                return;
+            let registered_mods = RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
+                ui.display_msg(&err.to_string());
+                vec![RegMod::default()]
+            });
+            {
+                if registered_mods
+                    .iter()
+                    .any(|mod_data| mod_name.to_lowercase() == mod_data.name.to_lowercase())
+                {
+                    ui.display_msg(&format!(
+                        "There is already a registered mod with the name\n\"{mod_name}\""
+                    ));
+                    ui.global::<MainLogic>()
+                        .set_line_edit_text(SharedString::from(""));
+                    return;
+                }
             }
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
             let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
             let mod_files = get_user_files(&game_dir_ref);
             match mod_files {
                 Ok(files) => match shorten_paths(files, &game_dir) {
-                    Ok(paths) => match paths.len() {
-                        1 => {
-                            save_path(
-                                &CURRENT_INI,
-                                Some("mod-files"),
-                                &mod_name,
-                                paths[0].as_path(),
-                            )
-                            .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-                        }
-                        _ => {
-                            save_path_bufs(&CURRENT_INI, &mod_name, &paths)
+                    Ok(paths) => {
+                        if file_registered(&registered_mods, &paths) {
+                            ui.display_msg("A selected file is already registered to a mod");
+                        } else {
+                            let mut new_mod = RegMod::default();
+                            let state = !paths.iter().all(|file| {
+                                file.extension().expect("file has extention") == "disabled"
+                            });
+                            save_bool(&CURRENT_INI, Some("registered-mods"), &mod_name, state)
                                 .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                            match paths.len() {
+                                0 => unreachable!(),
+                                1 => {
+                                    save_path(
+                                        &CURRENT_INI,
+                                        Some("mod-files"),
+                                        &mod_name,
+                                        paths[0].as_path(),
+                                    )
+                                    .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                                }
+                                2.. => {
+                                    save_path_bufs(&CURRENT_INI, &mod_name, &paths)
+                                        .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                                }
+                            }
+                            new_mod.name = mod_name.trim().to_string();
+                            new_mod.state = state;
+                            new_mod.files = paths;
+                            new_mod
+                                .verify_state(&game_dir, &CURRENT_INI)
+                                .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                            ui.global::<MainLogic>()
+                                .set_line_edit_text(SharedString::from(""));
+                            ui.global::<MainLogic>().set_current_mods(deserialize(
+                                &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
+                                    ui.display_msg(&err.to_string());
+                                    vec![RegMod::default()]
+                                }),
+                            ));
                         }
-                    },
+                    }
                     Err(err) => {
                         error!("Error: {}", err);
                         ui.display_msg("Mod files must be within the selected game directory");
-                        return;
                     }
                 },
                 Err(err) => {
                     info!("{}", err);
                     ui.display_msg(err);
-                    return;
                 }
             };
-            save_bool(&CURRENT_INI, Some("registered-mods"), &mod_name, true)
-                .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-            ui.global::<MainLogic>()
-                .set_line_edit_text(SharedString::from(""));
-            ui.global::<MainLogic>().set_current_mods(deserialize(
-                &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
-                    ui.display_msg(&err.to_string());
-                    vec![RegMod::default()]
-                }),
-            ));
         }
     });
     ui.global::<SettingsLogic>().on_select_game_dir({
@@ -294,55 +319,64 @@ fn main() -> Result<(), slint::PlatformError> {
         move |key: SharedString| {
             let ui = ui_handle.unwrap();
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
+            let registered_mods = match RegMod::collect(&CURRENT_INI, false) {
+                Ok(data) => data,
+                Err(err) => {
+                    ui.display_msg(&err.to_string());
+                    return;
+                }
+            };
             match get_user_files(&game_dir) {
                 Ok(files) => {
-                    match RegMod::collect(&CURRENT_INI, false) {
-                        Ok(reg_mods) => {
-                            if let Some(found_mod) =
-                                reg_mods.iter().find(|reg_mod| key == reg_mod.name)
-                            {
-                                let mut new_data = found_mod.files.clone();
-                                match shorten_paths(files, &game_dir) {
-                                    Ok(short_paths) => {
-                                        new_data.extend(short_paths.iter().cloned());
-                                        if found_mod.files.len() == 1 {
-                                            remove_entry(
-                                                &CURRENT_INI,
-                                                Some("mod-files"),
-                                                &found_mod.name,
-                                            )
+                    if let Some(found_mod) =
+                        registered_mods.iter().find(|reg_mod| key == reg_mod.name)
+                    {
+                        match shorten_paths(files, &game_dir) {
+                            Ok(paths) => {
+                                if file_registered(&registered_mods, &paths) {
+                                    ui.display_msg(
+                                        "A selected file is already registered to a mod",
+                                    );
+                                } else {
+                                    let mut new_data = found_mod.clone();
+                                    new_data.files.extend(paths.iter().cloned());
+                                    if found_mod.files.len() == 1 {
+                                        remove_entry(
+                                            &CURRENT_INI,
+                                            Some("mod-files"),
+                                            &found_mod.name,
+                                        )
+                                        .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                                    } else {
+                                        remove_array(&CURRENT_INI, &found_mod.name)
                                             .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-                                        } else {
-                                            remove_array(&CURRENT_INI, &found_mod.name)
-                                                .unwrap_or_else(|err| {
-                                                    ui.display_msg(&err.to_string())
-                                                });
-                                        }
-                                        save_path_bufs(&CURRENT_INI, &found_mod.name, &new_data)
-                                            .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-                                        ui.global::<MainLogic>().set_current_mods(deserialize(
-                                            &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(
-                                                |err| {
-                                                    ui.display_msg(&err.to_string());
-                                                    vec![RegMod::default()]
-                                                },
-                                            ),
-                                        ));
-                                        // Make sure that user remains on correct page if mod order changes apon set_current_mods
                                     }
-                                    Err(err) => {
-                                        error!("{}", err);
-                                        ui.display_msg(
-                                            "Mod files must be within the selected game directory",
-                                        );
-                                    }
+                                    save_path_bufs(&CURRENT_INI, &found_mod.name, &new_data.files)
+                                        .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                                    new_data
+                                        .verify_state(&game_dir, &CURRENT_INI)
+                                        .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                                    ui.global::<MainLogic>().set_current_mods(deserialize(
+                                        &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(
+                                            |err| {
+                                                ui.display_msg(&err.to_string());
+                                                vec![RegMod::default()]
+                                            },
+                                        ),
+                                    ));
+                                    // Make sure that user remains on correct page if mod order changes apon set_current_mods
                                 }
-                            } else {
-                                error!("Mod: \"{}\" not found", key);
-                                ui.display_msg(&format!("Mod: \"{}\" not found", key));
-                            };
+                            }
+                            Err(err) => {
+                                error!("{}", err);
+                                ui.display_msg(
+                                    "Mod files must be within the selected game directory",
+                                );
+                            }
                         }
-                        Err(err) => ui.display_msg(&err.to_string()),
+                    } else {
+                        error!("Mod: \"{}\" not found", key);
+                        ui.display_msg(&format!("Mod: \"{}\" not found", key));
                     };
                 }
                 Err(err) => {
@@ -435,6 +469,14 @@ fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, &'static str> {
             Err("Error selecting path")
         }
     }
+}
+
+fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
+    files.iter().any(|path| {
+        mod_data
+            .iter()
+            .any(|registered_mod| registered_mod.files.iter().any(|mod_file| path == mod_file))
+    })
 }
 
 fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
