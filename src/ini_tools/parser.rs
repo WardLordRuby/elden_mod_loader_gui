@@ -86,12 +86,12 @@ impl ValueType for PathBuf {
                 let game_dir = IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
                     .expect("game_dir is already checked to be valid")
                     .value;
-                match validate_path(&game_dir.join(&self)) {
+                match validate_file(&game_dir.join(&self)) {
                     Ok(()) => Ok(self),
                     Err(err) => Err(err),
                 }
             } else {
-                match validate_path(&self) {
+                match validate_existance(&self) {
                     Ok(()) => Ok(self),
                     Err(err) => Err(err),
                 }
@@ -146,7 +146,7 @@ impl ValueType for Vec<PathBuf> {
                 .value;
             if let Some(err) = self
                 .iter()
-                .find_map(|path| validate_path(&game_dir.join(path)).err())
+                .find_map(|path| validate_file(&game_dir.join(path)).err())
             {
                 Err(err)
             } else {
@@ -158,7 +158,23 @@ impl ValueType for Vec<PathBuf> {
     }
 }
 
-fn validate_path(path: &Path) -> Result<(), io::Error> {
+fn validate_file(path: &Path) -> Result<(), io::Error> {
+    if path.extension().is_none() {
+        let input_file = path
+            .to_string_lossy()
+            .to_string()
+            .split_at(path.to_string_lossy().to_string().rfind('\\').unwrap_or(0) + 1)
+            .1
+            .to_string();
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("\"{}\" does not have an extention", &input_file),
+        ));
+    }
+    validate_existance(path)
+}
+
+fn validate_existance(path: &Path) -> Result<(), io::Error> {
     match path.try_exists() {
         Ok(result) => {
             if result {
@@ -258,7 +274,7 @@ impl Valitidity for Ini {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct RegMod {
     pub name: String,
     pub state: bool,
@@ -379,6 +395,7 @@ impl RegMod {
                 .iter()
                 .filter_map(|(k, s, f)| match &s {
                     Ok(bool) => match f.len() {
+                        0 => unreachable!(),
                         1 => {
                             match f[0]
                                 .to_owned()
@@ -391,6 +408,8 @@ impl RegMod {
                                 }),
                                 Err(err) => {
                                     error!("Error: {}", err);
+                                    remove_entry(path, Some("registered-mods"), k)
+                                        .expect("Key is valid");
                                     None
                                 }
                             }
@@ -406,16 +425,15 @@ impl RegMod {
                             }),
                             Err(err) => {
                                 error!("Error: {}", err);
+                                remove_entry(path, Some("registered-mods"), k)
+                                    .expect("Key is valid");
                                 None
                             }
                         },
-                        0 => {
-                            error!("Error: Tried to validate a Path in a Vec with size 0");
-                            None
-                        }
                     },
                     Err(err) => {
                         error!("Error: {}", err);
+                        remove_entry(path, Some("registered-mods"), k).expect("Key is valid");
                         None
                     }
                 })

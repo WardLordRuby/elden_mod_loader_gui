@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console| cant read logs if console is hidden
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 slint::include_modules!();
 
@@ -158,8 +158,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
             let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
-            let mod_files = get_user_files(&game_dir_ref);
-            match mod_files {
+            match get_user_files(&game_dir_ref) {
                 Ok(file_paths) => match shorten_paths(file_paths, &game_dir) {
                     Ok(files) => {
                         if file_registered(&registered_mods, &files) {
