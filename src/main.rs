@@ -116,28 +116,21 @@ fn main() -> Result<(), slint::PlatformError> {
                 .to_string()
                 .into(),
         );
+        ui.global::<MainLogic>().set_current_mods(deserialize(
+            &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
+                ui.display_msg(&err.to_string());
+                vec![RegMod::default()]
+            }),
+        ));
+        if !game_verified {
+            ui.global::<MainLogic>().set_current_subpage(1);
+        }
         if first_startup && !game_verified {
             ui.display_msg(
                 "Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nPlease select the game directory containing \"eldenring.exe\"",
             );
         } else if first_startup && game_verified {
             ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
-        }
-        if !game_verified {
-            ui.global::<MainLogic>().set_current_subpage(1);
-            ui.global::<MainLogic>().set_current_mods(deserialize(
-                &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
-                    ui.display_msg(&err.to_string());
-                    vec![RegMod::default()]
-                }),
-            ));
-        } else {
-            ui.global::<MainLogic>().set_current_mods(deserialize(
-                &RegMod::collect(&CURRENT_INI, true).unwrap_or_else(|err| {
-                    ui.display_msg(&err.to_string());
-                    vec![RegMod::default()]
-                }),
-            ));
         }
     }
 
@@ -361,7 +354,6 @@ fn main() -> Result<(), slint::PlatformError> {
                                             },
                                         ),
                                     ));
-                                    // Make sure that user remains on correct page if mod order changes apon set_current_mods
                                 }
                             }
                             Err(err) => {

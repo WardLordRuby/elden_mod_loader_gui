@@ -267,8 +267,8 @@ pub struct RegMod {
 
 impl RegMod {
     pub fn collect(path: &Path, skip_validation: bool) -> Result<Vec<Self>, ini::Error> {
-        type HashData<'a> = HashMap<&'a str, (Result<bool, ParseBoolError>, Vec<PathBuf>)>;
-        fn sync_keys<'a>(ini: &'a Ini, path: &Path) -> Result<HashData<'a>, ini::Error> {
+        type ModData<'a> = Vec<(&'a str, Result<bool, ParseBoolError>, Vec<PathBuf>)>;
+        fn sync_keys<'a>(ini: &'a Ini, path: &Path) -> Result<ModData<'a>, ini::Error> {
             fn collect_file_data(section: &Properties) -> HashMap<&str, Vec<&str>> {
                 section
                     .iter()
@@ -288,21 +288,21 @@ impl RegMod {
             fn combine_map_data<'a>(
                 state_map: HashMap<&'a str, &str>,
                 file_map: HashMap<&str, Vec<&str>>,
-            ) -> HashMap<&'a str, (Result<bool, ParseBoolError>, Vec<PathBuf>)> {
-                state_map
+            ) -> ModData<'a> {
+                let mut mod_data = state_map
                     .iter()
                     .filter_map(|(&key, &state_str)| {
                         file_map.get(&key).map(|file_strs| {
                             (
                                 key,
-                                (
-                                    state_str.parse::<bool>(),
-                                    file_strs.iter().map(PathBuf::from).collect::<Vec<_>>(),
-                                ),
+                                state_str.parse::<bool>(),
+                                file_strs.iter().map(PathBuf::from).collect::<Vec<_>>(),
                             )
                         })
                     })
-                    .collect()
+                    .collect::<ModData>();
+                mod_data.sort_by_key(|(key, _, _)| *key);
+                mod_data
             }
             let mod_state_data = ini
                 .section(Some("registered-mods"))
@@ -369,9 +369,7 @@ impl RegMod {
                 .iter()
                 .map(|(n, s, f)| RegMod {
                     name: n.replace('_', " ").to_string(),
-                    state: s
-                        .parse::<bool>()
-                        .expect("Only run during test or previously ran validation"),
+                    state: s.parse::<bool>().expect("Only run during dev tests"),
                     files: f.iter().map(PathBuf::from).collect(),
                 })
                 .collect())
@@ -379,7 +377,7 @@ impl RegMod {
             let parsed_data = sync_keys(&ini, path)?;
             Ok(parsed_data
                 .iter()
-                .filter_map(|(k, (s, f))| match &s {
+                .filter_map(|(k, s, f)| match &s {
                     Ok(bool) => match f.len() {
                         1 => {
                             match f[0]
