@@ -99,6 +99,7 @@ export component MainPage inherits Page {
                         horizontal-alignment: left;
                         placeholder-text: @tr("Mod Name");
                         enabled: add-mod-box.enabled;
+                        text <=> MainLogic.line_edit_text;
                     }
                     add-mod := Button {
                         width: 89px;
@@ -109,7 +110,6 @@ export component MainPage inherits Page {
                         clicked => {
                             if(input-mod.text != "") {
                                 MainLogic.select_mod_files(input-mod.text);
-                                input-mod.text = MainLogic.line_edit_text;
                             } else {
                                 input-mod.focus();
                             }

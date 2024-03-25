@@ -1,5 +1,6 @@
-// Hides console on --release | cant read logs if console is hidden
-#![windows_subsystem = "windows"]
+#![cfg(target_os = "windows")]
+// Setting windows_subsystem will hide console| cant read logs if console is hidden
+// #![windows_subsystem = "windows"]
 
 slint::include_modules!();
 
@@ -11,7 +12,7 @@ use elden_mod_loader_gui::{
     *,
 };
 use i_slint_backend_winit::WinitWindowAccessor;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use std::{
@@ -189,7 +190,6 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             save_bool(&CURRENT_INI, Some("registered-mods"), &mod_name, true)
                 .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-            // Add conditons here to keep line edit text the same
             ui.global::<MainLogic>()
                 .set_line_edit_text(SharedString::from(""));
             ui.global::<MainLogic>().set_current_mods(deserialize(
