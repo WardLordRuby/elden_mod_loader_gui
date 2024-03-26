@@ -9,12 +9,18 @@ Work in progress
 ### To-do:
 
 * App Icon  
-* Handle edge cases for selecting mod files  
 
 ### feats:
 
-* Design: Main UI, Settings subpage, and subpage to edit registered mods
-* Ability: main user functions are tied together and functioning  
+* Feat: App will attempt to locate game dir for you  
+* Feat: On game dir verified you can Register mods to the app  
+* Feat: Easily add more files to a registered mod. eg. config files  
+* Feat: Easily toggle each registered mod on and off  
+* Feat: View registed mods details, State, Files, User provided Name  
+* Feat: If registred mod contains an ini file you are able to open config files from within the app  
+* Feat: Swap between Dark and Light themes for the app  
+* Feat: On de-registration of a mod app will make sure it is set to enabled  
+* Design: Main UI, Settings subpage, and subpage to edit registered mods  
 * Ability: deserialize backend rust modData to data slint can use  
 * Ability: display error message to user in dialog  
 * Ability: parse Array of Paths, Paths and bools from ini  
