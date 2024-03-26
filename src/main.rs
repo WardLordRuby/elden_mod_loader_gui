@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console| cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 slint::include_modules!();
 
@@ -14,12 +14,15 @@ use elden_mod_loader_gui::{
 use i_slint_backend_winit::WinitWindowAccessor;
 use log::{error, info, warn};
 use native_dialog::FileDialog;
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{
     env,
-    io::ErrorKind,
+    ffi::{OsStr, OsString},
+    io::{self, ErrorKind},
     path::{Path, PathBuf},
+    process::Command,
     rc::Rc,
+    sync::Arc,
 };
 
 const CONFIG_NAME: &str = "mod_loader_config.ini";
@@ -111,6 +114,7 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.global::<MainLogic>().set_game_path_valid(game_verified);
         ui.global::<SettingsLogic>().set_game_path(
             game_dir
+                .clone()
                 .unwrap_or(PathBuf::from(""))
                 .to_string_lossy()
                 .to_string()
@@ -121,6 +125,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.display_msg(&err.to_string());
                 vec![RegMod::default()]
             }),
+            &game_dir.unwrap_or_default().to_string_lossy(),
         ));
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
@@ -199,6 +204,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                     ui.display_msg(&err.to_string());
                                     vec![RegMod::default()]
                                 }),
+                                &game_dir.to_string_lossy(),
                             ));
                         }
                     }
@@ -348,6 +354,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                                 vec![RegMod::default()]
                                             },
                                         ),
+                                        &game_dir.to_string_lossy(),
                                     ));
                                 }
                             }
@@ -376,13 +383,12 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = ui_handle.unwrap();
             match RegMod::collect(&CURRENT_INI, false) {
                 Ok(reg_mods) => {
+                    let game_dir =
+                        PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
                     if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
                         if found_mod.files.iter().any(|file| {
                             file.extension().expect("file with extention") == "disabled"
                         }) {
-                            let game_dir = PathBuf::from(
-                                ui.global::<SettingsLogic>().get_game_path().to_string(),
-                            );
                             toggle_files(
                                 &found_mod.name,
                                 &game_dir,
@@ -400,6 +406,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                 ui.display_msg(&err.to_string());
                                 vec![RegMod::default()]
                             }),
+                            &game_dir.to_string_lossy(),
                         ));
                     } else {
                         error!("Mod: \"{}\" not found", key);
@@ -416,6 +423,44 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = ui_handle.unwrap();
             save_bool(&CURRENT_INI, Some("app-settings"), "dark-mode", state)
                 .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+        }
+    });
+    ui.global::<MainLogic>().on_edit_config({
+        let ui_handle = ui.as_weak();
+        move |config_file| {
+            let ui = ui_handle.unwrap();
+            let downcast_config_file = config_file
+                .as_any()
+                .downcast_ref::<VecModel<SharedString>>()
+                .expect("We know we set a VecModel earlier");
+            let string_file: Vec<OsString> = downcast_config_file
+                .iter()
+                .map(|path| OsString::from(path.to_string()))
+                .collect();
+            for file in string_file {
+                let arc_file = Arc::new(file);
+                let clone_file = arc_file.clone();
+                let jh =
+                    std::thread::spawn(move || Command::new("notepad").arg(&*arc_file).spawn());
+                if let Err(err) = jh
+                    .join()
+                    .unwrap_or(Err(io::Error::new(io::ErrorKind::Other, "Thread panicked")))
+                {
+                    match err.kind() {
+                        io::ErrorKind::Other => {
+                            error!("Thread Panicked");
+                            ui.display_msg("Thread Panicked")
+                        }
+                        _ => {
+                            error!("Could not open Notepad. Error: {}", err);
+                            ui.display_msg(&format!(
+                                "Error: Failed to open mod config file {:?}",
+                                &clone_file
+                            ));
+                        }
+                    }
+                }
+            }
         }
     });
 
@@ -463,9 +508,26 @@ fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
     })
 }
 
-fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
+fn deserialize(data: &[RegMod], game_dir: &str) -> ModelRc<DisplayMod> {
     let display_mod: Rc<VecModel<DisplayMod>> = Default::default();
     for mod_data in data.iter() {
+        let has_config: bool;
+        let config_files: Rc<VecModel<SharedString>> = Default::default();
+        let ini_files: Vec<String> = mod_data
+            .files
+            .iter()
+            .filter(|file| file.extension().unwrap_or_default() == OsStr::new("ini"))
+            .map(|path| path.to_string_lossy().to_string())
+            .collect();
+        if !ini_files.is_empty() {
+            has_config = true;
+            for file in ini_files {
+                config_files.push(SharedString::from(format!("{}\\{}", game_dir, file)))
+            }
+        } else {
+            has_config = false;
+            config_files.push(SharedString::new())
+        };
         display_mod.push(DisplayMod {
             displayname: SharedString::from(if mod_data.name.chars().count() > 20 {
                 mod_data
@@ -497,6 +559,8 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
                     .collect::<Vec<String>>()
                     .join("\n"),
             ),
+            has_config,
+            config_files: ModelRc::from(config_files),
         })
     }
     ModelRc::from(display_mod)

@@ -3,6 +3,8 @@ export struct DisplayMod  {
     name: string,
     enabled: bool,
     files: string,
+    has-config: bool,
+    config-files: [string],
 }
 
 export global MainLogic {
@@ -10,6 +12,7 @@ export global MainLogic {
     callback select_mod_files(string);
     callback add_to_mod(string);
     callback remove_mod(string);
+    callback edit_config([string]);
     callback force_app_focus();
     in property <string> line_edit_text;
     in property <bool> popup_window_visible;
@@ -26,7 +29,7 @@ export global SettingsLogic  {
     callback select_game_dir();
     callback toggle_theme(bool);
     in property <string> game_path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
-    in-out property <bool> dark_mode;
+    in-out property <bool> dark_mode: true;
 }
 
 struct ButtonColors  {

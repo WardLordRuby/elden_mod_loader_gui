@@ -274,7 +274,7 @@ impl Valitidity for Ini {
     }
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone)]
 pub struct RegMod {
     pub name: String,
     pub state: bool,
