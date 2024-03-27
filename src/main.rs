@@ -431,10 +431,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 .as_any()
                 .downcast_ref::<VecModel<SharedString>>()
                 .expect("We know we set a VecModel earlier");
-            let string_file: Vec<OsString> = downcast_config_file
+            let string_file = downcast_config_file
                 .iter()
                 .map(|path| OsString::from(path.to_string()))
-                .collect();
+                .collect::<Vec<_>>();
             for file in string_file {
                 let arc_file = Arc::new(file);
                 let clone_file = arc_file.clone();
@@ -449,8 +449,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 {
                     match err.kind() {
                         io::ErrorKind::Other => {
-                            error!("Thread Panicked");
-                            ui.display_msg("Thread Panicked")
+                            error!("{err}");
+                            ui.display_msg("notepad exited unexpectedly")
                         }
                         _ => {
                             error!("Could not open Notepad. Error: {}", err);
@@ -514,16 +514,19 @@ fn deserialize(data: &[RegMod], game_dir: &str) -> ModelRc<DisplayMod> {
     for mod_data in data.iter() {
         let has_config: bool;
         let config_files: Rc<VecModel<SharedString>> = Default::default();
-        let ini_files: Vec<String> = mod_data
+        let ini_files = mod_data
             .files
             .iter()
             .filter(|file| file.extension().unwrap_or_default() == OsStr::new("ini"))
-            .map(|path| path.to_string_lossy().to_string())
-            .collect();
+            .collect::<Vec<_>>();
         if !ini_files.is_empty() {
             has_config = true;
             for file in ini_files {
-                config_files.push(SharedString::from(format!("{}\\{}", game_dir, file)))
+                config_files.push(SharedString::from(format!(
+                    "{}\\{}",
+                    game_dir,
+                    file.display()
+                )))
             }
         } else {
             has_config = false;
@@ -551,13 +554,8 @@ fn deserialize(data: &[RegMod], game_dir: &str) -> ModelRc<DisplayMod> {
                 mod_data
                     .files
                     .iter()
-                    .map(|path_buf| {
-                        path_buf
-                            .to_string_lossy()
-                            .to_string()
-                            .replace(".disabled", "")
-                    })
-                    .collect::<Vec<String>>()
+                    .map(|path_buf| path_buf.to_string_lossy().replace(".disabled", ""))
+                    .collect::<Vec<_>>()
                     .join("\n"),
             ),
             has_config,
