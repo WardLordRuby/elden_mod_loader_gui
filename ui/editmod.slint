@@ -10,7 +10,8 @@ export component ModDetailsPage inherits Page {
     property <length> box-width: details.width - 10px;
     property <color> state-color: MainLogic.current_mods[mod-index].enabled ? #206816 : #d01616;
     property <string> state: MainLogic.current_mods[mod-index].enabled ? @tr("True") : @tr("False");
-    property <length> button-width: MainLogic.current_mods[mod-index].has-config ? 90px : 105px;
+    property <length> button-width: MainLogic.current_mods[mod-index].has-config ? 93px : 105px;
+    property <LayoutAlignment> button-layout: MainLogic.current_mods[mod-index].has-config ? center : end;
 
     VerticalLayout {
         y: 38px;
@@ -90,7 +91,7 @@ export component ModDetailsPage inherits Page {
             HorizontalLayout {
                 width: box-width;
                 spacing: 7px;
-                alignment: end;
+                alignment: button-layout;
                 Button {
                     width: button-width;
                     height: 35px;
