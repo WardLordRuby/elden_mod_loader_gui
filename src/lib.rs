@@ -11,13 +11,8 @@ use ini_tools::{
 use log::{error, info, trace, warn};
 
 use std::{
-    env,
-    fs::{read_dir, rename},
     io,
-    path::{self, Path, PathBuf},
-    rc::Rc,
-    sync::Arc,
-    thread,
+    path::{Path, PathBuf},
 };
 
 const DEFAULT_GAME_DIR: [&str; 6] = [
@@ -37,7 +32,7 @@ pub const REQUIRED_GAME_FILES: [&str; 3] = [
 pub fn shorten_paths(
     paths: Vec<PathBuf>,
     remove: &PathBuf,
-) -> Result<Vec<PathBuf>, path::StripPrefixError> {
+) -> Result<Vec<PathBuf>, std::path::StripPrefixError> {
     paths
         .into_iter()
         .map(|path| path.strip_prefix(remove).map(|p| p.to_path_buf()))
@@ -94,7 +89,7 @@ pub fn toggle_files(
             .iter()
             .zip(new_paths.iter())
             .try_for_each(|(path, new_path)| {
-                rename(path, new_path)?;
+                std::fs::rename(path, new_path)?;
                 Ok(())
             })
     }
@@ -116,13 +111,14 @@ pub fn toggle_files(
     }
     let num_of_files = file_paths.len();
 
-    let file_paths_clone = Arc::new(file_paths.clone());
-    let state_clone = Arc::new(new_state);
+    let file_paths_clone = std::sync::Arc::new(file_paths.clone());
+    let state_clone = std::sync::Arc::new(new_state);
     let game_dir_clone = game_dir.to_path_buf();
 
     let new_short_paths_thread =
-        thread::spawn(move || toggle_name_state(&file_paths_clone, *state_clone));
-    let original_full_paths_thread = thread::spawn(move || join_paths(game_dir_clone, file_paths));
+        std::thread::spawn(move || toggle_name_state(&file_paths_clone, *state_clone));
+    let original_full_paths_thread =
+        std::thread::spawn(move || join_paths(game_dir_clone, file_paths));
 
     let short_path_new = new_short_paths_thread.join().unwrap_or(Vec::new());
     let full_path_new = join_paths(PathBuf::from(game_dir), short_path_new.clone());
@@ -139,9 +135,9 @@ pub fn get_cfg(input_file: &Path) -> Result<Ini, ini::Error> {
 }
 
 pub fn does_dir_contain(path: &Path, list: &[&str]) -> Result<(), io::Error> {
-    match read_dir(path) {
+    match std::fs::read_dir(path) {
         Ok(_) => {
-            let entries = read_dir(path)?;
+            let entries = std::fs::read_dir(path)?;
             let file_names: Vec<_> = entries
                 .filter_map(|entry| entry.ok())
                 .map(|entry| entry.file_name())
@@ -228,7 +224,7 @@ fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
             "C:\\".to_string()
         }
     };
-    let drive_ref: Rc<str> = Rc::from(drive.clone());
+    let drive_ref: std::rc::Rc<str> = std::rc::Rc::from(drive.clone());
     info!("Drive Found: {}", drive_ref);
 
     match test_path_buf(PathBuf::from(drive), target_path) {
@@ -258,7 +254,7 @@ fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> Option<PathBuf> {
 }
 
 fn get_current_drive() -> Option<String> {
-    let current_path = match env::current_dir() {
+    let current_path = match std::env::current_dir() {
         Ok(path) => Some(path),
         Err(err) => {
             error!("{:?}", err);

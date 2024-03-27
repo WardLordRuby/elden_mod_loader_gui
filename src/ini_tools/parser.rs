@@ -2,8 +2,6 @@ use ini::{Ini, Properties};
 use log::{error, trace, warn};
 use std::{
     collections::HashMap,
-    ffi::OsStr,
-    fmt::Debug,
     io,
     path::{Path, PathBuf},
     str::ParseBoolError,
@@ -16,7 +14,7 @@ use crate::{
 };
 
 pub trait ValueType: Sized {
-    type ParseError: Debug;
+    type ParseError: std::fmt::Debug;
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -441,7 +439,7 @@ impl RegMod {
         }
     }
     pub fn verify_state(&self, game_dir: &Path, ini_file: &Path) -> Result<(), ini::Error> {
-        let off_state = OsStr::new("disabled");
+        let off_state = std::ffi::OsStr::new("disabled");
         if (!self.state
             && self
                 .files

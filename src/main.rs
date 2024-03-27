@@ -16,11 +16,9 @@ use log::{error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{
-    env,
     ffi::{OsStr, OsString},
     io::{self, ErrorKind},
     path::{Path, PathBuf},
-    process::Command,
     rc::Rc,
     sync::Arc,
 };
@@ -440,8 +438,11 @@ fn main() -> Result<(), slint::PlatformError> {
             for file in string_file {
                 let arc_file = Arc::new(file);
                 let clone_file = arc_file.clone();
-                let jh =
-                    std::thread::spawn(move || Command::new("notepad").arg(&*arc_file).spawn());
+                let jh = std::thread::spawn(move || {
+                    std::process::Command::new("notepad")
+                        .arg(&*arc_file)
+                        .spawn()
+                });
                 if let Err(err) = jh
                     .join()
                     .unwrap_or(Err(io::Error::new(io::ErrorKind::Other, "Thread panicked")))
@@ -480,7 +481,7 @@ fn get_user_folder(path: &Path) -> Result<Option<PathBuf>, native_dialog::Error>
 }
 
 fn get_ini_dir() -> PathBuf {
-    let exe_dir = env::current_dir().expect("Failed to get current dir");
+    let exe_dir = std::env::current_dir().expect("Failed to get current dir");
     exe_dir.join(CONFIG_NAME)
 }
 
