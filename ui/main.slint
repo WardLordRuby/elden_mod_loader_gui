@@ -13,7 +13,6 @@ export component MainPage inherits Page {
     callback focus_line_edit;
     callback edit_mod(int);
     focus_line_edit => { input-mod.focus() }
-    settings => { MainLogic.current-subpage = 1 }
     edit_mod(i) => {
         mod-settings.mod-index = i;
         MainLogic.current_subpage = 2
@@ -120,12 +119,10 @@ export component MainPage inherits Page {
         }
     }
     SettingsPage {
-        back => { MainLogic.current-subpage = 0 }
         x: MainLogic.current-subpage == 1 ? 0 : parent.width + parent.x + 2px;
         animate x { duration: 150ms; easing: ease; }
     }
     mod-settings := ModDetailsPage {
-        back => { MainLogic.current-subpage = 0 }
         x: MainLogic.current-subpage == 2 ? 0 : parent.width + parent.x + 2px;
         animate x { duration: 150ms; easing: ease; }
     }

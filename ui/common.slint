@@ -63,8 +63,10 @@ export component Page inherits Rectangle {
     width: 310px;
     background: ColorPalette.page-background-color;
 
-    callback back;
     callback settings;
+    callback back;
+    back => { MainLogic.current-subpage = 0 }
+    settings => { MainLogic.current-subpage = 1 }
 
     TouchArea {} // Protect underneath controls
 
