@@ -78,9 +78,9 @@ fn main() -> Result<(), slint::PlatformError> {
                         Some(path)
                     }
                     Err(err) => {
-                        game_verified = true;
                         ui.display_msg(&err.to_string());
-                        None
+                        game_verified = true;
+                        Some(path)
                     }
                 },
                 PathResult::Partial(path) | PathResult::None(path) => {
@@ -113,7 +113,7 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.global::<SettingsLogic>().set_game_path(
             game_dir
                 .clone()
-                .unwrap_or(PathBuf::from(""))
+                .unwrap_or_default()
                 .to_string_lossy()
                 .to_string()
                 .into(),

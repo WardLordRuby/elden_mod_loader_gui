@@ -386,7 +386,7 @@ impl RegMod {
                         split_out_config_files(f.iter().map(PathBuf::from).collect());
                     RegMod {
                         name: n.replace('_', " ").to_string(),
-                        state: s.parse::<bool>().expect("Only run during dev tests"),
+                        state: s.to_lowercase().parse::<bool>().unwrap_or(true),
                         files,
                         config_files,
                     }
