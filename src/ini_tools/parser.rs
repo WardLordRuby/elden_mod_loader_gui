@@ -14,7 +14,7 @@ use crate::{
 };
 
 pub trait ValueType: Sized {
-    type ParseError: std::fmt::Debug;
+    type ParseError: std::fmt::Display;
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -167,7 +167,7 @@ fn validate_file(path: &Path) -> Result<(), io::Error> {
             .to_string();
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("\"{}\" does not have an extention", &input_file),
+            format!("\"{input_file}\" does not have an extention"),
         ));
     }
     validate_existance(path)
@@ -212,8 +212,7 @@ impl<T: ValueType> IniProperty<T> {
         match IniProperty::is_valid(ini, section, &format_key, skip_validation) {
             Ok(value) => {
                 trace!(
-                    "Success: read key: \"{}\" Section: \"{}\" from ini",
-                    key,
+                    "Success: read key: \"{key}\" Section: \"{}\" from ini",
                     section.expect("Passed in section should be valid")
                 );
                 Some(IniProperty {
@@ -226,12 +225,11 @@ impl<T: ValueType> IniProperty<T> {
                 error!(
                     "{}",
                     format!(
-                        "Value stored in Section: \"{}\", Key: \"{}\" is not valid",
-                        section.expect("Passed in section should be valid"),
-                        key
+                        "Value stored in Section: \"{}\", Key: \"{key}\" is not valid",
+                        section.expect("Passed in section should be valid")
                     )
                 );
-                error!("Error: {}", err);
+                error!("Error: {err}");
                 None
             }
         }
@@ -247,14 +245,13 @@ impl<T: ValueType> IniProperty<T> {
             Some(s) => match s.contains_key(key) {
                 true => match T::parse_str(ini, section, key, skip_validation) {
                     Ok(t) => Ok(t),
-                    Err(err) => Err(format!("Error: {:?}", err)),
+                    Err(err) => Err(format!("Error: {err}")),
                 },
-                false => Err(format!("Key: \"{}\" not found in {:?}", key, ini)),
+                false => Err(format!("Key: \"{key}\" not found in {ini:?}")),
             },
             None => Err(format!(
-                "Section: \"{}\" not found in {:?}",
-                section.expect("Passed in section should be valid"),
-                ini
+                "Section: \"{}\" not found in {ini:?}",
+                section.expect("Passed in section should be valid")
             )),
         }
     }
@@ -335,7 +332,7 @@ impl RegMod {
             for key in invalid_state {
                 state_data.remove(key);
                 remove_entry(path, Some("registered-mods"), key)?;
-                warn!("\"{}\" has no matching files", key);
+                warn!("\"{key}\" has no matching files");
             }
             let invalid_files: Vec<_> = file_data
                 .keys()
@@ -349,7 +346,7 @@ impl RegMod {
                     remove_entry(path, Some("mod-files"), key)?;
                 }
                 file_data.remove(key);
-                warn!("\"{}\" has no matching state", key);
+                warn!("\"{key}\" has no matching state");
             }
             Ok(combine_map_data(state_data, file_data))
         }
@@ -406,7 +403,7 @@ impl RegMod {
                                     files: vec![path],
                                 }),
                                 Err(err) => {
-                                    error!("Error: {}", err);
+                                    error!("Error: {err}");
                                     remove_entry(path, Some("registered-mods"), k)
                                         .expect("Key is valid");
                                     None
@@ -423,7 +420,7 @@ impl RegMod {
                                 files: paths,
                             }),
                             Err(err) => {
-                                error!("Error: {}", err);
+                                error!("Error: {err}");
                                 remove_entry(path, Some("registered-mods"), k)
                                     .expect("Key is valid");
                                 None
@@ -431,7 +428,7 @@ impl RegMod {
                         },
                     },
                     Err(err) => {
-                        error!("Error: {}", err);
+                        error!("Error: {err}");
                         remove_entry(path, Some("registered-mods"), k).expect("Key is valid");
                         None
                     }
@@ -460,7 +457,7 @@ impl RegMod {
                 &self.name.replace(' ', "_"),
                 game_dir,
                 self.state,
-                self.files.to_owned(),
+                self.files.clone(),
                 ini_file,
             )?
         }

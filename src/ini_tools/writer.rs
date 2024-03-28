@@ -31,7 +31,7 @@ pub fn save_path_bufs(file_name: &Path, key: &str, files: &[PathBuf]) -> Result<
         .join("\r\narray[]=");
     config
         .with_section(Some("mod-files"))
-        .set(&format_key, format!("array\r\narray[]={}", save_paths));
+        .set(&format_key, format!("array\r\narray[]={save_paths}"));
     config
         .write_to_file_opt(file_name, WRITE_OPTIONS)
         .map_err(ini::Error::Io)
@@ -134,8 +134,7 @@ pub fn remove_entry(file_name: &Path, section: Option<&str>, key: &str) -> Resul
         .ok_or(ini::Error::Io(io::Error::new(
             io::ErrorKind::Other,
             format!(
-                "Could not delete \"{}\" from Section: \"{}\"",
-                &format_key,
+                "Could not delete \"{format_key}\" from Section: \"{}\"",
                 &section.expect("Passed in section should be valid")
             ),
         )))?;

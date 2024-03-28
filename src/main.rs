@@ -55,7 +55,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
             Err(err) => {
-                error!("Error: {}", err);
+                error!("Error: {err}");
                 first_startup = true;
                 false
             }
@@ -207,12 +207,12 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }
                     Err(err) => {
-                        error!("Error: {}", err);
+                        error!("Error: {err}");
                         ui.display_msg("Mod files must be within the selected game directory");
                     }
                 },
                 Err(err) => {
-                    info!("{}", err);
+                    info!("{err}");
                     ui.display_msg(err);
                 }
             };
@@ -230,7 +230,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     None => Err("No Path Selected"),
                 },
                 Err(err) => {
-                    error!("{}", err);
+                    error!("{err}");
                     Err("Error selecting path")
                 }
             };
@@ -240,9 +240,9 @@ fn main() -> Result<(), slint::PlatformError> {
                     info!("User Selected Path: \"{}\"", &path);
                     let try_path: PathBuf = if does_dir_contain(Path::new(&path), &["Game"]).is_ok()
                     {
-                        PathBuf::from(&format!("{}\\Game", path))
+                        PathBuf::from(&format!("{path}\\Game"))
                     } else {
-                        PathBuf::from(&path)
+                        PathBuf::from(path)
                     };
                     match does_dir_contain(Path::new(&try_path), &REQUIRED_GAME_FILES) {
                         Ok(_) => {
@@ -257,15 +257,15 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                         Err(err) => {
                             match err.kind() {
-                                ErrorKind::NotFound => warn!("{}", err),
-                                _ => error!("Error: {}", err),
+                                ErrorKind::NotFound => warn!("{err}"),
+                                _ => error!("Error: {err}"),
                             }
                             ui.display_msg(&err.to_string())
                         }
                     }
                 }
                 Err(err) => {
-                    info!("{}", err);
+                    info!("{err}");
                     ui.display_msg(err)
                 }
             }
@@ -288,7 +288,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         )
                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                     } else {
-                        error!("Mod: \"{}\" not found", key);
+                        error!("Mod: \"{key}\" not found");
                         ui.display_msg(&format!("Mod: \"{key}\" not found"))
                     };
                 }
@@ -357,19 +357,19 @@ fn main() -> Result<(), slint::PlatformError> {
                                 }
                             }
                             Err(err) => {
-                                error!("{}", err);
+                                error!("{err}");
                                 ui.display_msg(
                                     "Mod files must be within the selected game directory",
                                 );
                             }
                         }
                     } else {
-                        error!("Mod: \"{}\" not found", key);
-                        ui.display_msg(&format!("Mod: \"{}\" not found", key));
+                        error!("Mod: \"{key}\" not found");
+                        ui.display_msg(&format!("Mod: \"{key}\" not found"));
                     };
                 }
                 Err(err) => {
-                    error!("{}", err);
+                    error!("{err}");
                     ui.display_msg(err);
                 }
             }
@@ -407,7 +407,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             &game_dir.to_string_lossy(),
                         ));
                     } else {
-                        error!("Mod: \"{}\" not found", key);
+                        error!("Mod: \"{key}\" not found");
                     };
                 }
                 Err(err) => ui.display_msg(&err.to_string()),
@@ -453,10 +453,9 @@ fn main() -> Result<(), slint::PlatformError> {
                             ui.display_msg("notepad exited unexpectedly")
                         }
                         _ => {
-                            error!("Could not open Notepad. Error: {}", err);
+                            error!("Could not open Notepad. Error: {err}");
                             ui.display_msg(&format!(
-                                "Error: Failed to open mod config file {:?}",
-                                &clone_file
+                                "Error: Failed to open mod config file {clone_file:?}"
                             ));
                         }
                     }
@@ -495,7 +494,7 @@ fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, &'static str> {
             _ => Ok(opt),
         },
         Err(err) => {
-            error!("{}", err);
+            error!("{err}");
             Err("Error selecting path")
         }
     }
@@ -523,8 +522,7 @@ fn deserialize(data: &[RegMod], game_dir: &str) -> ModelRc<DisplayMod> {
             has_config = true;
             for file in ini_files {
                 config_files.push(SharedString::from(format!(
-                    "{}\\{}",
-                    game_dir,
+                    "{game_dir}\\{}",
                     file.display()
                 )))
             }

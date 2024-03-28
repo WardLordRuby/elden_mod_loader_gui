@@ -153,7 +153,7 @@ pub fn does_dir_contain(path: &Path, list: &[&str]) -> Result<(), io::Error> {
             } else {
                 error!(
                     "{}",
-                    format!("Failure: {:?} not found in: \"{}\"", list, path.display(),)
+                    format!("Failure: {list:?} not found in: \"{}\"", path.display(),)
                 );
                 Err(io::Error::new(
                     io::ErrorKind::NotFound,
@@ -184,7 +184,7 @@ pub fn attempt_locate_game(file_name: &Path) -> Result<PathResult, ini::Error> {
                 "Failure: (attempt_locate_game) Could not complete. Could not read ini from \"{}\"",
                 file_name.display()
             );
-            error!("Error: {}", err);
+            error!("Error: {err}");
             return Ok(PathResult::None(PathBuf::from("")));
         }
     };
@@ -193,7 +193,7 @@ pub fn attempt_locate_game(file_name: &Path) -> Result<PathResult, ini::Error> {
             match does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
                 Ok(_) => Some(ini_property.value),
                 Err(err) => {
-                    error!("Error: {}", err);
+                    error!("Error: {err}");
                     None
                 }
             }
@@ -225,7 +225,7 @@ fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
         }
     };
     let drive_ref: std::rc::Rc<str> = std::rc::Rc::from(drive.clone());
-    info!("Drive Found: {}", drive_ref);
+    info!("Drive Found: {drive_ref}");
 
     match test_path_buf(PathBuf::from(drive), target_path) {
         Some(path) => Some(path),
