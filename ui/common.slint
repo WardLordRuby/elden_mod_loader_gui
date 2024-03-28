@@ -63,8 +63,8 @@ export component Page inherits Rectangle {
     width: 310px;
     background: ColorPalette.page-background-color;
 
-    callback settings;
     callback back;
+    callback settings;
     back => { MainLogic.current-subpage = 0 }
     settings => { MainLogic.current-subpage = 1 }
 

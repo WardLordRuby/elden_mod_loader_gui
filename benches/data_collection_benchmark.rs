@@ -7,10 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[macro_use]
-extern crate lazy_static;
-
-lazy_static! {
+lazy_static::lazy_static! {
     static ref BENCH_TEST_FILE: PathBuf = PathBuf::from("test_files\\benchmark_test.ini");
 }
 const NUM_ENTRIES: u32 = 25;

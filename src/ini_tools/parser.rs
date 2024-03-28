@@ -21,12 +21,15 @@ pub trait ValueType: Sized {
         key: &str,
         skip_validation: bool,
     ) -> Result<Self, Self::ParseError>;
+    #[allow(unused_variables)]
     fn validate(
         self,
         ini: &Ini,
         section: Option<&str>,
         disable: bool,
-    ) -> Result<Self, Self::ParseError>;
+    ) -> Result<Self, Self::ParseError> {
+        Ok(self)
+    }
 }
 
 impl ValueType for bool {
@@ -41,15 +44,6 @@ impl ValueType for bool {
             .expect("Validated by IniProperty::is_valid")
             .to_lowercase()
             .parse::<bool>()
-    }
-    /// Do not use | no extra steps needed for validating a bool, .parse already handles validation or ParseBoolError
-    fn validate(
-        self,
-        _ini: &Ini,
-        _section: Option<&str>,
-        _disable: bool,
-    ) -> Result<Self, Self::ParseError> {
-        Ok(self)
     }
 }
 
@@ -270,7 +264,7 @@ impl Valitidity for Ini {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct RegMod {
     pub name: String,
     pub state: bool,
