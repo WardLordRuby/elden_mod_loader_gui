@@ -23,7 +23,6 @@ const WRITE_OPTIONS: WriteOption = WriteOption {
 
 pub fn save_path_bufs(file_name: &Path, key: &str, files: &[PathBuf]) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
-    let format_key = key.trim().replace(' ', "_");
     let save_paths = files
         .iter()
         .map(|path| path.to_string_lossy())
@@ -31,7 +30,7 @@ pub fn save_path_bufs(file_name: &Path, key: &str, files: &[PathBuf]) -> Result<
         .join("\r\narray[]=");
     config
         .with_section(Some("mod-files"))
-        .set(&format_key, format!("array\r\narray[]={save_paths}"));
+        .set(key, format!("array\r\narray[]={save_paths}"));
     config
         .write_to_file_opt(file_name, WRITE_OPTIONS)
         .map_err(ini::Error::Io)
@@ -44,10 +43,9 @@ pub fn save_path(
     path: &Path,
 ) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
-    let format_key = key.trim().replace(' ', "_");
     config
         .with_section(section)
-        .set(&format_key, path.to_string_lossy().to_string());
+        .set(key, path.to_string_lossy().to_string());
     config
         .write_to_file_opt(file_name, WRITE_OPTIONS)
         .map_err(ini::Error::Io)
@@ -60,10 +58,7 @@ pub fn save_bool(
     value: bool,
 ) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
-    let format_key = key.trim().replace(' ', "_");
-    config
-        .with_section(section)
-        .set(&format_key, value.to_string());
+    config.with_section(section).set(key, value.to_string());
     config
         .write_to_file_opt(file_name, WRITE_OPTIONS)
         .map_err(ini::Error::Io)
@@ -103,7 +98,6 @@ pub fn new_cfg(path: &Path) -> Result<(), ini::Error> {
 }
 
 pub fn remove_array(file_name: &Path, key: &str) -> Result<(), ini::Error> {
-    let format_key = key.trim().replace(' ', "_");
     let content = read_to_string(file_name)?;
 
     let mut skip_next_line = false;
@@ -114,7 +108,7 @@ pub fn remove_array(file_name: &Path, key: &str) -> Result<(), ini::Error> {
             skip_next_line = false;
             key_found = false;
         }
-        if line.starts_with(&format_key) && line.ends_with("array") {
+        if line.starts_with(key) && line.ends_with("array") {
             skip_next_line = true;
             key_found = true;
         }
@@ -131,13 +125,12 @@ pub fn remove_array(file_name: &Path, key: &str) -> Result<(), ini::Error> {
 
 pub fn remove_entry(file_name: &Path, section: Option<&str>, key: &str) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
-    let format_key = key.trim().replace(' ', "_");
     config
-        .delete_from(section, &format_key)
+        .delete_from(section, key)
         .ok_or(ini::Error::Io(io::Error::new(
             io::ErrorKind::Other,
             format!(
-                "Could not delete \"{format_key}\" from Section: \"{}\"",
+                "Could not delete \"{key}\" from Section: \"{}\"",
                 &section.expect("Passed in section should be valid")
             ),
         )))?;

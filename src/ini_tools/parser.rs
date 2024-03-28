@@ -209,8 +209,7 @@ impl<T: ValueType> IniProperty<T> {
         key: &str,
         skip_validation: bool,
     ) -> Option<IniProperty<T>> {
-        let format_key = key.replace(' ', "_");
-        match IniProperty::is_valid(ini, section, &format_key, skip_validation) {
+        match IniProperty::is_valid(ini, section, key, skip_validation) {
             Ok(value) => {
                 trace!(
                     "Success: read key: \"{key}\" Section: \"{}\" from ini",
@@ -385,7 +384,7 @@ impl RegMod {
                     let (config_files, files) =
                         split_out_config_files(f.iter().map(PathBuf::from).collect());
                     RegMod {
-                        name: n.replace('_', " ").to_string(),
+                        name: n.to_string(),
                         state: s.to_lowercase().parse::<bool>().unwrap_or(true),
                         files,
                         config_files,
@@ -407,7 +406,7 @@ impl RegMod {
                                 Ok(path) => {
                                     let (config_files, files) = split_out_config_files(vec![path]);
                                     Some(RegMod {
-                                        name: k.replace('_', " ").to_string(),
+                                        name: k.to_string(),
                                         state: *bool,
                                         files,
                                         config_files,
@@ -428,7 +427,7 @@ impl RegMod {
                             Ok(paths) => {
                                 let (config_files, files) = split_out_config_files(paths);
                                 Some(RegMod {
-                                    name: k.replace('_', " ").to_string(),
+                                    name: k.to_string(),
                                     state: *bool,
                                     files,
                                     config_files,

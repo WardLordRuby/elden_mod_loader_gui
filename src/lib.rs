@@ -131,7 +131,7 @@ pub fn toggle_files(
         &num_total_files,
         &short_path_new,
         new_state,
-        &reg_mod.name.replace(' ', "_"),
+        &reg_mod.name,
         save_file,
     )?;
     Ok(())

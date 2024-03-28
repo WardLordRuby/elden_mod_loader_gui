@@ -147,6 +147,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |mod_name: SharedString| {
             let ui = ui_handle.unwrap();
+            let format_key = mod_name.trim().replace(' ', "_");
             let registered_mods = RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
                 ui.display_msg(&err.to_string());
                 vec![RegMod::default()]
@@ -154,7 +155,7 @@ fn main() -> Result<(), slint::PlatformError> {
             {
                 if registered_mods
                     .iter()
-                    .any(|mod_data| mod_name.to_lowercase() == mod_data.name.to_lowercase())
+                    .any(|mod_data| format_key.to_lowercase() == mod_data.name.to_lowercase())
                 {
                     ui.display_msg(&format!(
                         "There is already a registered mod with the name\n\"{mod_name}\""
@@ -175,7 +176,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             let state = !files.iter().all(|file| {
                                 file.extension().expect("file has extention") == "disabled"
                             });
-                            save_bool(&CURRENT_INI, Some("registered-mods"), &mod_name, state)
+                            save_bool(&CURRENT_INI, Some("registered-mods"), &format_key, state)
                                 .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                             match files.len() {
                                 0 => unreachable!(),
@@ -183,19 +184,19 @@ fn main() -> Result<(), slint::PlatformError> {
                                     save_path(
                                         &CURRENT_INI,
                                         Some("mod-files"),
-                                        &mod_name,
+                                        &format_key,
                                         files[0].as_path(),
                                     )
                                     .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                                 }
                                 2.. => {
-                                    save_path_bufs(&CURRENT_INI, &mod_name, &files)
+                                    save_path_bufs(&CURRENT_INI, &format_key, &files)
                                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                                 }
                             }
                             let (config_files, files) = split_out_config_files(files);
                             RegMod {
-                                name: mod_name.trim().to_string(),
+                                name: format_key,
                                 state,
                                 files,
                                 config_files,
@@ -283,9 +284,12 @@ fn main() -> Result<(), slint::PlatformError> {
         move |key: SharedString| {
             let ui = ui_handle.unwrap();
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
+            let format_key = key.replace(' ', "_");
             match RegMod::collect(&CURRENT_INI, false) {
                 Ok(reg_mods) => {
-                    if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
+                    if let Some(found_mod) =
+                        reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
+                    {
                         toggle_files(&game_dir, !found_mod.state, found_mod, &CURRENT_INI)
                             .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                     } else {
@@ -308,6 +312,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |key: SharedString| {
             let ui = ui_handle.unwrap();
+            let format_key = key.replace(' ', "_");
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
             let registered_mods = match RegMod::collect(&CURRENT_INI, false) {
                 Ok(data) => data,
@@ -318,8 +323,9 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             match get_user_files(&game_dir) {
                 Ok(file_paths) => {
-                    if let Some(found_mod) =
-                        registered_mods.iter().find(|reg_mod| key == reg_mod.name)
+                    if let Some(found_mod) = registered_mods
+                        .iter()
+                        .find(|reg_mod| format_key == reg_mod.name)
                     {
                         match shorten_paths(file_paths, &game_dir) {
                             Ok(files) => {
@@ -390,11 +396,14 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |key: SharedString| {
             let ui = ui_handle.unwrap();
+            let format_key = key.replace(' ', "_");
             match RegMod::collect(&CURRENT_INI, false) {
                 Ok(reg_mods) => {
                     let game_dir =
                         PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-                    if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
+                    if let Some(found_mod) =
+                        reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
+                    {
                         if found_mod.files.iter().any(|file| {
                             file.extension().expect("file with extention") == "disabled"
                         }) {
@@ -528,23 +537,14 @@ fn deserialize(data: &[RegMod], game_dir: &str) -> ModelRc<DisplayMod> {
         } else {
             config_files.push(SharedString::new())
         };
+        let name = mod_data.name.replace('_', " ");
         display_mod.push(DisplayMod {
             displayname: SharedString::from(if mod_data.name.chars().count() > 20 {
-                mod_data
-                    .name
-                    .clone()
-                    .chars()
-                    .enumerate()
-                    .filter_map(|(i, c)| match i {
-                        ..=17 => Some(c),
-                        _ => None,
-                    })
-                    .chain("...".chars())
-                    .collect()
+                format!("{}...", &name[..17])
             } else {
-                mod_data.name.clone()
+                name.clone()
             }),
-            name: SharedString::from(mod_data.name.clone()),
+            name: SharedString::from(name.clone()),
             enabled: mod_data.state,
             files: SharedString::from({
                 let files = mod_data
