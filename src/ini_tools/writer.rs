@@ -96,7 +96,7 @@ pub fn new_cfg(path: &Path) -> Result<(), ini::Error> {
     let mut new_ini = File::create(path)?;
 
     for section in INI_SECTIONS {
-        writeln!(new_ini, "{}", section)?;
+        writeln!(new_ini, "{section}")?;
     }
 
     Ok(())

@@ -39,6 +39,7 @@ impl ValueType for bool {
     ) -> Result<Self, Self::ParseError> {
         ini.get_from(section, key)
             .expect("Validated by IniProperty::is_valid")
+            .to_lowercase()
             .parse::<bool>()
     }
     /// Do not use | no extra steps needed for validating a bool, .parse already handles validation or ParseBoolError
@@ -309,7 +310,7 @@ impl RegMod {
                         file_map.get(&key).map(|file_strs| {
                             (
                                 key,
-                                state_str.parse::<bool>(),
+                                state_str.to_lowercase().parse::<bool>(),
                                 file_strs.iter().map(PathBuf::from).collect::<Vec<_>>(),
                             )
                         })
