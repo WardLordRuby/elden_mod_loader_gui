@@ -1,12 +1,12 @@
 #![cfg(target_os = "windows")]
-// Setting windows_subsystem will hide console| cant read logs if console is hidden
+// Setting windows_subsystem will hide console | cant read logs if console is hidden
 #![windows_subsystem = "windows"]
 
 slint::include_modules!();
 
 use elden_mod_loader_gui::{
     ini_tools::{
-        parser::{IniProperty, RegMod, Valitidity},
+        parser::{split_out_config_files, IniProperty, RegMod, Valitidity},
         writer::*,
     },
     *,
@@ -16,7 +16,7 @@ use log::{error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{
-    ffi::{OsStr, OsString},
+    ffi::OsString,
     io::{self, ErrorKind},
     path::{Path, PathBuf},
     rc::Rc,
@@ -188,10 +188,12 @@ fn main() -> Result<(), slint::PlatformError> {
                                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                                 }
                             }
+                            let (config_files, files) = split_out_config_files(files);
                             RegMod {
                                 name: mod_name.trim().to_string(),
                                 state,
                                 files,
+                                config_files,
                             }
                             .verify_state(&game_dir, &CURRENT_INI)
                             .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
@@ -279,14 +281,8 @@ fn main() -> Result<(), slint::PlatformError> {
             match RegMod::collect(&CURRENT_INI, false) {
                 Ok(reg_mods) => {
                     if let Some(found_mod) = reg_mods.iter().find(|reg_mod| key == reg_mod.name) {
-                        toggle_files(
-                            &found_mod.name,
-                            &game_dir,
-                            !found_mod.state,
-                            found_mod.files.clone(),
-                            &CURRENT_INI,
-                        )
-                        .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                        toggle_files(&game_dir, !found_mod.state, found_mod, &CURRENT_INI)
+                            .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                     } else {
                         error!("Mod: \"{key}\" not found");
                         ui.display_msg(&format!("Mod: \"{key}\" not found"))
@@ -327,9 +323,12 @@ fn main() -> Result<(), slint::PlatformError> {
                                         "A selected file is already registered to a mod",
                                     );
                                 } else {
-                                    let mut new_data = found_mod.clone();
-                                    new_data.files.extend(files.iter().cloned());
-                                    if found_mod.files.len() == 1 {
+                                    let mut new_data = found_mod.files.clone();
+                                    new_data.extend(files);
+                                    if !found_mod.config_files.is_empty() {
+                                        new_data.extend(found_mod.config_files.iter().cloned());
+                                    }
+                                    if found_mod.files.len() + found_mod.config_files.len() == 1 {
                                         remove_entry(
                                             &CURRENT_INI,
                                             Some("mod-files"),
@@ -340,11 +339,18 @@ fn main() -> Result<(), slint::PlatformError> {
                                         remove_array(&CURRENT_INI, &found_mod.name)
                                             .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                                     }
-                                    save_path_bufs(&CURRENT_INI, &found_mod.name, &new_data.files)
+                                    save_path_bufs(&CURRENT_INI, &found_mod.name, &new_data)
                                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-                                    new_data
-                                        .verify_state(&game_dir, &CURRENT_INI)
-                                        .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                                    let (config_files, files) =
+                                        split_out_config_files(new_data.clone());
+                                    RegMod {
+                                        name: found_mod.name.clone(),
+                                        state: found_mod.state,
+                                        files,
+                                        config_files,
+                                    }
+                                    .verify_state(&game_dir, &CURRENT_INI)
+                                    .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                                     ui.global::<MainLogic>().set_current_mods(deserialize(
                                         &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(
                                             |err| {
@@ -387,14 +393,8 @@ fn main() -> Result<(), slint::PlatformError> {
                         if found_mod.files.iter().any(|file| {
                             file.extension().expect("file with extention") == "disabled"
                         }) {
-                            toggle_files(
-                                &found_mod.name,
-                                &game_dir,
-                                true,
-                                found_mod.files.clone(),
-                                &CURRENT_INI,
-                            )
-                            .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                            toggle_files(&game_dir, true, found_mod, &CURRENT_INI)
+                                .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                         }
                         remove_entry(&CURRENT_INI, Some("registered-mods"), &found_mod.name)
                             .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
@@ -511,23 +511,16 @@ fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
 fn deserialize(data: &[RegMod], game_dir: &str) -> ModelRc<DisplayMod> {
     let display_mod: Rc<VecModel<DisplayMod>> = Default::default();
     for mod_data in data.iter() {
-        let has_config: bool;
+        let has_config = !mod_data.config_files.is_empty();
         let config_files: Rc<VecModel<SharedString>> = Default::default();
-        let ini_files = mod_data
-            .files
-            .iter()
-            .filter(|file| file.extension().unwrap_or_default() == OsStr::new("ini"))
-            .collect::<Vec<_>>();
-        if !ini_files.is_empty() {
-            has_config = true;
-            for file in ini_files {
+        if has_config {
+            mod_data.config_files.iter().for_each(|file| {
                 config_files.push(SharedString::from(format!(
                     "{game_dir}\\{}",
                     file.display()
                 )))
-            }
+            })
         } else {
-            has_config = false;
             config_files.push(SharedString::new())
         };
         display_mod.push(DisplayMod {
@@ -548,14 +541,21 @@ fn deserialize(data: &[RegMod], game_dir: &str) -> ModelRc<DisplayMod> {
             }),
             name: SharedString::from(mod_data.name.clone()),
             enabled: mod_data.state,
-            files: SharedString::from(
-                mod_data
+            files: SharedString::from({
+                let files = mod_data
                     .files
                     .iter()
                     .map(|path_buf| path_buf.to_string_lossy().replace(".disabled", ""))
                     .collect::<Vec<_>>()
-                    .join("\n"),
-            ),
+                    .join("\n");
+                let config_files = mod_data
+                    .config_files
+                    .iter()
+                    .map(|f| f.to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!("{files}\n{config_files}")
+            }),
             has_config,
             config_files: ModelRc::from(config_files),
         })

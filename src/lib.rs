@@ -5,7 +5,7 @@ pub mod ini_tools {
 
 use ini::Ini;
 use ini_tools::{
-    parser::IniProperty,
+    parser::{IniProperty, RegMod},
     writer::{remove_array, save_bool, save_path, save_path_bufs},
 };
 use log::{error, info, trace, warn};
@@ -40,14 +40,13 @@ pub fn shorten_paths(
 }
 
 pub fn toggle_files(
-    key: &str,
     game_dir: &Path,
     new_state: bool,
-    file_paths: Vec<PathBuf>,
+    reg_mod: &RegMod,
     save_file: &Path,
 ) -> Result<(), ini::Error> {
     /// Takes in a potential pathBuf, finds file_name name and outputs the new_state version
-    fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
+    fn toggle_name_state(file_paths: &[PathBuf], new_state: &bool) -> Vec<PathBuf> {
         file_paths
             .iter()
             .map(|path| {
@@ -58,7 +57,7 @@ pub fn toggle_files(
                 };
                 let mut new_name = file_name.to_string_lossy().to_string();
                 if let Some(index) = new_name.to_lowercase().find(off_state) {
-                    if new_state {
+                    if *new_state {
                         new_name.replace_range(index..index + off_state.len(), "");
                     }
                 } else if !new_state {
@@ -70,13 +69,13 @@ pub fn toggle_files(
             })
             .collect()
     }
-    fn join_paths(base_path: PathBuf, join_to: Vec<PathBuf>) -> Vec<PathBuf> {
+    fn join_paths(base_path: &Path, join_to: &[PathBuf]) -> Vec<PathBuf> {
         join_to.iter().map(|path| base_path.join(path)).collect()
     }
     fn rename_files(
         num_files: &usize,
-        paths: Vec<PathBuf>,
-        new_paths: Vec<PathBuf>,
+        paths: &[PathBuf],
+        new_paths: &[PathBuf],
     ) -> Result<(), io::Error> {
         if *num_files != paths.len() || *num_files != new_paths.len() {
             return Err(io::Error::new(
@@ -95,7 +94,7 @@ pub fn toggle_files(
     }
     fn update_cfg(
         num_file: &usize,
-        path_to_save: Vec<PathBuf>,
+        path_to_save: &[PathBuf],
         state: bool,
         key: &str,
         save_file: &Path,
@@ -104,29 +103,37 @@ pub fn toggle_files(
             save_path(save_file, Some("mod-files"), key, &path_to_save[0])?;
         } else {
             remove_array(save_file, key)?;
-            save_path_bufs(save_file, key, &path_to_save)?;
+            save_path_bufs(save_file, key, path_to_save)?;
         }
         save_bool(save_file, Some("registered-mods"), key, state)?;
         Ok(())
     }
-    let num_of_files = file_paths.len();
+    let num_rename_files = reg_mod.files.len();
+    let num_total_files = num_rename_files + reg_mod.config_files.len();
 
-    let file_paths_clone = std::sync::Arc::new(file_paths.clone());
-    let state_clone = std::sync::Arc::new(new_state);
+    let file_paths = std::sync::Arc::new(reg_mod.files.clone());
+    let file_paths_clone = file_paths.clone();
     let game_dir_clone = game_dir.to_path_buf();
 
     let new_short_paths_thread =
-        std::thread::spawn(move || toggle_name_state(&file_paths_clone, *state_clone));
+        std::thread::spawn(move || toggle_name_state(&file_paths, &new_state));
     let original_full_paths_thread =
-        std::thread::spawn(move || join_paths(game_dir_clone, file_paths));
+        std::thread::spawn(move || join_paths(&game_dir_clone, &file_paths_clone));
 
-    let short_path_new = new_short_paths_thread.join().unwrap_or(Vec::new());
-    let full_path_new = join_paths(PathBuf::from(game_dir), short_path_new.clone());
+    let mut short_path_new = new_short_paths_thread.join().unwrap_or(Vec::new());
+    let full_path_new = join_paths(Path::new(game_dir), &short_path_new);
     let full_path_original = original_full_paths_thread.join().unwrap_or(Vec::new());
 
-    rename_files(&num_of_files, full_path_original, full_path_new)?;
+    rename_files(&num_rename_files, &full_path_original, &full_path_new)?;
 
-    update_cfg(&num_of_files, short_path_new, new_state, key, save_file)?;
+    short_path_new.extend(reg_mod.config_files.iter().cloned());
+    update_cfg(
+        &num_total_files,
+        &short_path_new,
+        new_state,
+        &reg_mod.name.replace(' ', "_"),
+        save_file,
+    )?;
     Ok(())
 }
 

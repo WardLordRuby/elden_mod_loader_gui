@@ -275,6 +275,7 @@ pub struct RegMod {
     pub name: String,
     pub state: bool,
     pub files: Vec<PathBuf>,
+    pub config_files: Vec<PathBuf>,
 }
 
 impl RegMod {
@@ -324,21 +325,21 @@ impl RegMod {
                 .expect("Validated by Ini::is_setup on startup");
             let mut state_data = mod_state_data.iter().collect::<HashMap<&str, &str>>();
             let mut file_data = collect_file_data(mod_files_data);
-            let invalid_state: Vec<_> = state_data
+            let invalid_state = state_data
                 .keys()
                 .filter(|k| !file_data.contains_key(*k))
                 .cloned()
-                .collect();
+                .collect::<Vec<_>>();
             for key in invalid_state {
                 state_data.remove(key);
                 remove_entry(path, Some("registered-mods"), key)?;
                 warn!("\"{key}\" has no matching files");
             }
-            let invalid_files: Vec<_> = file_data
+            let invalid_files = file_data
                 .keys()
                 .filter(|k| !state_data.contains_key(*k))
                 .cloned()
-                .collect();
+                .collect::<Vec<_>>();
             for key in invalid_files {
                 if file_data.get(key).expect("key exists").len() > 1 {
                     remove_array(path, key)?;
@@ -362,12 +363,12 @@ impl RegMod {
                 .enumerate()
                 .filter(|(_, (k, _))| *k != "array[]")
                 .map(|(i, (k, v))| {
-                    let paths: Vec<&str> = mod_files_data
+                    let paths = mod_files_data
                         .iter()
                         .skip(i + 1)
                         .take_while(|(k, _)| *k == "array[]")
                         .map(|(_, v)| v)
-                        .collect();
+                        .collect::<Vec<_>>();
                     let s = mod_state_data.get(k).expect("key exists");
                     (k, s, if v == "array" { paths } else { vec![v] })
                 })
@@ -383,6 +384,7 @@ impl RegMod {
                     name: n.replace('_', " ").to_string(),
                     state: s.parse::<bool>().expect("Only run during dev tests"),
                     files: f.iter().map(PathBuf::from).collect(),
+                    config_files: Vec::new(),
                 })
                 .collect())
         } else {
@@ -397,11 +399,15 @@ impl RegMod {
                                 .to_owned()
                                 .validate(&ini, Some("mod-files"), skip_validation)
                             {
-                                Ok(path) => Some(RegMod {
-                                    name: k.replace('_', " ").to_string(),
-                                    state: *bool,
-                                    files: vec![path],
-                                }),
+                                Ok(path) => {
+                                    let (config_files, files) = split_out_config_files(vec![path]);
+                                    Some(RegMod {
+                                        name: k.replace('_', " ").to_string(),
+                                        state: *bool,
+                                        files,
+                                        config_files,
+                                    })
+                                }
                                 Err(err) => {
                                     error!("Error: {err}");
                                     remove_entry(path, Some("registered-mods"), k)
@@ -414,11 +420,15 @@ impl RegMod {
                             .to_owned()
                             .validate(&ini, Some("mod-files"), skip_validation)
                         {
-                            Ok(paths) => Some(RegMod {
-                                name: k.replace('_', " ").to_string(),
-                                state: *bool,
-                                files: paths,
-                            }),
+                            Ok(paths) => {
+                                let (config_files, files) = split_out_config_files(paths);
+                                Some(RegMod {
+                                    name: k.replace('_', " ").to_string(),
+                                    state: *bool,
+                                    files,
+                                    config_files,
+                                })
+                            }
                             Err(err) => {
                                 error!("Error: {err}");
                                 remove_entry(path, Some("registered-mods"), k)
@@ -453,16 +463,16 @@ impl RegMod {
                 "wrong file state for \"{}\" chaning file extentions",
                 self.name
             );
-            toggle_files(
-                &self.name.replace(' ', "_"),
-                game_dir,
-                self.state,
-                self.files.clone(),
-                ini_file,
-            )?
+            toggle_files(game_dir, self.state, self, ini_file)?
         }
         Ok(())
     }
+}
+
+pub fn split_out_config_files(files: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    files.into_iter().partition(|file| {
+        file.extension().expect("file with extention") == std::ffi::OsStr::new("ini")
+    })
 }
 // ----------------------Optimized original implementation-------------------------------
 // let mod_state_data = ini.section(Some("registered-mods")).unwrap();
