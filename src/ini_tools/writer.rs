@@ -1,7 +1,7 @@
 use ini::{EscapePolicy, Ini, LineSeparator, WriteOption};
 
 use std::{
-    fs::{read_to_string, write, File},
+    fs::{self, read_to_string, write, File},
     io::{self, Write},
     path::{Path, PathBuf},
 };
@@ -70,6 +70,29 @@ pub fn save_bool(
 }
 
 pub fn new_cfg(path: &Path) -> Result<(), ini::Error> {
+    if path.components().count() > 1 {
+        let mut ancestors = Vec::new();
+        for ancestor in path.ancestors() {
+            if ancestor != Path::new("") && ancestor.extension().is_none() {
+                ancestors.push(ancestor)
+            }
+        }
+        ancestors.reverse();
+        for ancestor in ancestors {
+            match ancestor.try_exists() {
+                Ok(bool) => match bool {
+                    true => (),
+                    false => fs::create_dir(ancestor).unwrap_or_default(),
+                },
+                Err(_) => {
+                    return Err(ini::Error::Io(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Permission Denied when trying to access directory",
+                    )))
+                }
+            }
+        }
+    }
     let mut new_ini = File::create(path)?;
 
     for section in INI_SECTIONS {
