@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 slint::include_modules!();
 
@@ -78,7 +78,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         Some(path)
                     }
                     Err(err) => {
-                        game_verified = false;
+                        game_verified = true;
                         ui.display_msg(&err.to_string());
                         None
                     }

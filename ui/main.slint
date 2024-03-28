@@ -53,8 +53,8 @@ export component MainPage inherits Page {
                         colorize: ColorPalette.button-image-base;
                         ta := TouchArea {
                             enabled: MainLogic.game_path_valid;
-                            height: 28px;
                             x: mod-box.width - 284px;
+                            height: 28px;
                             width: root.width - mod-box.width;
                             clicked => { edit_mod(idx) }
                         }
