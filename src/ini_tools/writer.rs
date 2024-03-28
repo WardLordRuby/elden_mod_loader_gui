@@ -121,7 +121,10 @@ pub fn remove_array(file_name: &Path, key: &str) -> Result<(), ini::Error> {
         !skip_next_line
     };
 
-    let lines: Vec<&str> = content.lines().filter(|&line| filter_lines(line)).collect();
+    let lines = content
+        .lines()
+        .filter(|&line| filter_lines(line))
+        .collect::<Vec<_>>();
 
     write(file_name, lines.join("\r\n")).map_err(ini::Error::Io)
 }
