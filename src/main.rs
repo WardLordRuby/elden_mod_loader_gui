@@ -16,7 +16,6 @@ use log::{error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{
-    ffi::OsString,
     io::{self, ErrorKind},
     path::{Path, PathBuf},
     rc::Rc,
@@ -447,7 +446,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 .expect("We know we set a VecModel earlier");
             let string_file = downcast_config_file
                 .iter()
-                .map(|path| OsString::from(path.to_string()))
+                .map(|path| std::ffi::OsString::from(path.to_string()))
                 .collect::<Vec<_>>();
             for file in string_file {
                 let arc_file = Arc::new(file);
