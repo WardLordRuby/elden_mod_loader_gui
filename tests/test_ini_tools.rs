@@ -105,7 +105,8 @@ mod tests {
             .unwrap();
 
         // Tests if PathBuf and Vec<PathBuf>'s from Section("mod-files") parse correctly | these are partial paths
-        assert_eq!(mod_1, reg_mod_1.files);
+        assert_eq!(mod_1[0], reg_mod_1.files[0]);
+        assert_eq!(mod_1[1], reg_mod_1.config_files[0]);
         assert_eq!(mod_2, reg_mod_2.files[0]);
 
         // Tests if bool was parsed correctly
