@@ -43,6 +43,7 @@ fn generate_test_paths() -> Vec<PathBuf> {
                     .sample_iter(&Alphanumeric)
                     .take(10)
                     .map(char::from)
+                    .chain(".dll".chars())
                     .collect::<String>(),
             )
         })

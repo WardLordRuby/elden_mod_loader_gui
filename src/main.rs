@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 slint::include_modules!();
 
@@ -119,7 +119,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 .into(),
         );
         ui.global::<MainLogic>().set_current_mods(deserialize(
-            &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
+            &RegMod::collect(&CURRENT_INI, !game_verified).unwrap_or_else(|err| {
                 ui.display_msg(&err.to_string());
                 vec![RegMod::default()]
             }),
@@ -127,6 +127,11 @@ fn main() -> Result<(), slint::PlatformError> {
         ));
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
+            if !first_startup {
+                ui.display_msg(
+                    "Failed to locate Elden Ring\nPlease Select the install directory for Elden Ring",
+                );
+            }
         }
         if first_startup && !game_verified {
             ui.display_msg(

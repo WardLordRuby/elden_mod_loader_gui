@@ -55,17 +55,14 @@ impl ValueType for PathBuf {
         key: &str,
         skip_validation: bool,
     ) -> Result<Self, Self::ParseError> {
+        let parsed_value = PathBuf::from(
+            ini.get_from(section, key)
+                .expect("Validated by IniProperty::is_valid"),
+        );
         if skip_validation {
-            Ok(PathBuf::from(
-                ini.get_from(section, key)
-                    .expect("Validated by IniProperty::is_valid"),
-            ))
+            Ok(parsed_value)
         } else {
-            PathBuf::from(
-                ini.get_from(section, key)
-                    .expect("Validated by IniProperty::is_valid"),
-            )
-            .validate(ini, section, skip_validation)
+            parsed_value.validate(ini, section, skip_validation)
         }
     }
     fn validate(
@@ -76,9 +73,16 @@ impl ValueType for PathBuf {
     ) -> Result<Self, Self::ParseError> {
         if !disable {
             if section == Some("mod-files") {
-                let game_dir = IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
-                    .expect("game_dir is already checked to be valid")
-                    .value;
+                let game_dir =
+                    match IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false) {
+                        Some(ini_property) => ini_property.value,
+                        None => {
+                            return Err(io::Error::new(
+                                io::ErrorKind::NotFound,
+                                "game_dir is not valid",
+                            ))
+                        }
+                    };
                 match validate_file(&game_dir.join(&self)) {
                     Ok(()) => Ok(self),
                     Err(err) => Err(err),
@@ -112,19 +116,15 @@ impl ValueType for Vec<PathBuf> {
                 .map(|(_, v)| PathBuf::from(v))
                 .collect()
         }
+        let parsed_value = read_array(
+            ini.section(section)
+                .expect("Validated by IniProperty::is_valid"),
+            key,
+        );
         if skip_validation {
-            Ok(read_array(
-                ini.section(section)
-                    .expect("Validated by IniProperty::is_valid"),
-                key,
-            ))
+            Ok(parsed_value)
         } else {
-            read_array(
-                ini.section(section)
-                    .expect("Validated by IniProperty::is_valid"),
-                key,
-            )
-            .validate(ini, section, skip_validation)
+            parsed_value.validate(ini, section, skip_validation)
         }
     }
     fn validate(
@@ -134,9 +134,16 @@ impl ValueType for Vec<PathBuf> {
         disable: bool,
     ) -> Result<Self, Self::ParseError> {
         if !disable {
-            let game_dir = IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
-                .expect("game_dir is already checked to be valid")
-                .value;
+            let game_dir = match IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
+            {
+                Some(ini_property) => ini_property.value,
+                None => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "game_dir is not valid",
+                    ))
+                }
+            };
             if let Some(err) = self
                 .iter()
                 .find_map(|path| validate_file(&game_dir.join(path)).err())
@@ -374,11 +381,15 @@ impl RegMod {
             let parsed_data = collect_data_unsafe(&ini);
             Ok(parsed_data
                 .iter()
-                .map(|(n, s, f)| RegMod {
-                    name: n.replace('_', " ").to_string(),
-                    state: s.parse::<bool>().expect("Only run during dev tests"),
-                    files: f.iter().map(PathBuf::from).collect(),
-                    config_files: Vec::new(),
+                .map(|(n, s, f)| {
+                    let (config_files, files) =
+                        split_out_config_files(f.iter().map(PathBuf::from).collect());
+                    RegMod {
+                        name: n.replace('_', " ").to_string(),
+                        state: s.parse::<bool>().expect("Only run during dev tests"),
+                        files,
+                        config_files,
+                    }
                 })
                 .collect())
         } else {
@@ -441,7 +452,7 @@ impl RegMod {
         }
     }
     pub fn verify_state(&self, game_dir: &Path, ini_file: &Path) -> Result<(), ini::Error> {
-        let off_state = std::ffi::OsStr::new("disabled");
+        let off_state = "disabled";
         if (!self.state
             && self
                 .files
@@ -464,9 +475,9 @@ impl RegMod {
 }
 
 pub fn split_out_config_files(files: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
-    files.into_iter().partition(|file| {
-        file.extension().expect("file with extention") == std::ffi::OsStr::new("ini")
-    })
+    files
+        .into_iter()
+        .partition(|file| file.extension().expect("file with extention") == "ini")
 }
 // ----------------------Optimized original implementation-------------------------------
 // let mod_state_data = ini.section(Some("registered-mods")).unwrap();

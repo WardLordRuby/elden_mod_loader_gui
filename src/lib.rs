@@ -46,7 +46,7 @@ pub fn toggle_files(
     save_file: &Path,
 ) -> Result<(), ini::Error> {
     /// Takes in a potential pathBuf, finds file_name name and outputs the new_state version
-    fn toggle_name_state(file_paths: &[PathBuf], new_state: &bool) -> Vec<PathBuf> {
+    fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
         file_paths
             .iter()
             .map(|path| {
@@ -57,7 +57,7 @@ pub fn toggle_files(
                 };
                 let mut new_name = file_name.to_string_lossy().to_string();
                 if let Some(index) = new_name.to_lowercase().find(off_state) {
-                    if *new_state {
+                    if new_state {
                         new_name.replace_range(index..index + off_state.len(), "");
                     }
                 } else if !new_state {
@@ -116,17 +116,17 @@ pub fn toggle_files(
     let game_dir_clone = game_dir.to_path_buf();
 
     let new_short_paths_thread =
-        std::thread::spawn(move || toggle_name_state(&file_paths, &new_state));
+        std::thread::spawn(move || toggle_name_state(&file_paths, new_state));
     let original_full_paths_thread =
         std::thread::spawn(move || join_paths(&game_dir_clone, &file_paths_clone));
 
     let mut short_path_new = new_short_paths_thread.join().unwrap_or(Vec::new());
     let full_path_new = join_paths(Path::new(game_dir), &short_path_new);
     let full_path_original = original_full_paths_thread.join().unwrap_or(Vec::new());
+    short_path_new.extend(reg_mod.config_files.iter().cloned());
 
     rename_files(&num_rename_files, &full_path_original, &full_path_new)?;
 
-    short_path_new.extend(reg_mod.config_files.iter().cloned());
     update_cfg(
         &num_total_files,
         &short_path_new,

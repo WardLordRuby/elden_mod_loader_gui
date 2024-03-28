@@ -87,10 +87,10 @@ export component Page inherits Rectangle {
             height: 24px;
     
             TouchArea {
-                clicked => { root.back() }
                 x:0;
                 height: 37px;
                 width: 400%;
+                clicked => { root.back() }
             }
         }
 
@@ -114,10 +114,9 @@ export component Page inherits Rectangle {
                 width: 28px;
                 image-fit: contain;
                 ta := TouchArea {
-                    clicked => { root.settings() }
                     width: 45px;
                     height: 40px;
-                    
+                    clicked => { root.settings() }
                 }
             }
             states [

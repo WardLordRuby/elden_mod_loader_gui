@@ -21,13 +21,13 @@ export component App inherits Window {
     
     mp := MainPage {}
 
+    callback focus_app;
     callback show_error_popup;
+    focus_app => { fs.focus() }
     show_error_popup => {
         MainLogic.popup_window_visible = true;
         err-popup.show()
     }
-    callback focus_app;
-    focus_app => { fs.focus() }
 
     err_msg_size := Text {
         visible: false;

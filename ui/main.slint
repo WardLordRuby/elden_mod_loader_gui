@@ -36,13 +36,13 @@ export component MainPage inherits Page {
                     // implmented a static way to elide text adding displayname property
                     mod-box := CheckBox {
                         x: -3px;
+                        text: mod.displayname;
+                        checked: mod.enabled;
+                        enabled: reg-mod-box.enabled;
                         toggled => {
                             MainLogic.current_mods[idx].enabled = self.checked;
                             MainLogic.toggleMod(mod.name)
                         }
-                        text: mod.displayname;
-                        checked: mod.enabled;
-                        enabled: reg-mod-box.enabled;
                     }
                     im := Image {
                         x: 274px;
@@ -52,10 +52,11 @@ export component MainPage inherits Page {
                         source: @image-url("assets/arrow.png");
                         colorize: ColorPalette.button-image-base;
                         ta := TouchArea {
-                            clicked => { edit_mod(idx) }
+                            enabled: MainLogic.game_path_valid;
                             height: 28px;
                             x: mod-box.width - 284px;
                             width: root.width - mod-box.width;
+                            clicked => { edit_mod(idx) }
                         }
                     }
                     states [
