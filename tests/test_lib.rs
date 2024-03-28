@@ -30,13 +30,10 @@ mod tests {
             PathBuf::from("test_files\\test5.bin"),
         ];
 
-        let test_files_disabled = vec![
-            PathBuf::from("test_files\\test1.txt.disabled"),
-            PathBuf::from("test_files\\test2.ini.disabled"),
-            PathBuf::from("test_files\\test3.dll.disabled"),
-            PathBuf::from("test_files\\test4.exe.disabled"),
-            PathBuf::from("test_files\\test5.bin.disabled"),
-        ];
+        let test_files_disabled = test_files
+            .iter()
+            .map(|file| PathBuf::from(format!("{}.disabled", file.display())))
+            .collect::<Vec<_>>();
 
         for test_file in test_files.iter() {
             File::create(test_file.to_string_lossy().to_string()).unwrap();

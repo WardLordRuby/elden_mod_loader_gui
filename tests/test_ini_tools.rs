@@ -7,7 +7,10 @@ mod tests {
 
     use elden_mod_loader_gui::{
         get_cfg,
-        ini_tools::{parser::IniProperty, parser::RegMod, writer::*},
+        ini_tools::{
+            parser::{IniProperty, RegMod, Valitidity},
+            writer::*,
+        },
     };
 
     #[test]
@@ -52,7 +55,9 @@ mod tests {
         let mod_2 = PathBuf::from("mods\\SkipTheIntro.dll");
 
         {
+            // Test if new_cfg will write all Sections to the file with .is_setup()
             new_cfg(test_file).unwrap();
+            assert!(get_cfg(test_file).unwrap().is_setup());
 
             let invalid_format_1 = vec![
                 PathBuf::from("mods\\UnlockTheFps.dll"),
