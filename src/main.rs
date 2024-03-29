@@ -22,7 +22,7 @@ use std::{
     sync::Arc,
 };
 
-const CONFIG_NAME: &str = "mod_loader_config.ini";
+const CONFIG_NAME: &str = "EML_gui_config.ini";
 lazy_static::lazy_static! {
     static ref CURRENT_INI: PathBuf = get_ini_dir();
 }
@@ -144,7 +144,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // Error check input text for invalid symbols
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
-        move |mod_name: SharedString| {
+        move |mod_name| {
             let ui = ui_handle.unwrap();
             let format_key = mod_name.trim().replace(' ', "_");
             let registered_mods = RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
@@ -160,7 +160,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         "There is already a registered mod with the name\n\"{mod_name}\""
                     ));
                     ui.global::<MainLogic>()
-                        .set_line_edit_text(SharedString::from(""));
+                        .set_line_edit_text(SharedString::new());
                     return;
                 }
             }
@@ -203,7 +203,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             .verify_state(&game_dir, &CURRENT_INI)
                             .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                             ui.global::<MainLogic>()
-                                .set_line_edit_text(SharedString::from(""));
+                                .set_line_edit_text(SharedString::new());
                             ui.global::<MainLogic>().set_current_mods(deserialize(
                                 &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
                                     ui.display_msg(&err.to_string());
@@ -211,6 +211,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                 }),
                                 &game_dir.to_string_lossy(),
                             ));
+                            ui.invoke_focus_app();
                         }
                     }
                     Err(err) => {
@@ -280,7 +281,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_toggleMod({
         let ui_handle = ui.as_weak();
-        move |key: SharedString| {
+        move |key| {
             let ui = ui_handle.unwrap();
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
             let format_key = key.replace(' ', "_");
@@ -309,7 +310,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_add_to_mod({
         let ui_handle = ui.as_weak();
-        move |key: SharedString| {
+        move |key| {
             let ui = ui_handle.unwrap();
             let format_key = key.replace(' ', "_");
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
@@ -393,7 +394,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_remove_mod({
         let ui_handle = ui.as_weak();
-        move |key: SharedString| {
+        move |key| {
             let ui = ui_handle.unwrap();
             let format_key = key.replace(' ', "_");
             match RegMod::collect(&CURRENT_INI, false) {
@@ -558,7 +559,11 @@ fn deserialize(data: &[RegMod], game_dir: &str) -> ModelRc<DisplayMod> {
                     .map(|f| f.to_string_lossy())
                     .collect::<Vec<_>>()
                     .join("\n");
-                format!("{files}\n{config_files}")
+                if files.is_empty() {
+                    config_files
+                } else {
+                    format!("{files}\n{config_files}")
+                }
             }),
             has_config,
             config_files: ModelRc::from(config_files),

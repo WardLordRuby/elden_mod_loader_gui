@@ -192,7 +192,7 @@ pub fn attempt_locate_game(file_name: &Path) -> Result<PathResult, ini::Error> {
                 file_name.display()
             );
             error!("Error: {err}");
-            return Ok(PathResult::None(PathBuf::from("")));
+            return Ok(PathResult::None(PathBuf::new()));
         }
     };
     if let Some(path) = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
