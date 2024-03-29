@@ -1,11 +1,17 @@
 [package]
 name = "elden_mod_loader_gui"
-version = "0.8.0"
+version = "0.9.0"
 authors = ["WardLordRuby"]
 edition = "2021"
 build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata.winresource]
+ProductName = "Elden Mod Loader GUI"
+FileDescription = "A UI tool made by: WardLordRuby"
+ProductVersion = "0.9.0-beta"
+
 [profile.release]
 opt-level = "z"  # Optimize for size.
 lto = true
@@ -22,6 +28,7 @@ lazy_static = "1.4.0"
 
 [build-dependencies]
 slint-build = "1.5.1"
+winresource = "0.1.17"
 
 [dev-dependencies]
 criterion = "0.5.1"

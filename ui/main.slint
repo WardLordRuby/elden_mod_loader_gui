@@ -82,7 +82,7 @@ export component MainPage inherits Page {
                         MainLogic.force_app_focus()
                     }
                     // && doesn't work in slint conditonal statements
-                    if (event.text == Key.Tab ) {
+                    if (event.text == Key.Tab) {
                         if (input-mod.has-focus) {
                             add-mod.focus()
                         } else {
