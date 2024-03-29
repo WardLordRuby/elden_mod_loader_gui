@@ -43,6 +43,11 @@ export global ColorPalette  {
     out property <color> popup-border-color: SettingsLogic.dark_mode ? #17575c : #1b1b1b;
 
     out property <color> text-foreground-color: #ffffff;
+    out property <color> text-base: #aeaeae;
+    out property <ButtonColors> text-shade-colors: {
+        pressed: SettingsLogic.dark_mode ? root.text-base.darker(30%) : root.text-base.darker(10%),
+        hovered: root.text-base.brighter(20%),
+    };
 
     out property <color> button-image-base: SettingsLogic.dark_mode ? #505150 : #aeaeae;
     out property <ButtonColors> button-image-colors: {
@@ -78,57 +83,81 @@ export component Page inherits Rectangle {
         padding-right: 8px;
         padding-top: 8px;
 
-        if (root.has-back-button) : Image {
-            source: @image-url("assets/back-arrow.png");
-            image-fit: contain;
-            colorize: ColorPalette.text-foreground-color;
-            source-clip-y: -50;
-            width: 30px;
-            height: 24px;
-    
-            TouchArea {
-                x:0;
-                height: 37px;
-                width: 400%;
-                clicked => { root.back() }
-            }
-        }
-
-        Text {
-            font-size: 24px;
-            max-width: parent.width * 0.8;
-            text <=> root.title;
-            color: ColorPalette.text-foreground-color;
-            overflow: elide;
-        }
-
-        Rectangle {} // Spacer
-        
-        if (!root.has-back-button) : re := Rectangle {
-            width: 33px;
-            height: 33px;
-            border-radius: 4px;
-            im := Image {
-                source: @image-url("assets/settings.png");
-                colorize: ColorPalette.button-image-base;
-                width: 28px;
+        if (root.has-back-button) : HorizontalLayout {
+            im1 := Image {
+                source: @image-url("assets/back-arrow.png");
                 image-fit: contain;
-                ta := TouchArea {
-                    width: 45px;
-                    height: 40px;
-                    clicked => { root.settings() }
+                colorize: ColorPalette.text-foreground-color;
+                source-clip-y: -50;
+                width: 30px;
+                height: 24px;
+                
+                ta1 := TouchArea {
+                    x:0;
+                    height: 37px;
+                    width: title.width + im1.width;
+                    clicked => { root.back() }
                 }
             }
+            title := Text {
+                font-size: 24px;
+                max-width: root.width - 10px;
+                text: root.title;
+                color: ColorPalette.text-foreground-color;
+                overflow: elide;
+            }
+
+            Rectangle {} // Spacer
+
             states [
-                hover when ta.has-hover && !ta.pressed: {
-                    re.background: ColorPalette.button-background-colors.hovered;
-                    im.colorize: ColorPalette.button-image-colors.hovered;
+                hover when ta1.has-hover && !ta1.pressed: {
+                    title.color: ColorPalette.text-shade-colors.hovered;
+                    im1.colorize: ColorPalette.text-shade-colors.hovered;
                 }
-                pressed when ta.pressed : {
-                    re.background: ColorPalette.button-background-colors.pressed;
-                    im.colorize: ColorPalette.button-image-colors.pressed;
+                pressed when ta1.pressed : {
+                    title.color: ColorPalette.text-shade-colors.pressed;
+                    im1.colorize: ColorPalette.text-shade-colors.pressed;
                 }
             ]
+        }
+        
+        if (!root.has-back-button) : HorizontalLayout {
+            Text {
+                font-size: 24px;
+                max-width: root.width * 0.8;
+                text: root.title;
+                color: ColorPalette.text-foreground-color;
+                overflow: elide;
+            }
+
+            Rectangle {} // Spacer
+
+            re := Rectangle {
+                width: 33px;
+                height: 33px;
+                border-radius: 4px;
+                im2 := Image {
+                    source: @image-url("assets/settings.png");
+                    colorize: ColorPalette.button-image-base;
+                    width: 28px;
+                    image-fit: contain;
+                    ta2 := TouchArea {
+                        width: 45px;
+                        height: 40px;
+                        clicked => { root.settings() }
+                    }
+                }
+                states [
+                    hover when ta2.has-hover && !ta2.pressed: {
+                        re.background: ColorPalette.button-background-colors.hovered;
+                        im2.colorize: ColorPalette.button-image-colors.hovered;
+                    }
+                    pressed when ta2.pressed : {
+                        re.background: ColorPalette.button-background-colors.pressed;
+                        im2.colorize: ColorPalette.button-image-colors.pressed;
+                    }
+                ]
+            }
         }
     }
     @children
