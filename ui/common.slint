@@ -28,8 +28,17 @@ export global MainLogic {
 export global SettingsLogic  {
     callback select_game_dir();
     callback toggle_theme(bool);
+    callback toggle_terminal(bool);
+    callback set_load_delay(string);
+    callback toggle_all(bool);
     in property <string> game_path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
+    in property <bool> loader_installed;
     in-out property <bool> dark_mode: true;
+    in-out property <bool> loader_disabled;
+    in-out property <bool> show_terminal;
+    in-out property <string> load_delay: "5000ms";
+    in property <string> delay_input;
+
 }
 
 struct ButtonColors  {

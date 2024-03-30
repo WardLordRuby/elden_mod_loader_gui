@@ -1,28 +1,61 @@
-import { GroupBox, Button, HorizontalBox, Switch } from "std-widgets.slint";
-import { SettingsLogic, Page } from "common.slint";
+import { GroupBox, Button, HorizontalBox, Switch, CheckBox, LineEdit } from "std-widgets.slint";
+import { MainLogic, SettingsLogic, Page } from "common.slint";
 
 export component SettingsPage inherits Page {
+    property <length> horizontal-box-width: self.width - 15px;
     has-back-button: true;
     title: @tr("Settings");
     description: @tr("Set path to eldenring.exe and app settings here");
 
     VerticalLayout {
-        y: 38px;
+        y: 34px;
         height: parent.height - self.y;
         padding-left: 8px;
-        padding-right: 0px;
+        padding-right: 0;
         spacing: 0px;
-        preferred-width: 460px;
-        alignment: start;
+        alignment: space-between;
         
-        game-path-box := GroupBox {
+        GroupBox {
+            title: @tr("General");
+            
+            HorizontalLayout {
+                row: 1;
+                padding-top: 7px;
+                padding-left: 6px;
+                padding-bottom: 12px;
+                width: horizontal-box-width;
+                Switch {
+                    text: @tr("Dark Mode");
+                    checked <=> SettingsLogic.dark_mode;
+                    toggled => {
+                        SettingsLogic.toggle_theme(self.checked);
+                    }
+                }
+            }
+            HorizontalLayout {
+                row: 2;
+                padding-left: 6px;
+                
+                width: horizontal-box-width;
+                Switch {
+                    text: @tr("Disable All mods");
+                    enabled: SettingsLogic.loader_installed && MainLogic.game_path_valid;
+                    checked <=> SettingsLogic.loader_disabled;
+                    toggled => {
+                        SettingsLogic.toggle_all(self.checked);
+                    }
+                }
+            }
+        }
+        GroupBox {
             title: @tr("Game Path");
-            padding: 0px;
-
+            
             HorizontalBox {
                 row: 1;
-                width: game-path-box.width - 10px;
-
+                width: horizontal-box-width;
+                padding-top: 3px;
+                padding-bottom: 0;
+                
                 Text {
                     vertical-alignment: center;
                     horizontal-alignment: left;
@@ -32,10 +65,13 @@ export component SettingsPage inherits Page {
             }
             HorizontalBox {
                 row: 2;
+                padding-top: 9px;
+                padding-bottom: 0;
+                width: horizontal-box-width;
                 alignment: end;
-                select-game := Button { 
-                    width: 105px;
-                    height: 35px;
+                Button { 
+                    width: 115px;
+                    height: 30px;
                     primary: !SettingsLogic.dark_mode;
                     text: @tr("Set Path");
                     clicked => {
@@ -44,15 +80,65 @@ export component SettingsPage inherits Page {
                 }
             }
         }
-        GroupBox {
-            title: @tr("Theme");
-            HorizontalBox {
-                padding-top: 7px;
-                Switch {
-                    text: @tr("DarkMode");
-                    checked <=> SettingsLogic.dark_mode;
-                    toggled => {
-                        SettingsLogic.toggle_theme(self.checked);
+        FocusScope {
+            key-pressed(event) => {
+                if (event.text == Key.Escape) {
+                    MainLogic.force_app_focus()
+                }
+                // && doesn't work in slint conditonal statements
+                if (event.text == Key.Tab) {
+                    if (load-delay.has-focus) {
+                        set-delay.focus()
+                    } else {
+                        load-delay.focus()
+                    }
+                }
+                accept
+            }
+
+            GroupBox {
+                title: @tr("Mod Loader Options");
+                enabled: SettingsLogic.loader_installed;
+
+                HorizontalBox {
+                    row: 1;
+                    padding-top: 4px;
+                    padding-left: 2px;
+                    padding-bottom: 5px;
+                    width: horizontal-box-width;
+                    Switch {
+                        text: @tr("Show Terminal");
+                        enabled: SettingsLogic.loader_installed;
+                        checked <=> SettingsLogic.show_terminal;
+                        toggled => { SettingsLogic.toggle_terminal(self.checked) }
+                    }
+                }
+                HorizontalBox {
+                    row: 2;
+                    padding-left: 2px;
+                    width: horizontal-box-width;
+                    load-delay := LineEdit {
+                        width: 128px;
+                        horizontal-alignment: right;
+                        enabled: SettingsLogic.loader_installed;
+                        placeholder-text <=> SettingsLogic.load_delay;
+                        text <=> SettingsLogic.delay_input;
+                        input-type: number;
+                    }
+                    set-delay := Button {
+                        text: @tr("Set Mod Load Delay");
+                        enabled: SettingsLogic.loader_installed;
+                        primary: !SettingsLogic.dark_mode;
+                        clicked => { 
+                            if (load-delay.text != "") {
+                                if (load-delay.text.to-float() > 2147483647 ) {
+                                    SettingsLogic.delay_input = "2147483647";
+                                }
+                                SettingsLogic.set_load_delay(SettingsLogic.delay_input)
+                            } else {
+                                load-delay.focus()
+                            }
+                        }
                     }
                 }
             }

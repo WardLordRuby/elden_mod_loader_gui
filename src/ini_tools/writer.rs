@@ -21,6 +21,12 @@ const WRITE_OPTIONS: WriteOption = WriteOption {
     kv_separator: "=",
 };
 
+const EXT_OPTIONS: WriteOption = WriteOption {
+    escape_policy: EscapePolicy::Nothing,
+    line_separator: LineSeparator::CRLF,
+    kv_separator: " = ",
+};
+
 pub fn save_path_bufs(file_name: &Path, key: &str, files: &[PathBuf]) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
     let save_paths = files
@@ -61,6 +67,19 @@ pub fn save_bool(
     config.with_section(section).set(key, value.to_string());
     config
         .write_to_file_opt(file_name, WRITE_OPTIONS)
+        .map_err(ini::Error::Io)
+}
+
+pub fn save_value_ext(
+    file_name: &Path,
+    section: Option<&str>,
+    key: &str,
+    value: &str,
+) -> Result<(), ini::Error> {
+    let mut config: Ini = get_cfg(file_name)?;
+    config.with_section(section).set(key, value);
+    config
+        .write_to_file_opt(file_name, EXT_OPTIONS)
         .map_err(ini::Error::Io)
 }
 

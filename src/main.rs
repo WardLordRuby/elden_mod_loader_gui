@@ -16,6 +16,7 @@ use log::{error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{
+    ffi::OsStr,
     io::{self, ErrorKind},
     path::{Path, PathBuf},
     rc::Rc,
@@ -23,8 +24,13 @@ use std::{
 };
 
 const CONFIG_NAME: &str = "EML_gui_config.ini";
+const LOADER_FILES: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll"];
+const LOADER_FILES_DISABLED: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll.disabled"];
+const LOADER_SECTIONS: [Option<&str>; 2] = [Some("modloader"), Some("loadorder")];
+const LOADER_KEYS: [&str; 2] = ["load_delay", "show_terminal"];
 lazy_static::lazy_static! {
     static ref CURRENT_INI: PathBuf = get_ini_dir();
+    static ref RESTRICTED_FILES: [&'static OsStr; 6] = populate_restricted_files();
 }
 
 fn main() -> Result<(), slint::PlatformError> {
@@ -65,7 +71,7 @@ fn main() -> Result<(), slint::PlatformError> {
         }
 
         let game_verified: bool;
-        let game_dir: Option<PathBuf> = match attempt_locate_game(&CURRENT_INI) {
+        let game_dir = match attempt_locate_game(&CURRENT_INI) {
             Ok(path_result) => match path_result {
                 PathResult::Full(path) => match RegMod::collect(&CURRENT_INI, false) {
                     Ok(reg_mods) => {
@@ -122,8 +128,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.display_msg(&err.to_string());
                 vec![RegMod::default()]
             }),
-            &game_dir.unwrap_or_default().to_string_lossy(),
+            &game_dir.clone().unwrap_or_default().to_string_lossy(),
         ));
+        let mod_loader_installed: bool;
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
             if !first_startup {
@@ -131,13 +138,58 @@ fn main() -> Result<(), slint::PlatformError> {
                     "Failed to locate Elden Ring\nPlease Select the install directory for Elden Ring",
                 );
             }
+            mod_loader_installed = false;
+        } else {
+            let game_dir = game_dir.expect("game dir verified");
+            let mod_loader_disabled: bool;
+            let mod_loader_cfg: PathBuf;
+            (mod_loader_installed, mod_loader_disabled, mod_loader_cfg) =
+                is_mod_loader_installed(&game_dir);
+            ui.global::<SettingsLogic>()
+                .set_loader_disabled(mod_loader_disabled);
+            if mod_loader_installed {
+                ui.global::<SettingsLogic>().set_loader_installed(true);
+                if let Ok(mod_loader_ini) = get_cfg(&mod_loader_cfg) {
+                    match IniProperty::<u32>::read(
+                        &mod_loader_ini,
+                        LOADER_SECTIONS[0],
+                        LOADER_KEYS[0],
+                        false,
+                    ) {
+                        Some(delay_time) => ui
+                            .global::<SettingsLogic>()
+                            .set_load_delay(SharedString::from(format!("{}ms", delay_time.value))),
+                        None => {
+                            error!("Found an unexpected character saved in \"load_delay\" Reseting to default value");
+                            save_value_ext(
+                                &mod_loader_cfg,
+                                LOADER_SECTIONS[0],
+                                LOADER_KEYS[0],
+                                "5000",
+                            )
+                            .unwrap_or_else(|err| error!("{err}"));
+                        }
+                    }
+                } else {
+                    error!("Error: could not read \"mod_loader_config.ini\"");
+                    if !first_startup {
+                        ui.display_msg(
+                            "This tool requires Elden Mod Loader by TechieW to be installed!",
+                        );
+                    }
+                }
+            }
         }
-        if first_startup && !game_verified {
-            ui.display_msg(
-                "Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nPlease select the game directory containing \"eldenring.exe\"",
-            );
-        } else if first_startup && game_verified {
-            ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
+        if first_startup {
+            if !game_verified && !mod_loader_installed {
+                ui.display_msg(
+                    "Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease select the game directory containing \"eldenring.exe\"",
+                );
+            } else if game_verified && !mod_loader_installed {
+                ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
+            } else if game_verified {
+                ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
+            }
         }
     }
 
@@ -255,13 +307,20 @@ fn main() -> Result<(), slint::PlatformError> {
                     match does_dir_contain(Path::new(&try_path), &REQUIRED_GAME_FILES) {
                         Ok(_) => {
                             info!("Success: Files found, saving diretory");
+                            let (mod_loader_installed, mod_loader_disabled, _) = is_mod_loader_installed(&try_path);
                             ui.global::<MainLogic>().set_game_path_valid(true);
                             ui.global::<SettingsLogic>()
                                 .set_game_path(try_path.to_string_lossy().to_string().into());
                             save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path)
                                 .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                             ui.global::<MainLogic>().set_current_subpage(0);
-                            ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app")
+                            ui.global::<SettingsLogic>().set_loader_installed(mod_loader_installed);
+                            ui.global::<SettingsLogic>().set_loader_disabled(mod_loader_disabled);
+                            if mod_loader_installed {
+                                ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!")
+                            } else {
+                                ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
+                            }
                         }
                         Err(err) => {
                             match err.kind() {
@@ -290,7 +349,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     if let Some(found_mod) =
                         reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
                     {
-                        toggle_files(&game_dir, !found_mod.state, found_mod, &CURRENT_INI)
+                        toggle_files(&game_dir, !found_mod.state, found_mod, Some(&CURRENT_INI))
                             .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                     } else {
                         error!("Mod: \"{key}\" not found");
@@ -407,7 +466,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         if found_mod.files.iter().any(|file| {
                             file.extension().expect("file with extention") == "disabled"
                         }) {
-                            toggle_files(&game_dir, true, found_mod, &CURRENT_INI)
+                            toggle_files(&game_dir, true, found_mod, Some(&CURRENT_INI))
                                 .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                         }
                         remove_entry(&CURRENT_INI, Some("registered-mods"), &found_mod.name)
@@ -477,6 +536,57 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }
     });
+    ui.global::<SettingsLogic>().on_toggle_terminal({
+        let ui_handle = ui.as_weak();
+        move |state| {
+            let ui = ui_handle.unwrap();
+            let value = if state { "1" } else { "0" };
+            let ext_ini = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string())
+                .join(LOADER_FILES[0]);
+            save_value_ext(&ext_ini, LOADER_SECTIONS[0], LOADER_KEYS[1], value)
+                .unwrap_or_else(|err| ui.display_msg(&format!("{err}")));
+        }
+    });
+    ui.global::<SettingsLogic>().on_set_load_delay({
+        let ui_handle = ui.as_weak();
+        move |time| {
+            let ui = ui_handle.unwrap();
+            let ext_ini = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string())
+                .join(LOADER_FILES[0]);
+            save_value_ext(&ext_ini, LOADER_SECTIONS[0], LOADER_KEYS[0], &time)
+                .unwrap_or_else(|err| ui.display_msg(&format!("{err}")));
+            ui.global::<SettingsLogic>()
+                .set_load_delay(SharedString::from(format!("{time}ms")));
+            ui.global::<SettingsLogic>()
+                .set_delay_input(SharedString::new());
+            ui.global::<MainLogic>().invoke_force_app_focus();
+        }
+    });
+    ui.global::<SettingsLogic>().on_toggle_all({
+        let ui_handle = ui.as_weak();
+        move |state| {
+            let ui = ui_handle.unwrap();
+            let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
+            let main_dll = RegMod {
+                name: String::from("main"),
+                state: !state,
+                files: if state {
+                    vec![PathBuf::from(LOADER_FILES[1])]
+                } else {
+                    vec![PathBuf::from(format!("{}.disabled", LOADER_FILES[1]))]
+                },
+                config_files: vec![PathBuf::new()],
+            };
+            // sanity check like this other places in the app in case of front end becoming out of sync if err
+            match toggle_files(&game_dir, !state, &main_dll, None) {
+                Ok(_) => ui.global::<SettingsLogic>().set_loader_disabled(state),
+                Err(err) => {
+                    ui.display_msg(&format!("{err}"));
+                    ui.global::<SettingsLogic>().set_loader_disabled(!state)
+                }
+            }
+        }
+    });
 
     ui.invoke_focus_app();
     ui.run()
@@ -503,9 +613,18 @@ fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, &'static str> {
         .set_location(path)
         .show_open_multiple_file()
     {
-        Ok(opt) => match opt.len() {
+        Ok(files) => match files.len() {
             0 => Err("No files selected"),
-            _ => Ok(opt),
+            _ => {
+                if files.iter().any(|file| {
+                    RESTRICTED_FILES.iter().any(|restricted_file| {
+                        file.file_name().expect("has name") == *restricted_file
+                    })
+                }) {
+                    return Err("Error: Tried to add a restricted file");
+                }
+                Ok(files)
+            }
         },
         Err(err) => {
             error!("{err}");
@@ -514,12 +633,56 @@ fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, &'static str> {
     }
 }
 
+fn populate_restricted_files() -> [&'static OsStr; 6] {
+    let mut restricted_files: [&OsStr; 6] = [&OsStr::new(""); 6];
+    for (i, file) in LOADER_FILES.iter().map(OsStr::new).enumerate() {
+        restricted_files[i] = file;
+    }
+    for (i, file) in REQUIRED_GAME_FILES.iter().map(OsStr::new).enumerate() {
+        restricted_files[i + LOADER_FILES.len()] = file;
+    }
+    restricted_files[LOADER_FILES.len() + REQUIRED_GAME_FILES.len()] =
+        OsStr::new(LOADER_FILES_DISABLED[1]);
+
+    restricted_files
+}
+
 fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
     files.iter().any(|path| {
         mod_data
             .iter()
             .any(|registered_mod| registered_mod.files.iter().any(|mod_file| path == mod_file))
     })
+}
+
+fn is_mod_loader_installed(game_dir: &Path) -> (bool, bool, PathBuf) {
+    let mod_loader_disabled: bool;
+    let mod_loader_cfg: PathBuf;
+    let mod_loader_installed = match does_dir_contain(game_dir, &LOADER_FILES) {
+        Ok(_) => {
+            mod_loader_cfg = game_dir.join(LOADER_FILES[0]);
+            mod_loader_disabled = false;
+            true
+        }
+        Err(_) => {
+            warn!("Checking if mod loader is disabled");
+            match does_dir_contain(game_dir, &LOADER_FILES_DISABLED) {
+                Ok(_) => {
+                    info!("Found mod loader files in the disabled state");
+                    mod_loader_cfg = game_dir.join(LOADER_FILES[0]);
+                    mod_loader_disabled = true;
+                    true
+                }
+                Err(err) => {
+                    error!("{err}");
+                    mod_loader_cfg = PathBuf::new();
+                    mod_loader_disabled = false;
+                    false
+                }
+            }
+        }
+    };
+    (mod_loader_installed, mod_loader_disabled, mod_loader_cfg)
 }
 
 fn deserialize(data: &[RegMod], game_dir: &str) -> ModelRc<DisplayMod> {

@@ -43,7 +43,7 @@ pub fn toggle_files(
     game_dir: &Path,
     new_state: bool,
     reg_mod: &RegMod,
-    save_file: &Path,
+    save_file: Option<&Path>,
 ) -> Result<(), ini::Error> {
     /// Takes in a potential pathBuf, finds file_name name and outputs the new_state version
     fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
@@ -127,13 +127,15 @@ pub fn toggle_files(
 
     rename_files(&num_rename_files, &full_path_original, &full_path_new)?;
 
-    update_cfg(
-        &num_total_files,
-        &short_path_new,
-        new_state,
-        &reg_mod.name,
-        save_file,
-    )?;
+    if save_file.is_some() {
+        update_cfg(
+            &num_total_files,
+            &short_path_new,
+            new_state,
+            &reg_mod.name,
+            save_file.expect("is some"),
+        )?;
+    }
     Ok(())
 }
 

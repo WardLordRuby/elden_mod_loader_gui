@@ -47,6 +47,21 @@ impl ValueType for bool {
     }
 }
 
+impl ValueType for u32 {
+    type ParseError = std::num::ParseIntError;
+    fn parse_str(
+        ini: &Ini,
+        section: Option<&str>,
+        key: &str,
+        _skip_validation: bool,
+    ) -> Result<Self, Self::ParseError> {
+        ini.get_from(section, key)
+            .expect("Validated by IniProperty::is_valid")
+            .to_lowercase()
+            .parse::<u32>()
+    }
+}
+
 impl ValueType for PathBuf {
     type ParseError = io::Error;
     fn parse_str(
@@ -467,7 +482,7 @@ impl RegMod {
                 "wrong file state for \"{}\" chaning file extentions",
                 self.name
             );
-            toggle_files(game_dir, self.state, self, ini_file)?
+            toggle_files(game_dir, self.state, self, Some(ini_file))?
         }
         Ok(())
     }

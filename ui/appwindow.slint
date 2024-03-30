@@ -7,6 +7,7 @@ export { MainLogic, SettingsLogic, DisplayMod }
 export component App inherits Window {
     in property <string> err-message;
     property <length> popup-window-x-pos: {
+        // Test use of math functions to fix errors in logic for x and y
         if ((mp.width - err-msg-size.width - 13px) / 2) < 0 {
             10px
         } else {
@@ -15,8 +16,8 @@ export component App inherits Window {
     };
     title: @tr("Elden Mod Loader");
     icon: @image-url("assets/EML_icon.png");
-    preferred-height: 370px;
-    min-height: 310px;
+    preferred-height: 376px;
+    min-height: 376px;
     min-width: 315px;
     max-width: 315px;
     

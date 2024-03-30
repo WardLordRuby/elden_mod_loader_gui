@@ -1,4 +1,4 @@
-import { GroupBox, Button, ScrollView, StandardButton } from "std-widgets.slint";
+import { GroupBox, Button, ScrollView, StandardButton, HorizontalBox } from "std-widgets.slint";
 import { MainLogic, SettingsLogic, Page, ColorPalette } from "common.slint";
 
 export component ModDetailsPage inherits Page {
@@ -7,90 +7,89 @@ export component ModDetailsPage inherits Page {
     description: @tr("Edit registered mods here");
     
     in property <int> mod-index;
-    property <length> box-width: details.width - 10px;
-    property <color> state-color: MainLogic.current_mods[mod-index].enabled ? #206816 : #d01616;
-    property <string> state: MainLogic.current_mods[mod-index].enabled ? @tr("True") : @tr("False");
+    property <length> box-width: root.width - 10px;
+    property <color> state-color: SettingsLogic.loader_disabled ? #d01616 : 
+        MainLogic.current_mods[mod-index].enabled ? #206816 : #d01616;
+    property <string> state: SettingsLogic.loader_disabled ? @tr("Mod Loader Disabled") : 
+        MainLogic.current_mods[mod-index].enabled ? @tr("Yes") : @tr("No");
     property <length> button-width: MainLogic.current_mods[mod-index].has-config ? 93px : 105px;
     property <LayoutAlignment> button-layout: MainLogic.current_mods[mod-index].has-config ? center : end;
+    
+    Text {
+        x: 8px;
+        y: 39px;
+        font-size: 14pt;
+        text: @tr("Details");
+    }
 
-    VerticalLayout {
-        y: 38px;
-        height: root.height - edit-mod-box.height - 27px;
-        padding-left: 8px;
-        padding-right: 0px;
-        spacing: 0px;
-        preferred-width: 460px;
+    details := VerticalLayout {
+        y: 60px;
+        height: root.height - edit-mod-box.height - 55px;
+        padding-top: 4px;
+        padding-left: 12px;
+        padding-right: 12px;
         alignment: start;
-        
-        details := GroupBox {
-            title: @tr("Details");
-            height: parent.height;
-            GridLayout {
-                height: 25px;
-                Text {
-                    width: root.width * 0.56;
-                    vertical-alignment: bottom;
-                    col: 0;
-                    font-size: 8pt;
-                    text: @tr("Name:");
-                }
-                Text {
-                    horizontal-alignment: right;
-                    vertical-alignment: center;
-                    col: 1;
-                    font-size: 8pt;
-                    text: @tr("Enabled:  ");
-                }
-                Text {
-                    horizontal-alignment: left;
-                    col: 2;
-                    font-size: 16pt;
-                    color: state-color;
-                    text: state;
-                }
-            }
-            VerticalLayout {
-                spacing: 2px;
-                row: 1;
-                width: box-width;
-                mod-name-txt := Text {
-                    vertical-alignment: center;
-                    x: 4px;
-                    min-height: 24px;
-                    font-size: 12pt;
-                    wrap: word-wrap;
-                    text: MainLogic.current_mods[mod-index].name;
-                }
-                Text {
-                    font-size: 8pt;
-                    text: @tr("Files:");
-                }
-                ScrollView {
-                    viewport-height: files-txt.height;
-                    files-txt := Text {
-                        x: 5px;
-                        y: 4px;
-                        font-size: 12pt;
-                        wrap: word-wrap;
-                        text: MainLogic.current_mods[mod-index].files;
-                    }
-                }
+        a := Text {
+            font-size: 10pt;
+            text: @tr("Enabled:");
+        }
+        b := HorizontalLayout {
+            padding-left: 8px;
+            padding-top: 3px;
+            padding-bottom: 3px;
+            Text {
+                font-size: 16pt;
+                color: state-color;
+                text: state;
             }
         }
+        c := Text {
+            font-size: 10pt;
+            text: @tr("Name:");
+        }
+        d := HorizontalLayout {
+            padding-left: 8px;
+            padding-top: 3px;
+            padding-bottom: 3px;
+            Text {
+                font-size: 13pt;
+                wrap: word-wrap;
+                text: MainLogic.current_mods[mod-index].name;
+            }
+        }
+        e := Text {
+            font-size: 10pt;
+            text: @tr("Files:");
+        }
+
+
     }
-    HorizontalLayout {
+    ScrollView {
+        y: details.y + a.height + b.height + c.height + d.height + e.height + 5px;
+        height: root.height - self.y - edit-mod-box.height;
+        viewport-height: files-txt.height;
+        width: box-width;
+        files-txt := Text {
+            x: 15px;
+            font-size: 13pt;
+            wrap: word-wrap;
+            text: MainLogic.current_mods[mod-index].files;
+        }
+    }
+    VerticalLayout {
         y: root.height - edit-mod-box.height;
         height: root.height - self.y;
         padding-left: 8px;
-        spacing: 0px;
-        preferred-width: 460px;
+        alignment: end;
+
         edit-mod-box := GroupBox {
             title: @tr("Edit Mod");
-            width: parent.width - parent.padding-left;
             height: 95px;
             HorizontalLayout {
                 width: box-width;
                 spacing: 7px;
+                padding-right: 8px;
+                padding-bottom: 2px;
                 alignment: button-layout;
                 Button {
                     width: button-width;

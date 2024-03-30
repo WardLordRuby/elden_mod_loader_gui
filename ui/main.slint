@@ -26,7 +26,7 @@ export component MainPage inherits Page {
 
         reg-mod-box := GroupBox {
             title: @tr("Registered-Mods:");
-            enabled: MainLogic.game_path_valid;
+            enabled: MainLogic.game_path_valid && !SettingsLogic.loader_disabled;
 
             list-view := ListView {
                 for mod[idx] in MainLogic.current-mods:  re := Rectangle {
