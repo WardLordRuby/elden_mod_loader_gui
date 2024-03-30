@@ -8,13 +8,15 @@ Work in progress
 
 ### To-do:
 
+* Sanity check front end in case of throwing an error
+
 * Next Features:  
-*   Edit load_delay time and show_terminal in settings  
 *   Have mods sorted by Load order, able to adjust load order in app
 
 ### feats:
 
 * App Icon  
+* Feat: Edit load_delay time and show_terminal in settings 
 * Feat: App will attempt to locate game dir for you  
 * Feat: On game dir verified you can Register mods to the app  
 * Feat: Easily add more files to a registered mod. eg. config files  
