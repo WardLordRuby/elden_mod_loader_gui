@@ -18,33 +18,28 @@ mod tests {
         let test_nums: [u32; 3] = [2342652342, 2343523423, 69420];
         let test_file = Path::new("test_files\\test_nums.ini");
 
-        {
-            new_cfg(test_file).unwrap();
-            for (i, num) in test_nums.iter().enumerate() {
-                save_value_ext(
-                    test_file,
-                    Some("paths"),
-                    &format!("test_num_{i}"),
-                    &num.to_string(),
-                )
-                .unwrap();
-            }
+        new_cfg(test_file).unwrap();
+        for (i, num) in test_nums.iter().enumerate() {
+            save_value_ext(
+                test_file,
+                Some("paths"),
+                &format!("test_num_{i}"),
+                &num.to_string(),
+            )
+            .unwrap();
         }
 
         let config = get_cfg(test_file).unwrap();
-        let parse_test_0 = IniProperty::<u32>::read(&config, Some("paths"), "test_num_0", false)
-            .unwrap()
-            .value;
-        let parse_test_1 = IniProperty::<u32>::read(&config, Some("paths"), "test_num_1", false)
-            .unwrap()
-            .value;
-        let parse_test_2 = IniProperty::<u32>::read(&config, Some("paths"), "test_num_2", false)
-            .unwrap()
-            .value;
 
-        assert_eq!(test_nums[0], parse_test_0);
-        assert_eq!(test_nums[1], parse_test_1);
-        assert_eq!(test_nums[2], parse_test_2);
+        for (i, _) in test_nums.iter().enumerate() {
+            assert_eq!(
+                test_nums[i],
+                IniProperty::<u32>::read(&config, Some("paths"), &format!("test_num_{i}"), false)
+                    .unwrap()
+                    .value
+            )
+        }
+
         remove_file(test_file).unwrap();
     }
 
