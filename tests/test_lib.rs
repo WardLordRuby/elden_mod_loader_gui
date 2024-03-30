@@ -55,7 +55,13 @@ mod tests {
             File::create(test_file.to_string_lossy().to_string()).unwrap();
         }
 
-        toggle_files(dir_to_test_files, !test_mod.state, &test_mod, save_file).unwrap();
+        toggle_files(
+            dir_to_test_files,
+            !test_mod.state,
+            &test_mod,
+            Some(save_file),
+        )
+        .unwrap();
 
         for path_to_test in test_files_disabled.iter() {
             assert!(file_exists(path_to_test.as_path()));
@@ -67,7 +73,13 @@ mod tests {
             files: test_files_disabled,
             config_files: test_mod.config_files,
         };
-        toggle_files(dir_to_test_files, !test_mod.state, &test_mod, save_file).unwrap();
+        toggle_files(
+            dir_to_test_files,
+            !test_mod.state,
+            &test_mod,
+            Some(save_file),
+        )
+        .unwrap();
 
         for path_to_test in test_files.iter() {
             assert!(file_exists(path_to_test.as_path()));
