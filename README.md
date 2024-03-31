@@ -44,7 +44,7 @@ the files to the game directory. If you move the app you will have to move the c
 
 * Interface to set the load order of each mod registered with the app  
 
-## Screenshots:  
+## Screenshots  
 
 <div id="image-screenshots">
     <img src="https://i.imgur.com/jrSOEtW.png" width="26%" height="26%">
