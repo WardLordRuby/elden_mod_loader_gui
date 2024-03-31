@@ -16,16 +16,16 @@ Make sure to have EAC disabled before launching Elden Ring with mods installed
 
 ## Installation  
 
-No need to install anything just [download][Download-Link] the exe and run from anywhere, it will generate  
-its own config file. The app will attempt to locate the install directory of Elden Ring,  
-if it succeeds and finds that *Elden Mod Loader* is installed, the app is immediately ready  
-to use! Otherwise it will prompt you to select the install directory for your copy of  
-Elden Ring.  
+1. Download [Elden Mod Loader][TechieW-Loader-Link] and extract files to "[your_game_directory]/ELDEN RING/Game/"  
+2. Install mods as you normally would  
+3. Download [elden_mod_loader_gui.exe][Download-Link] and run from anywhere  
 
 ##### Notes:  
 
-* Adding mod files within the app will not move or "install" the files to the game directory.  
-* If you move the app you will have to move the config file as well.  
+The app will generate its own config file and attempt to locate the install directory of Elden Ring. If it succeeds  
+and finds that *Elden Mod Loader* is installed, the app is immediately ready to use! Otherwise it will prompt you to  
+select the install directory for your copy of Elden Ring. Adding mod files within the app will not move or "install"  
+the files to the game directory. If you move the app you will have to move the config file as well.  
 
 ## Features  
 
