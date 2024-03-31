@@ -8,7 +8,7 @@ export struct DisplayMod  {
 }
 
 export global MainLogic {
-    callback toggleMod(string);
+    callback toggleMod(string, bool);
     callback select_mod_files(string);
     callback add_to_mod(string);
     callback remove_mod(string);
@@ -16,6 +16,7 @@ export global MainLogic {
     callback force_app_focus();
     in property <string> line_edit_text;
     in property <bool> popup_window_visible;
+    in-out property <bool> if-err-bool;
     in-out property <bool> game_path_valid;
     in-out property <int> current_subpage: 0;
     in-out property <[DisplayMod]> current_mods: [

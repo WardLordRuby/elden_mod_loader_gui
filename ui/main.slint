@@ -40,8 +40,13 @@ export component MainPage inherits Page {
                         checked: mod.enabled;
                         enabled: reg-mod-box.enabled;
                         toggled => {
+                            MainLogic.if-err-bool = self.checked;
                             MainLogic.current_mods[idx].enabled = self.checked;
-                            MainLogic.toggleMod(mod.name)
+                            MainLogic.toggleMod(mod.name, self.checked);
+                            if (MainLogic.if-err-bool != self.checked) {
+                                self.checked = MainLogic.if-err-bool;
+                                MainLogic.current_mods[idx].enabled = MainLogic.if-err-bool;
+                            }
                         }
                     }
                     im := Image {
@@ -93,6 +98,7 @@ export component MainPage inherits Page {
                 }
                 HorizontalBox {
                     padding: 2px;
+                    padding-top: 0;
                     input-mod := LineEdit {
                         height: 36px;
                         preferred-width: 100px;
