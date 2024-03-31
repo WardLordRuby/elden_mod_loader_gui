@@ -1,21 +1,14 @@
-# elden_mod_loader_gui
+# Elden Mod Loader GUI   
 
-A simple GUI for Elden Mod Loader
+A simple GUI for Elden Mod Loader  
+This is a GUI tool that wraps Elden Mod Loader by: TechieW  
+His loader files are required to be installed for this app to work  
 
-## About
+This app also does not disable Easy Anti-cheat  
+Make sure to have EAC disabled before launching Elden Ring with mods installed  
 
-Work in progress
+## Features
 
-### To-do:
-
-* Sanity check front end in case of throwing an error
-
-* Next Features:  
-*   Have mods sorted by Load order, able to adjust load order in app
-
-### feats:
-
-* App Icon  
 * Feat: Edit load_delay time and show_terminal in settings 
 * Feat: App will attempt to locate game dir for you  
 * Feat: On game dir verified you can Register mods to the app  
@@ -25,12 +18,7 @@ Work in progress
 * Feat: If registred mod contains an ini file you are able to open config files from within the app  
 * Feat: Swap between Dark and Light themes for the app  
 * Feat: On de-registration of a mod app will make sure it is set to enabled  
-* Design: Main UI, Settings subpage, and subpage to edit registered mods  
-* Ability: deserialize backend rust modData to data slint can use  
-* Ability: display error message to user in dialog  
-* Ability: parse Array of Paths, Paths and bools from ini  
-* Abiltiy: only read valid Arrays, Paths, and bools  
-* Ability: check if directory contains files  
-* Ability: try locate a dir on user drive  
-* Ability: Togglefiles to on and off state  
-* Ability: Error check config file and return all usable data  
+
+### Next Features: 
+
+*   interface to set the load order of each mod registered with the app
