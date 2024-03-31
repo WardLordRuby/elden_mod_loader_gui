@@ -1,3 +1,5 @@
+[logo]: https://github.com/WardLordRuby/elden_mod_loader_gui/blob/main/ui/assets/EML_icon.png "EML logo"
+
 # Elden Mod Loader GUI   
 
 A simple GUI for Elden Mod Loader  
