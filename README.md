@@ -1,5 +1,5 @@
 [TechieW-Loader-Link]: https://www.nexusmods.com/eldenring/mods/117
-<img src="https://github.com/WardLordRuby/elden_mod_loader_gui/blob/main/ui/assets/EML_icon.png"  width="20%" height="20%">
+<img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML_icon.png"  width="20%" height="20%">
 
 # Elden Mod Loader GUI   
 
@@ -39,7 +39,7 @@ well.
 ## Screenshots:  
 
 <div id="image-screenshots">
-    <img src="https://imgur.com/UMhYkns.png" width="26%" height="26%">
-    <img src="https://imgur.com/zC08ZKA.png" width="26%" height="26%">
-    <img src="https://i.imgur.com/B4xond3.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/jrSOEtW.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/DOWtRRg.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/M7qrufF.png" width="26%" height="26%">
 </div>
