@@ -1,4 +1,5 @@
 [TechieW-Loader-Link]: https://www.nexusmods.com/eldenring/mods/117  
+[Download-Link]: https://github.com/WardLordRuby/elden_mod_loader_gui/releases
 <div align="center">
     <img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML_icon.png" width="20%" height="20%">
 </div>
@@ -15,7 +16,7 @@ Make sure to have EAC disabled before launching Elden Ring with mods installed
 
 ## Installation  
 
-No need to install anything just download the exe and run from anywhere, it will generate  
+No need to install anything just [download][Download-Link] the exe and run from anywhere, it will generate  
 its own config file. The app will attempt to locate the install directory of Elden Ring,  
 if it succeeds and finds that *Elden Mod Loader* is installed, the app is immediately ready  
 to use! Otherwise it will prompt you to select the install directory for your copy of  
