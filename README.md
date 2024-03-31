@@ -30,5 +30,5 @@ Make sure to have EAC disabled before launching Elden Ring with mods installed
 <div id="image-screenshots">
     <img src="https://imgur.com/UMhYkns.png" width="26%" height="26%">
     <img src="https://imgur.com/zC08ZKA.png" width="26%" height="26%">
-    <img src="https://imgur.com/uT3bF3i.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/B4xond3.png" width="26%" height="26%">
 </div>
