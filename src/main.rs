@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 slint::include_modules!();
 
