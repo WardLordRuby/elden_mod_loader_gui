@@ -293,7 +293,6 @@ fn main() -> Result<(), slint::PlatformError> {
                                     }
                                 }),
                             ));
-                            ui.invoke_focus_app();
                         }
                     }
                     Err(err) => {
@@ -306,6 +305,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg(err);
                 }
             };
+            ui.invoke_focus_app();
         }
     });
     ui.global::<SettingsLogic>().on_select_game_dir({
