@@ -1,9 +1,10 @@
+[TechieW-Loader-Link]: https://www.nexusmods.com/eldenring/mods/117
 <img src="https://github.com/WardLordRuby/elden_mod_loader_gui/blob/main/ui/assets/EML_icon.png"  width="20%" height="20%">
 
 # Elden Mod Loader GUI   
 
 A simple GUI for Elden Mod Loader  
-This is a GUI tool that wraps Elden Mod Loader by: TechieW  
+This is a GUI tool that wraps [Elden Mod Loader][TechieW-Loader-Link] by: TechieW  
 His loader files are required to be installed for this app to work  
 
 This app also does not disable Easy Anti-cheat  
