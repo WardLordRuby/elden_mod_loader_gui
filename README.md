@@ -1,4 +1,4 @@
-[logo]: https://github.com/WardLordRuby/elden_mod_loader_gui/blob/main/ui/assets/EML_icon.png "EML logo"
+<img src="https://github.com/WardLordRuby/elden_mod_loader_gui/blob/main/ui/assets/EML_icon.png"  width="20%" height="20%">
 
 # Elden Mod Loader GUI   
 
@@ -24,3 +24,9 @@ Make sure to have EAC disabled before launching Elden Ring with mods installed
 ### Next Features: 
 
 *   interface to set the load order of each mod registered with the app
+
+    <div id="image-screenshots">
+        <img src="https://imgur.com/UMhYkns.png" width="26%" height="26%">
+        <img src="https://imgur.com/zC08ZKA.png" width="26%" height="26%">
+        <img src="https://imgur.com/uT3bF3i.png" width="26%" height="26%">
+    </div>
