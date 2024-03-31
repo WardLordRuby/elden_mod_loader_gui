@@ -12,20 +12,20 @@ Make sure to have EAC disabled before launching Elden Ring with mods installed
 
 ## Features
 
-* Feat: Easily open game directory with windows explorer  
-* Feat: Edit load_delay time and show_terminal in settings 
-* Feat: App will attempt to locate game dir for you  
-* Feat: On game dir verified you can Register mods to the app  
-* Feat: Easily add more files to a registered mod. eg. config files  
-* Feat: Easily toggle each registered mod on and off  
-* Feat: View registed mods details, State, Files, User provided Name  
-* Feat: If registred mod contains an ini file you are able to open config files from within the app  
-* Feat: Swap between Dark and Light themes for the app  
-* Feat: On de-registration of a mod app will make sure it is set to enabled  
+* Easily open game directory with windows explorer  
+* Edit load_delay time and show_terminal in settings 
+* App will attempt to locate game dir for you  
+* On game dir verified you can Register mods to the app  
+* Easily add more files to a registered mod. eg. config files  
+* Easily toggle each registered mod on and off  
+* View registed mods details, State, Files, User provided Name  
+* If registred mod contains an ini file you are able to open config files from within the app  
+* Swap between Dark and Light themes for the app  
+* On de-registration of a mod app will make sure it is set to enabled  
 
 ### Next Features:  
 
-* interface to set the load order of each mod registered with the app  
+* Interface to set the load order of each mod registered with the app  
 
 <div id="image-screenshots">
     <img src="https://imgur.com/UMhYkns.png" width="26%" height="26%">
