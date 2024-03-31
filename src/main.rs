@@ -602,11 +602,20 @@ fn main() -> Result<(), slint::PlatformError> {
                         .arg(&*arc_file)
                         .spawn()
                 });
-                if let Err(err) = jh.join().unwrap() {
-                    error!("{err}");
-                    ui.display_msg(&format!(
-                        "Error: {err}. Failed to open mod config file {clone_file:?}"
-                    ));
+                match jh.join() {
+                    Ok(result) => match result {
+                        Ok(_) => (),
+                        Err(err) => {
+                            error!("{err}");
+                            ui.display_msg(&format!(
+                                "Failed to open config file {clone_file:?}\n\nError: {err}"
+                            ));
+                        }
+                    },
+                    Err(err) => {
+                        error!("Thread panicked! {err:?}");
+                        ui.display_msg(&format!("{err:?}"));
+                    }
                 }
             }
         }
@@ -663,6 +672,29 @@ fn main() -> Result<(), slint::PlatformError> {
                 Err(err) => {
                     ui.display_msg(&format!("{err}"));
                     ui.global::<SettingsLogic>().set_loader_disabled(!state)
+                }
+            }
+        }
+    });
+    ui.global::<SettingsLogic>().on_open_game_dir({
+        let ui_handle = ui.as_weak();
+        move || {
+            let ui = ui_handle.unwrap();
+            let game_dir = ui.global::<SettingsLogic>().get_game_path().to_string();
+            let jh = std::thread::spawn(move || {
+                std::process::Command::new("explorer").arg(game_dir).spawn()
+            });
+            match jh.join() {
+                Ok(result) => match result {
+                    Ok(_) => (),
+                    Err(err) => {
+                        error!("{err}");
+                        ui.display_msg(&format!("Error: {err}"));
+                    }
+                },
+                Err(err) => {
+                    error!("Thread panicked! {err:?}");
+                    ui.display_msg(&format!("{err:?}"));
                 }
             }
         }

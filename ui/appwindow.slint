@@ -6,6 +6,7 @@ export { MainLogic, SettingsLogic, DisplayMod }
 
 export component App inherits Window {
     in property <string> err-message;
+    // property <length> popup-window-y-pos: (mp.height - err-msg-size.height + 30px) / 2; // debug this somehow
     property <length> popup-window-x-pos: {
         // Test use of math functions to fix errors in logic for x and y
         if ((mp.width - err-msg-size.width - 13px) / 2) < 0 {

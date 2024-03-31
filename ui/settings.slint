@@ -1,5 +1,5 @@
 import { GroupBox, Button, HorizontalBox, Switch, CheckBox, LineEdit } from "std-widgets.slint";
-import { MainLogic, SettingsLogic, Page } from "common.slint";
+import { MainLogic, SettingsLogic, ColorPalette, Page } from "common.slint";
 
 export component SettingsPage inherits Page {
     property <length> horizontal-box-width: self.width - 15px;
@@ -69,6 +69,16 @@ export component SettingsPage inherits Page {
                 padding-bottom: 0;
                 width: horizontal-box-width;
                 alignment: end;
+                Button { 
+                    width: 45px;
+                    height: 30px;
+                    icon: @image-url("assets/folder.png");
+                    colorize-icon: true;
+                    primary: !SettingsLogic.dark_mode;
+                    clicked => {
+                        SettingsLogic.open_game_dir();
+                    }
+                }
                 Button { 
                     width: 115px;
                     height: 30px;
