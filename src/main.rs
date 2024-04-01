@@ -143,7 +143,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let mod_loader_disabled: bool;
             let mod_loader_cfg: PathBuf;
             (mod_loader_installed, mod_loader_disabled, mod_loader_cfg) =
-                is_mod_loader_installed(&game_dir);
+                elden_mod_loader_properties(&game_dir);
             ui.global::<SettingsLogic>()
                 .set_loader_disabled(mod_loader_disabled);
             if mod_loader_installed {
@@ -336,16 +336,17 @@ fn main() -> Result<(), slint::PlatformError> {
                     };
                     match does_dir_contain(Path::new(&try_path), &REQUIRED_GAME_FILES) {
                         Ok(_) => {
-                            info!("Success: Files found, saving diretory");
-                            let (mod_loader_installed, mod_loader_disabled, _) = is_mod_loader_installed(&try_path);
-                            ui.global::<SettingsLogic>()
-                                .set_game_path(try_path.to_string_lossy().to_string().into());
                             let result = save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path);
                             if result.is_err() && save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path).is_err() {
                                 let err = result.unwrap_err();
+                                error!("Failed to save directory. {err}");
                                 ui.display_msg(&err.to_string());
                                 return;
                             };
+                            info!("Success: Files found, saved diretory");
+                            let (mod_loader_installed, mod_loader_disabled, _) = elden_mod_loader_properties(&try_path);
+                            ui.global::<SettingsLogic>()
+                                .set_game_path(try_path.to_string_lossy().to_string().into());
                             ui.global::<MainLogic>().set_game_path_valid(true);
                             ui.global::<MainLogic>().set_current_subpage(0);
                             ui.global::<SettingsLogic>().set_loader_installed(mod_loader_installed);
@@ -767,7 +768,7 @@ fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
     })
 }
 
-fn is_mod_loader_installed(game_dir: &Path) -> (bool, bool, PathBuf) {
+fn elden_mod_loader_properties(game_dir: &Path) -> (bool, bool, PathBuf) {
     let mod_loader_disabled: bool;
     let mod_loader_cfg: PathBuf;
     let mod_loader_installed = match does_dir_contain(game_dir, &LOADER_FILES) {

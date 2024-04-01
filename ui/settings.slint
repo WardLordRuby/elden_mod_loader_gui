@@ -19,30 +19,14 @@ export component SettingsPage inherits Page {
             title: @tr("General");
             
             HorizontalLayout {
-                row: 1;
                 padding-top: 7px;
                 padding-left: 6px;
-                padding-bottom: 12px;
                 width: horizontal-box-width;
                 Switch {
                     text: @tr("Dark Mode");
                     checked <=> SettingsLogic.dark_mode;
                     toggled => {
                         SettingsLogic.toggle_theme(self.checked);
-                    }
-                }
-            }
-            HorizontalLayout {
-                row: 2;
-                padding-left: 6px;
-                
-                width: horizontal-box-width;
-                Switch {
-                    text: @tr("Disable All mods");
-                    enabled: SettingsLogic.loader_installed && MainLogic.game_path_valid;
-                    checked <=> SettingsLogic.loader_disabled;
-                    toggled => {
-                        SettingsLogic.toggle_all(self.checked);
                     }
                 }
             }
@@ -125,6 +109,22 @@ export component SettingsPage inherits Page {
                 }
                 HorizontalBox {
                     row: 2;
+                    padding-top: 4px;
+                    padding-left: 2px;
+                    padding-bottom: 5px;
+                    
+                    width: horizontal-box-width;
+                    Switch {
+                        text: @tr("Disable All mods");
+                        enabled: SettingsLogic.loader_installed;
+                        checked <=> SettingsLogic.loader_disabled;
+                        toggled => {
+                            SettingsLogic.toggle_all(self.checked);
+                        }
+                    }
+                }
+                HorizontalBox {
+                    row: 3;
                     padding-left: 2px;
                     width: horizontal-box-width;
                     load-delay := LineEdit {
