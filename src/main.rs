@@ -630,7 +630,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 .join(LOADER_FILES[0]);
             save_value_ext(&ext_ini, LOADER_SECTIONS[0], LOADER_KEYS[1], value).unwrap_or_else(
                 |err| {
-                    ui.display_msg(&format!("{err}"));
+                    ui.display_msg(&err.to_string());
                     ui.global::<SettingsLogic>().set_show_terminal(!state);
                 },
             );
@@ -664,7 +664,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 files: if state {
                     vec![PathBuf::from(LOADER_FILES[1])]
                 } else {
-                    vec![PathBuf::from(format!("{}.disabled", LOADER_FILES[1]))]
+                    vec![PathBuf::from(LOADER_FILES_DISABLED[1])]
                 },
                 config_files: vec![PathBuf::new()],
             };
