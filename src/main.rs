@@ -716,11 +716,6 @@ fn get_user_folder(path: &Path) -> Result<Option<PathBuf>, native_dialog::Error>
     FileDialog::new().set_location(path).show_open_single_dir()
 }
 
-fn get_ini_dir() -> PathBuf {
-    let exe_dir = std::env::current_dir().expect("Failed to get current dir");
-    exe_dir.join(CONFIG_NAME)
-}
-
 fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, &'static str> {
     match FileDialog::new()
         .set_location(path)
@@ -746,6 +741,11 @@ fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, &'static str> {
     }
 }
 
+fn get_ini_dir() -> PathBuf {
+    let exe_dir = std::env::current_dir().expect("Failed to get current dir");
+    exe_dir.join(CONFIG_NAME)
+}
+
 fn populate_restricted_files() -> [&'static OsStr; 6] {
     let mut restricted_files: [&OsStr; 6] = [&OsStr::new(""); 6];
     for (i, file) in LOADER_FILES.iter().map(OsStr::new).enumerate() {
@@ -762,9 +762,13 @@ fn populate_restricted_files() -> [&'static OsStr; 6] {
 
 fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
     files.iter().any(|path| {
-        mod_data
-            .iter()
-            .any(|registered_mod| registered_mod.files.iter().any(|mod_file| path == mod_file))
+        mod_data.iter().any(|registered_mod| {
+            registered_mod.files.iter().any(|mod_file| path == mod_file)
+                || registered_mod
+                    .config_files
+                    .iter()
+                    .any(|mod_file| path == mod_file)
+        })
     })
 }
 
