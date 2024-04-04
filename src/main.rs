@@ -22,6 +22,10 @@ use std::{
     rc::Rc,
     sync::Arc,
 };
+use tokio::sync::{
+    mpsc::{unbounded_channel, UnboundedReceiver},
+    Mutex,
+};
 
 const CONFIG_NAME: &str = "EML_gui_config.ini";
 const LOADER_FILES: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll"];
@@ -189,6 +193,8 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }
     }
+    let (message_sender, message_receiver) = unbounded_channel::<Message>();
+    let receiver = Arc::new(Mutex::new(message_receiver));
 
     // Error check input text for invalid symbols
     ui.global::<MainLogic>().on_select_mod_files({
@@ -535,42 +541,51 @@ fn main() -> Result<(), slint::PlatformError> {
         move |key| {
             let ui = ui_handle.unwrap();
             let format_key = key.replace(' ', "_");
-            match RegMod::collect(&CURRENT_INI, false) {
-                Ok(reg_mods) => {
-                    let game_dir =
-                        PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-                    if let Some(found_mod) =
-                        reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
-                    {
-                        if found_mod.files.iter().any(|file| {
-                            file.extension().expect("file with extention") == "disabled"
-                        }) {
-                            if let Err(err) = toggle_files(&game_dir, true, found_mod, Some(&CURRENT_INI)) {
-                                ui.display_msg(&format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}"));
-                                return;
+            let receiver_clone = receiver.clone();
+            ui.display_confirm(&format!("Are you sure you want to de-register: \"{key}\""));
+            slint::spawn_local(async move {
+                if receive_msg(receiver_clone).await != Message::Confirm {
+                    return
+                }
+                match RegMod::collect(&CURRENT_INI, false) {
+                    Ok(reg_mods) => {
+                        let game_dir =
+                            PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
+                        if let Some(found_mod) =
+                            reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
+                        {
+                            if found_mod.files.iter().any(|file| {
+                                file.extension().expect("file with extention") == "disabled"
+                            }) {
+                                if let Err(err) = toggle_files(&game_dir, true, found_mod, Some(&CURRENT_INI)) {
+                                    ui.display_msg(&format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}"));
+                                    return;
+                                }
+                            }
+                            remove_entry(&CURRENT_INI, Some("registered-mods"), &found_mod.name)
+                                .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                            // we can let sync keys take care of removing files from ini
+                        } else {
+                            let err = &format!("Mod: \"{key}\" not found");
+                            error!("{err}");
+                            ui.display_msg(&format!("{err}\nRemoving invalid entries"))
+                        };
+                    }
+                    Err(err) => ui.display_msg(&err.to_string()),
+                };
+                ui.global::<MainLogic>().set_current_subpage(0);
+                ui.global::<MainLogic>().set_current_mods(deserialize(
+                    &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|_| {
+                        match RegMod::collect(&CURRENT_INI, false) {
+                            Ok(mods) => mods,
+                            Err(err) => {
+                                ui.display_msg(&err.to_string());
+                                vec![RegMod::default()]
                             }
                         }
-                        remove_entry(&CURRENT_INI, Some("registered-mods"), &found_mod.name)
-                            .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-                        // we can let sync keys take care of removing files from ini
-                        ui.global::<MainLogic>().set_current_mods(deserialize(
-                            &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|_| {
-                                match RegMod::collect(&CURRENT_INI, false) {
-                                    Ok(mods) => mods,
-                                    Err(err) => {
-                                        ui.display_msg(&err.to_string());
-                                        vec![RegMod::default()]
-                                    }
-                                }
-                            }),
-                        ));
-                    } else {
-                        error!("Mod: \"{key}\" not found");
-                    };
-                }
-                Err(err) => ui.display_msg(&err.to_string()),
-            };
-            ui.global::<MainLogic>().set_current_subpage(0);
+                    }),
+                ));
+            }).unwrap();
         }
     });
     ui.global::<SettingsLogic>().on_toggle_theme({
@@ -701,14 +716,35 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
+    ui.global::<MainLogic>().on_send_message({
+        move |msg| {
+            let sender_clone = message_sender.clone();
+            sender_clone.send(msg).unwrap_or_else(|err| error!("{err}"));
+        }
+    });
+
     ui.invoke_focus_app();
     ui.run()
 }
 
 impl App {
     fn display_msg(&self, msg: &str) {
-        self.set_err_message(SharedString::from(msg));
+        self.set_display_message(SharedString::from(msg));
         self.invoke_show_error_popup();
+    }
+
+    fn display_confirm(&self, msg: &str) {
+        self.set_display_message(SharedString::from(msg));
+        self.invoke_show_confirm_popup();
+    }
+}
+
+async fn receive_msg(receiver: Arc<Mutex<UnboundedReceiver<Message>>>) -> Message {
+    let mut guard = receiver.lock().await;
+    if let Some(msg) = guard.recv().await {
+        msg
+    } else {
+        Message::Esc
     }
 }
 
@@ -777,6 +813,7 @@ fn elden_mod_loader_properties(game_dir: &Path) -> (bool, bool, PathBuf) {
     let mod_loader_cfg: PathBuf;
     let mod_loader_installed = match does_dir_contain(game_dir, &LOADER_FILES) {
         Ok(_) => {
+            info!("Found mod loader files");
             mod_loader_cfg = game_dir.join(LOADER_FILES[0]);
             mod_loader_disabled = false;
             true

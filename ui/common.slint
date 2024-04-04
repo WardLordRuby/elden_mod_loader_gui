@@ -7,6 +7,8 @@ export struct DisplayMod  {
     config-files: [string],
 }
 
+export enum Message { confirm, deny, esc }
+
 export global MainLogic {
     callback toggleMod(string, bool);
     callback select_mod_files(string);
@@ -14,8 +16,10 @@ export global MainLogic {
     callback remove_mod(string);
     callback edit_config([string]);
     callback force_app_focus();
+    callback send_message(Message);
     in property <string> line_edit_text;
-    in property <bool> popup_window_visible;
+    in property <bool> popup_msg_visible;
+    in property <bool> confirm_popup_visible;
     in-out property <bool> if-err-bool;
     in-out property <bool> game_path_valid;
     in-out property <int> current_subpage: 0;

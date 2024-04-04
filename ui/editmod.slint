@@ -1,5 +1,5 @@
-import { GroupBox, Button, ScrollView, StandardButton, HorizontalBox } from "std-widgets.slint";
-import { MainLogic, SettingsLogic, Page, ColorPalette } from "common.slint";
+import { GroupBox, Button, ScrollView } from "std-widgets.slint";
+import { MainLogic, SettingsLogic, Page } from "common.slint";
 
 export component ModDetailsPage inherits Page {
     has-back-button: true;
@@ -110,50 +110,7 @@ export component ModDetailsPage inherits Page {
                     height: 35px;
                     primary: !SettingsLogic.dark_mode;
                     text: @tr("De-register");
-                    clicked => {
-                        MainLogic.popup_window_visible = true;
-                        confirm-popup.show()
-                    }
-                }
-            }
-        }
-    }
-    // Make popupWindow look nice 
-    confirm_popup := PopupWindow {
-        x: 22px;
-        y: root.height / 2.7;
-        height: confirm-popup-text.height + 20px;
-        width: confirm-popup-text.width + 20px;
-        close-on-click: false;
-
-        Rectangle {
-            background: ColorPalette.popup-background-color;
-            border-color: ColorPalette.popup-border-color;
-            border-width: 1px;
-        }
-
-        confirm_popup_layout := Dialog {
-            no-frame: false;
-            title: @tr("Confirm");
-            
-            confirm_popup_text := Text {
-                text: @tr("Are you sure you want to de-register this mod?");
-                max-width: root.width - 20px;
-                wrap: word-wrap;
-            }
-            StandardButton {
-                kind: ok; 
-                clicked => { 
-                    MainLogic.popup_window_visible = false;
-                    MainLogic.remove_mod(MainLogic.current_mods[mod-index].name);
-                    confirm-popup.close()
-                }
-            }
-            StandardButton {
-                kind: cancel; 
-                clicked => { 
-                    MainLogic.popup_window_visible = false;
-                    confirm-popup.close()
+                    clicked => { MainLogic.remove_mod(MainLogic.current_mods[mod-index].name) }
                 }
             }
         }
