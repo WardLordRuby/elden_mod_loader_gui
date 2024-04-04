@@ -17,6 +17,7 @@ opt-level = "z"  # Optimize for size.
 lto = true
 
 [dependencies]
+tokio = { version = "1.37.0", features = ["sync"] }
 slint = "1.5.1"
 i-slint-backend-winit = "1.5.1"
 winit = "0.29.15"
