@@ -20,7 +20,10 @@ use std::{
     io::ErrorKind,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
 };
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver},
@@ -32,6 +35,7 @@ const LOADER_FILES: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll"];
 const LOADER_FILES_DISABLED: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll.disabled"];
 const LOADER_SECTIONS: [Option<&str>; 2] = [Some("modloader"), Some("loadorder")];
 const LOADER_KEYS: [&str; 2] = ["load_delay", "show_terminal"];
+static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
 lazy_static::lazy_static! {
     static ref CURRENT_INI: PathBuf = get_ini_dir();
     static ref RESTRICTED_FILES: [&'static OsStr; 6] = populate_restricted_files();
@@ -133,7 +137,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 vec![RegMod::default()]
             }),
         ));
-        let mod_loader_installed: bool;
+        let mod_loader: ModLoader;
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
             if !first_startup {
@@ -141,18 +145,15 @@ fn main() -> Result<(), slint::PlatformError> {
                     "Failed to locate Elden Ring\nPlease Select the install directory for Elden Ring",
                 );
             }
-            mod_loader_installed = false;
+            mod_loader = ModLoader::default();
         } else {
             let game_dir = game_dir.expect("game dir verified");
-            let mod_loader_disabled: bool;
-            let mod_loader_cfg: PathBuf;
-            (mod_loader_installed, mod_loader_disabled, mod_loader_cfg) =
-                elden_mod_loader_properties(&game_dir);
+            mod_loader = elden_mod_loader_properties(&game_dir);
             ui.global::<SettingsLogic>()
-                .set_loader_disabled(mod_loader_disabled);
-            if mod_loader_installed {
+                .set_loader_disabled(mod_loader.disabled);
+            if mod_loader.installed {
                 ui.global::<SettingsLogic>().set_loader_installed(true);
-                if let Ok(mod_loader_ini) = get_cfg(&mod_loader_cfg) {
+                if let Ok(mod_loader_ini) = get_cfg(&mod_loader.cfg) {
                     match IniProperty::<u32>::read(
                         &mod_loader_ini,
                         LOADER_SECTIONS[0],
@@ -165,7 +166,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         None => {
                             error!("Found an unexpected character saved in \"load_delay\" Reseting to default value");
                             save_value_ext(
-                                &mod_loader_cfg,
+                                &mod_loader.cfg,
                                 LOADER_SECTIONS[0],
                                 LOADER_KEYS[0],
                                 "5000",
@@ -177,28 +178,29 @@ fn main() -> Result<(), slint::PlatformError> {
                     error!("Error: could not read \"mod_loader_config.ini\"");
                 }
             }
-            if !first_startup && !mod_loader_installed {
+            if !first_startup && !mod_loader.installed {
                 ui.display_msg("This tool requires Elden Mod Loader by TechieW to be installed!");
             }
         }
         if first_startup {
-            if !game_verified && !mod_loader_installed {
+            if !game_verified && !mod_loader.installed {
                 ui.display_msg(
                     "Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease select the game directory containing \"eldenring.exe\"",
                 );
-            } else if game_verified && !mod_loader_installed {
+            } else if game_verified && !mod_loader.installed {
                 ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
             } else if game_verified {
                 ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
             }
         }
     }
-    let (message_sender, message_receiver) = unbounded_channel::<Message>();
+    let (message_sender, message_receiver) = unbounded_channel::<MessageData>();
     let receiver = Arc::new(Mutex::new(message_receiver));
 
     // Error check input text for invalid symbols
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
+        let receiver_clone = receiver.clone();
         move |mod_name| {
             let ui = ui_handle.unwrap();
             let format_key = mod_name.trim().replace(' ', "_");
@@ -350,14 +352,14 @@ fn main() -> Result<(), slint::PlatformError> {
                                 return;
                             };
                             info!("Success: Files found, saved diretory");
-                            let (mod_loader_installed, mod_loader_disabled, _) = elden_mod_loader_properties(&try_path);
+                            let mod_loader = elden_mod_loader_properties(&try_path);
                             ui.global::<SettingsLogic>()
                                 .set_game_path(try_path.to_string_lossy().to_string().into());
                             ui.global::<MainLogic>().set_game_path_valid(true);
                             ui.global::<MainLogic>().set_current_subpage(0);
-                            ui.global::<SettingsLogic>().set_loader_installed(mod_loader_installed);
-                            ui.global::<SettingsLogic>().set_loader_disabled(mod_loader_disabled);
-                            if mod_loader_installed {
+                            ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed);
+                            ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled);
+                            if mod_loader.installed {
                                 ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!")
                             } else {
                                 ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
@@ -538,11 +540,12 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_remove_mod({
         let ui_handle = ui.as_weak();
+        let receiver_clone = receiver.clone();
         move |key| {
             let ui = ui_handle.unwrap();
             let format_key = key.replace(' ', "_");
-            let receiver_clone = receiver.clone();
-            ui.display_confirm(&format!("Are you sure you want to de-register: \"{key}\""));
+            ui.display_confirm(&format!("Are you sure you want to de-register: \"{key}\""), false);
+            let receiver_clone = receiver_clone.clone();
             slint::spawn_local(async move {
                 if receive_msg(receiver_clone).await != Message::Confirm {
                     return
@@ -715,11 +718,13 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }
     });
-
     ui.global::<MainLogic>().on_send_message({
-        move |msg| {
+        move |message| {
             let sender_clone = message_sender.clone();
-            sender_clone.send(msg).unwrap_or_else(|err| error!("{err}"));
+            let key = GLOBAL_NUM_KEY.load(Ordering::Acquire);
+            sender_clone
+                .send(MessageData { message, key })
+                .unwrap_or_else(|err| error!("{err}"));
         }
     });
 
@@ -733,23 +738,42 @@ impl App {
         self.invoke_show_error_popup();
     }
 
-    fn display_confirm(&self, msg: &str) {
+    fn display_confirm(&self, msg: &str, alt_buttons: bool) {
+        self.set_alt_std_buttons(alt_buttons);
         self.set_display_message(SharedString::from(msg));
         self.invoke_show_confirm_popup();
     }
 }
 
-async fn receive_msg(receiver: Arc<Mutex<UnboundedReceiver<Message>>>) -> Message {
-    let mut guard = receiver.lock().await;
-    if let Some(msg) = guard.recv().await {
-        msg
-    } else {
-        Message::Esc
-    }
+struct MessageData {
+    message: Message,
+    key: u32,
 }
 
-fn get_user_folder(path: &Path) -> Result<Option<PathBuf>, native_dialog::Error> {
-    FileDialog::new().set_location(path).show_open_single_dir()
+async fn receive_msg(receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>) -> Message {
+    let key = GLOBAL_NUM_KEY.fetch_add(1, Ordering::SeqCst) + 1;
+    let mut message = Message::Esc;
+    let mut guard = receiver.lock().await;
+    while let Some(msg) = guard.recv().await {
+        if msg.key == key {
+            message = msg.message;
+            break;
+        }
+    }
+    message
+}
+
+fn get_user_folder(path: &Path) -> Result<PathBuf, &'static str> {
+    match FileDialog::new().set_location(path).show_open_single_dir() {
+        Ok(opt) => match opt {
+            Some(selected_path) => Ok(selected_path),
+            None => Err("No Path Selected"),
+        },
+        Err(err) => {
+            error!("{err}");
+            Err("Error selecting path")
+        }
+    }
 }
 
 fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, &'static str> {
@@ -808,14 +832,21 @@ fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
     })
 }
 
-fn elden_mod_loader_properties(game_dir: &Path) -> (bool, bool, PathBuf) {
-    let mod_loader_disabled: bool;
-    let mod_loader_cfg: PathBuf;
-    let mod_loader_installed = match does_dir_contain(game_dir, &LOADER_FILES) {
+#[derive(Default)]
+struct ModLoader {
+    installed: bool,
+    disabled: bool,
+    cfg: PathBuf,
+}
+
+fn elden_mod_loader_properties(game_dir: &Path) -> ModLoader {
+    let disabled: bool;
+    let cfg: PathBuf;
+    let installed = match does_dir_contain(game_dir, &LOADER_FILES) {
         Ok(_) => {
             info!("Found mod loader files");
-            mod_loader_cfg = game_dir.join(LOADER_FILES[0]);
-            mod_loader_disabled = false;
+            cfg = game_dir.join(LOADER_FILES[0]);
+            disabled = false;
             true
         }
         Err(_) => {
@@ -823,20 +854,24 @@ fn elden_mod_loader_properties(game_dir: &Path) -> (bool, bool, PathBuf) {
             match does_dir_contain(game_dir, &LOADER_FILES_DISABLED) {
                 Ok(_) => {
                     info!("Found mod loader files in the disabled state");
-                    mod_loader_cfg = game_dir.join(LOADER_FILES[0]);
-                    mod_loader_disabled = true;
+                    cfg = game_dir.join(LOADER_FILES[0]);
+                    disabled = true;
                     true
                 }
                 Err(_) => {
                     error!("Mod Loader Files not found in selected path");
-                    mod_loader_cfg = PathBuf::new();
-                    mod_loader_disabled = false;
+                    cfg = PathBuf::new();
+                    disabled = false;
                     false
                 }
             }
         }
     };
-    (mod_loader_installed, mod_loader_disabled, mod_loader_cfg)
+    ModLoader {
+        installed,
+        disabled,
+        cfg,
+    }
 }
 
 fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {

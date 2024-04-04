@@ -18,8 +18,6 @@ export global MainLogic {
     callback force_app_focus();
     callback send_message(Message);
     in property <string> line_edit_text;
-    in property <bool> popup_msg_visible;
-    in property <bool> confirm_popup_visible;
     in-out property <bool> if-err-bool;
     in-out property <bool> game_path_valid;
     in-out property <int> current_subpage: 0;
@@ -44,7 +42,6 @@ export global SettingsLogic  {
     in-out property <bool> show_terminal;
     in-out property <string> load_delay: "5000ms";
     in property <string> delay_input;
-
 }
 
 struct ButtonColors  {
