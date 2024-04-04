@@ -57,7 +57,6 @@ impl ValueType for u32 {
     ) -> Result<Self, Self::ParseError> {
         ini.get_from(section, key)
             .expect("Validated by IniProperty::is_valid")
-            .to_lowercase()
             .parse::<u32>()
     }
 }
@@ -175,10 +174,10 @@ impl ValueType for Vec<PathBuf> {
 
 fn validate_file(path: &Path) -> Result<(), io::Error> {
     if path.extension().is_none() {
-        let input_file = path
-            .to_string_lossy()
-            .to_string()
-            .split_at(path.to_string_lossy().to_string().rfind('\\').unwrap_or(0) + 1)
+        let input_file = path.to_string_lossy().to_string();
+        let split = input_file.rfind('\\').unwrap_or(0);
+        input_file
+            .split_at(if split != 0 { split + 1 } else { split })
             .1
             .to_string();
         return Err(io::Error::new(
