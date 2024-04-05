@@ -5,16 +5,16 @@ import { StandardButton } from "std-widgets.slint";
 export { MainLogic, SettingsLogic, DisplayMod }
 
 export component App inherits Window {
-    in property <string> display-message;
+    in property <string> display_message;
     property <bool> popup_msg_visible;
     property <bool> confirm_popup_visible;
     // property <length> popup-window-y-pos: (mp.height - err-msg-size.height + 30px) / 2; // debug this somehow
     property <length> popup-window-x-pos: {
         // Test use of math functions to fix errors in logic for x and y
-        if ((mp.width - err-msg-size.width - 13px) / 2) < 0 {
+        if ((mp.width - msg-size.width - 13px) / 2) < 10px {
             10px
         } else {
-            (mp.width - err-msg-size.width - 13px) / 2
+            (mp.width - msg-size.width - 13px) / 2
         }
     };
     title: @tr("Elden Mod Loader");
@@ -39,7 +39,7 @@ export component App inherits Window {
         confirm-popup.show()
     }
 
-    err_msg_size := Text {
+    msg_size := Text {
         visible: false;
         text: display-message;
         max-width: mp.width - 30px;
@@ -49,8 +49,8 @@ export component App inherits Window {
     err_popup := PopupWindow {
         x: popup-window-x-pos;
         y: 105px;
-        height: err-msg-size.height + 20px;
-        width: err-msg-size.width + 20px;
+        height: msg-size.height + 20px;
+        width: msg-size.width + 20px;
         close-on-click: false;
         
         Rectangle {
@@ -82,8 +82,8 @@ export component App inherits Window {
         confirm_popup := PopupWindow {
             x: popup-window-x-pos;
             y: 105px;
-            height: confirm-popup-text.height + 20px;
-            width: confirm-popup-text.width + 20px;
+            height: msg-size.height + 20px;
+            width: msg-size.width + 20px;
             close-on-click: false;
     
             Rectangle {
@@ -92,11 +92,11 @@ export component App inherits Window {
                 border-width: 1px;
             }
     
-            confirm_popup_layout := Dialog {
+            Dialog {
                 no-frame: false;
                 title: @tr("Confirm");
                 
-                confirm_popup_text := Text {
+                Text {
                     text: display-message;
                     max-width: mp.width - 30px;
                     wrap: word-wrap;
