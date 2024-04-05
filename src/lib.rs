@@ -86,7 +86,7 @@ pub async fn display_files_in_directory(
             if let Some((stop_at, count, num_files)) = cutoff {
                 if *cutoff_reached {
                     return Ok(());
-                } else if count >= stop_at && !*cutoff_reached {
+                } else if count >= stop_at {
                     *cutoff_reached = true;
                     let remainder: i64 = *num_files as i64 - *count as i64;
                     match remainder {
