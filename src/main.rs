@@ -200,7 +200,6 @@ fn main() -> Result<(), slint::PlatformError> {
     // Error check input text for invalid symbols
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
-        let receiver_clone = receiver.clone();
         move |mod_name| {
             let ui = ui_handle.unwrap();
             let format_key = mod_name.trim().replace(' ', "_");
@@ -322,25 +321,16 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = ui_handle.unwrap();
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
             let game_dir_ref = Rc::from(game_dir.as_path());
-            let user_path = match get_user_folder(&game_dir_ref) {
-                Ok(opt) => match opt {
-                    Some(selected_path) => Ok(selected_path.to_string_lossy().to_string()),
-                    None => Err("No Path Selected"),
-                },
-                Err(err) => {
-                    error!("{err}");
-                    Err("Error selecting path")
-                }
-            };
+            let user_path = get_user_folder(&game_dir_ref);
 
             match user_path {
                 Ok(path) => {
-                    info!("User Selected Path: \"{}\"", &path);
+                    info!("User Selected Path: \"{}\"", path.display());
                     let try_path: PathBuf = if does_dir_contain(Path::new(&path), &["Game"]).is_ok()
                     {
-                        PathBuf::from(&format!("{path}\\Game"))
+                        PathBuf::from(&format!("{}\\Game", path.display()))
                     } else {
-                        PathBuf::from(path)
+                        path
                     };
                     match does_dir_contain(Path::new(&try_path), &REQUIRED_GAME_FILES) {
                         Ok(_) => {

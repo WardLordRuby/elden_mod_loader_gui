@@ -6,7 +6,6 @@ export { MainLogic, SettingsLogic, DisplayMod }
 
 export component App inherits Window {
     in property <string> display_message;
-    in property <bool> alt-std-buttons;
     property <bool> popup_msg_visible;
     property <bool> confirm_popup_visible;
     // property <length> popup-window-y-pos: (mp.height - err-msg-size.height + 30px) / 2; // debug this somehow
@@ -83,8 +82,8 @@ export component App inherits Window {
         confirm_popup := PopupWindow {
             x: popup-window-x-pos;
             y: 105px;
-            height: confirm-popup-text.height + 20px;
-            width: confirm-popup-text.width + 20px;
+            height: msg-size.height + 20px;
+            width: msg-size.width + 20px;
             close-on-click: false;
     
             Rectangle {
@@ -93,11 +92,11 @@ export component App inherits Window {
                 border-width: 1px;
             }
     
-            confirm_popup_layout := Dialog {
+            Dialog {
                 no-frame: false;
                 title: @tr("Confirm");
                 
-                confirm_popup_text := Text {
+                Text {
                     text: display-message;
                     max-width: mp.width - 30px;
                     wrap: word-wrap;
