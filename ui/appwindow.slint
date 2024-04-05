@@ -40,7 +40,7 @@ export component App inherits Window {
         confirm-popup.show()
     }
 
-    err_msg_size := Text {
+    msg_size := Text {
         visible: false;
         text: display-message;
         max-width: mp.width - 30px;
@@ -50,8 +50,8 @@ export component App inherits Window {
     err_popup := PopupWindow {
         x: popup-window-x-pos;
         y: 105px;
-        height: err-msg-size.height + 20px;
-        width: err-msg-size.width + 20px;
+        height: msg-size.height + 20px;
+        width: msg-size.width + 20px;
         close-on-click: false;
         
         Rectangle {
@@ -83,8 +83,8 @@ export component App inherits Window {
         confirm_popup := PopupWindow {
             x: popup-window-x-pos;
             y: 105px;
-            height: confirm-popup-text.height + 20px;
-            width: confirm-popup-text.width + 20px;
+            height: msg-size.height + 20px;
+            width: msg-size.width + 20px;
             close-on-click: false;
     
             Rectangle {
@@ -93,11 +93,11 @@ export component App inherits Window {
                 border-width: 1px;
             }
     
-            confirm_popup_layout := Dialog {
+            Dialog {
                 no-frame: false;
                 title: @tr("Confirm");
                 
-                confirm_popup_text := Text {
+                Text {
                     text: display-message;
                     max-width: mp.width - 30px;
                     wrap: word-wrap;
