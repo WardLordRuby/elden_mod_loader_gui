@@ -760,7 +760,7 @@ struct MessageData {
 }
 
 async fn receive_msg(receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>) -> Message {
-    let key = GLOBAL_NUM_KEY.fetch_add(1, Ordering::Release) + 1;
+    let key = GLOBAL_NUM_KEY.fetch_add(1, Ordering::SeqCst) + 1;
     let mut message = Message::Esc;
     let mut guard = receiver.lock().await;
     while let Some(msg) = guard.recv().await {
