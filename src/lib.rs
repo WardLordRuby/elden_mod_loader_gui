@@ -29,14 +29,96 @@ pub const REQUIRED_GAME_FILES: [&str; 3] = [
     "eossdk-win64-shipping.dll",
 ];
 
-pub fn shorten_paths(
-    paths: Vec<PathBuf>,
-    remove: &PathBuf,
-) -> Result<Vec<PathBuf>, std::path::StripPrefixError> {
+pub struct PathErrors {
+    pub short_paths: Vec<PathBuf>,
+    pub long_paths: Vec<PathBuf>,
+    pub errs: Vec<std::path::StripPrefixError>,
+}
+
+impl PathErrors {
+    fn new(size: usize) -> Self {
+        PathErrors {
+            short_paths: Vec::with_capacity(size),
+            long_paths: Vec::with_capacity(size),
+            errs: Vec::with_capacity(size),
+        }
+    }
+}
+
+pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>, PathErrors> {
+    let mut output = Vec::with_capacity(paths.len());
+    let mut errors = PathErrors::new(paths.len());
     paths
-        .into_iter()
-        .map(|path| path.strip_prefix(remove).map(|p| p.to_path_buf()))
-        .collect()
+        .iter()
+        .for_each(|path| match path.strip_prefix(remove) {
+            Ok(file) => {
+                output.push(PathBuf::from(file));
+                errors.short_paths.push(PathBuf::from(file));
+            }
+            Err(err) => {
+                errors.long_paths.push(PathBuf::from(path));
+                errors.errs.push(err);
+            }
+        });
+    if errors.errs.is_empty() {
+        Ok(output)
+    } else {
+        Err(errors)
+    }
+}
+
+pub async fn display_files_in_directory(
+    directory: &Path,
+    strip_prefix: Option<&Path>,
+    starting_string: Option<String>,
+) -> Result<String, std::io::Error> {
+    fn format_entries(
+        output: &mut Vec<String>,
+        directory: &Path,
+        strip_prefix: Option<&Path>,
+    ) -> Result<(), std::io::Error> {
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(partial_path) =
+                    strip_prefix.and_then(|prefix| path.strip_prefix(prefix).ok())
+                {
+                    if let Some(partial_path_str) = partial_path.to_str() {
+                        output.push(partial_path_str.to_string());
+                    }
+                } else if let Some(file_name) = path.file_name() {
+                    if let Some(file_name_str) = file_name.to_str() {
+                        output.push(file_name_str.to_string());
+                    }
+                }
+            } else if path.is_dir() {
+                format_entries(output, &path, strip_prefix)?
+            }
+        }
+        Ok(())
+    }
+    fn count_files(count: &mut usize, directory: &Path) -> Result<(), std::io::Error> {
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                *count += 1;
+            } else if path.is_dir() {
+                count_files(count, &path)?;
+            }
+        }
+        Ok(())
+    }
+    let mut file_count: usize = 0;
+    count_files(&mut file_count, directory)?;
+    let mut files = Vec::with_capacity(file_count + 1);
+    if let Some(string) = starting_string {
+        files.push(string);
+    }
+    format_entries(&mut files, directory, strip_prefix)?;
+    // TODO: only join the first x amount then just say "plus x many items"
+    Ok(files.join("\n"))
 }
 
 pub fn toggle_files(
