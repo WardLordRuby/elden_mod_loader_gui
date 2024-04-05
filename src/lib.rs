@@ -70,16 +70,38 @@ pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>
 pub async fn display_files_in_directory(
     directory: &Path,
     strip_prefix: Option<&Path>,
-    starting_string: Option<String>,
+    starting_string: Option<&str>,
+    cutoff: Option<usize>,
 ) -> Result<String, std::io::Error> {
     fn format_entries(
         output: &mut Vec<String>,
         directory: &Path,
         strip_prefix: Option<&Path>,
+        cutoff: &mut Option<(usize, usize, usize)>,
+        cutoff_reached: &mut bool,
     ) -> Result<(), std::io::Error> {
         for entry in std::fs::read_dir(directory)? {
             let entry = entry?;
             let path = entry.path();
+            if let Some((stop_at, count, num_files)) = cutoff {
+                if *cutoff_reached {
+                    return Ok(());
+                } else if count >= stop_at && !*cutoff_reached {
+                    *cutoff_reached = true;
+                    let remainder: i64 = *num_files as i64 - *count as i64;
+                    match remainder {
+                        ..=-1 => output.push(String::from(
+                            "Unexpected behavior, file list might be wrong",
+                        )),
+                        0 => (),
+                        1 => output.push(String::from("Plus 1 more file")),
+                        2.. => output.push(format!("Plus {} more files...", remainder)),
+                    };
+                    return Ok(());
+                } else {
+                    *count += 1;
+                }
+            }
             if path.is_file() {
                 if let Some(partial_path) =
                     strip_prefix.and_then(|prefix| path.strip_prefix(prefix).ok())
@@ -93,7 +115,7 @@ pub async fn display_files_in_directory(
                     }
                 }
             } else if path.is_dir() {
-                format_entries(output, &path, strip_prefix)?
+                format_entries(output, &path, strip_prefix, cutoff, cutoff_reached)?
             }
         }
         Ok(())
@@ -113,11 +135,18 @@ pub async fn display_files_in_directory(
     let mut file_count: usize = 0;
     count_files(&mut file_count, directory)?;
     let mut files = Vec::with_capacity(file_count + 1);
+    let mut calc_cutoff = cutoff.map_or_else(|| None, |num| Some((num, 0_usize, file_count)));
+    let mut cutoff_reached = false;
     if let Some(string) = starting_string {
-        files.push(string);
+        files.push(string.to_string());
     }
-    format_entries(&mut files, directory, strip_prefix)?;
-    // TODO: only join the first x amount then just say "plus x many items"
+    format_entries(
+        &mut files,
+        directory,
+        strip_prefix,
+        &mut calc_cutoff,
+        &mut cutoff_reached,
+    )?;
     Ok(files.join("\n"))
 }
 

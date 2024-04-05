@@ -260,9 +260,9 @@ fn main() -> Result<(), slint::PlatformError> {
                                 let parent_dir = install_files[0].parent().expect("has parent");
                                 match get_user_folder(parent_dir) {
                                     Ok(path) => {
-                                        install_files_display = display_files_in_directory(&path, Some(parent_dir), Some(install_files_display)).await.unwrap_or_else(|err| {
+                                        install_files_display = display_files_in_directory(&path, Some(parent_dir), Some(&install_files_display), Some(12_usize)).await.unwrap_or_else(|err| {
                                             error!("{err}");
-                                            String::new()
+                                            format!("{install_files_display}\n\nError displaying files in directory:\n{err}")
                                         });
                                         install_files.push(path);
                                     }
@@ -297,7 +297,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         state,
                     ));
                     match files.len() {
-                        0 => unreachable!(),
+                        0 => return,
                         1 => results.push(save_path(
                             &CURRENT_INI,
                             Some("mod-files"),
