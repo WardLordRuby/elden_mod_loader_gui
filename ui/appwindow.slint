@@ -5,10 +5,10 @@ import { StandardButton } from "std-widgets.slint";
 export { MainLogic, SettingsLogic, DisplayMod }
 
 export component App inherits Window {
-    in property <string> display_message;
-    in property <bool> alt_std_buttons;
-    property <bool> popup_msg_visible;
-    property <bool> confirm_popup_visible;
+    in property <string> display-message;
+    in property <bool> alt-std-buttons;
+    property <bool> popup-msg-visible;
+    property <bool> confirm-popup-visible;
     // property <length> popup-window-y-pos: (mp.height - err-msg-size.height + 30px) / 2; // debug this somehow
     property <length> popup-window-x-pos: {
         // Test use of math functions to fix errors in logic for x and y
@@ -19,7 +19,7 @@ export component App inherits Window {
         }
     };
     title: @tr("Elden Mod Loader");
-    icon: @image-url("assets/EML_icon.png");
+    icon: @image-url("assets/EML-icon.png");
     preferred-height: 376px;
     min-height: 376px;
     min-width: 315px;
@@ -27,16 +27,16 @@ export component App inherits Window {
     
     mp := MainPage {}
 
-    callback focus_app;
-    callback show_error_popup;
-    callback show_confirm_popup;
-    focus_app => { fs.focus() }
-    show_error_popup => {
-        popup_msg_visible = true;
+    callback focus-app;
+    callback show-error-popup;
+    callback show-confirm-popup;
+    focus-app => { fs.focus() }
+    show-error-popup => {
+        popup-msg-visible = true;
         err-popup.show()
     }
-    show_confirm_popup => {
-        confirm_popup_visible = true;
+    show-confirm-popup => {
+        confirm-popup-visible = true;
         if (!alt-std-buttons) {
             confirm-popup.show()
         } else {
@@ -44,14 +44,14 @@ export component App inherits Window {
         }
     }
 
-    msg_size := Text {
+    msg-size := Text {
         visible: false;
         text: display-message;
         max-width: mp.width - 30px;
     }
 
     // Make popupWindow look nice 
-    err_popup := PopupWindow {
+    err-popup := PopupWindow {
         x: popup-window-x-pos;
         y: 105px;
         height: msg-size.height + 20px;
@@ -77,14 +77,14 @@ export component App inherits Window {
             StandardButton {
                 kind: ok; 
                 clicked => { 
-                    popup_msg_visible = false;
+                    popup-msg-visible = false;
                     err-popup.close()
                 }
             }
         }
     }
     // Make popupWindow look nice 
-    confirm_popup := PopupWindow {
+    confirm-popup := PopupWindow {
         x: popup-window-x-pos;
         y: 105px;
         height: msg-size.height + 20px;
@@ -109,20 +109,20 @@ export component App inherits Window {
             StandardButton {
                 kind: yes; 
                 clicked => { 
-                    MainLogic.send_message(Message.confirm);
+                    MainLogic.send-message(Message.confirm);
                     confirm-popup.close()
                 }
             }
             StandardButton {
                 kind: cancel; 
                 clicked => { 
-                    MainLogic.send_message(Message.deny);
+                    MainLogic.send-message(Message.deny);
                     confirm-popup.close()
                 }
             }
         }
     }
-    confirm_popup_2 := PopupWindow {
+    confirm-popup-2 := PopupWindow {
         x: popup-window-x-pos;
         y: 105px;
         height: msg-size.height + 20px;
@@ -147,14 +147,14 @@ export component App inherits Window {
             StandardButton {
                 kind: yes; 
                 clicked => { 
-                    MainLogic.send_message(Message.confirm);
+                    MainLogic.send-message(Message.confirm);
                     confirm-popup-2.close()
                 }
             }
             StandardButton {
                 kind: no; 
                 clicked => { 
-                    MainLogic.send_message(Message.deny);
+                    MainLogic.send-message(Message.deny);
                     confirm-popup-2.close()
                 }
             }
@@ -163,12 +163,12 @@ export component App inherits Window {
     fs := FocusScope {
         key-pressed(event) => {
             if (event.text == Key.Escape) {
-                if (popup_msg_visible) {
-                    popup_msg_visible = false;
+                if (popup-msg-visible) {
+                    popup-msg-visible = false;
                     err-popup.close()
-                } else if (confirm_popup_visible) {
-                    confirm_popup_visible = false;
-                    MainLogic.send_message(Message.esc);
+                } else if (confirm-popup-visible) {
+                    confirm-popup-visible = false;
+                    MainLogic.send-message(Message.esc);
                     confirm-popup.close();
                     confirm-popup-2.close()
                 } else {
@@ -176,7 +176,7 @@ export component App inherits Window {
                 }
             }
             if (event.text == Key.Tab) {
-                mp.focus_line_edit()
+                mp.focus-line-edit()
             }
             accept
         }

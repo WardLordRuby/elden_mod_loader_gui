@@ -3,17 +3,17 @@ import { MainLogic, SettingsLogic, Page } from "common.slint";
 
 export component ModDetailsPage inherits Page {
     has-back-button: true;
-    title: MainLogic.current_mods[mod-index].name;
+    title: MainLogic.current-mods[mod-index].name;
     description: @tr("Edit registered mods here");
     
     in property <int> mod-index;
     property <length> box-width: root.width - 10px;
-    property <color> state-color: SettingsLogic.loader_disabled ? #d01616 : 
-        MainLogic.current_mods[mod-index].enabled ? #206816 : #d01616;
-    property <string> state: SettingsLogic.loader_disabled ? @tr("Mod Loader Disabled") : 
-        MainLogic.current_mods[mod-index].enabled ? @tr("Yes") : @tr("No");
-    property <length> button-width: MainLogic.current_mods[mod-index].has-config ? 93px : 105px;
-    property <LayoutAlignment> button-layout: MainLogic.current_mods[mod-index].has-config ? center : end;
+    property <color> state-color: SettingsLogic.loader-disabled ? #d01616 : 
+        MainLogic.current-mods[mod-index].enabled ? #206816 : #d01616;
+    property <string> state: SettingsLogic.loader-disabled ? @tr("Mod Loader Disabled") : 
+        MainLogic.current-mods[mod-index].enabled ? @tr("Yes") : @tr("No");
+    property <length> button-width: MainLogic.current-mods[mod-index].has-config ? 93px : 105px;
+    property <LayoutAlignment> button-layout: MainLogic.current-mods[mod-index].has-config ? center : end;
     
     Text {
         x: 8px;
@@ -54,7 +54,7 @@ export component ModDetailsPage inherits Page {
             Text {
                 font-size: 13pt;
                 wrap: word-wrap;
-                text: MainLogic.current_mods[mod-index].name;
+                text: MainLogic.current-mods[mod-index].name;
             }
         }
         e := Text {
@@ -73,7 +73,7 @@ export component ModDetailsPage inherits Page {
             x: 15px;
             font-size: 13pt;
             wrap: word-wrap;
-            text: MainLogic.current_mods[mod-index].files;
+            text: MainLogic.current-mods[mod-index].files;
         }
     }
     VerticalLayout {
@@ -94,23 +94,23 @@ export component ModDetailsPage inherits Page {
                 Button {
                     width: button-width;
                     height: 35px;
-                    primary: !SettingsLogic.dark_mode;
+                    primary: !SettingsLogic.dark-mode;
                     text: @tr("Add Files");
-                    clicked => { MainLogic.add_to_mod(MainLogic.current_mods[mod-index].name) }
+                    clicked => { MainLogic.add-to-mod(MainLogic.current-mods[mod-index].name) }
                 }
-                if (MainLogic.current_mods[mod-index].has-config) : Button {
+                if (MainLogic.current-mods[mod-index].has-config) : Button {
                     width: button-width;
                     height: 35px;
-                    primary: !SettingsLogic.dark_mode;
+                    primary: !SettingsLogic.dark-mode;
                     text: @tr("Edit config");
-                    clicked => { MainLogic.edit_config(MainLogic.current_mods[mod-index].config-files) }
+                    clicked => { MainLogic.edit-config(MainLogic.current-mods[mod-index].config-files) }
                 }
                 Button {
                     width: button-width;
                     height: 35px;
-                    primary: !SettingsLogic.dark_mode;
+                    primary: !SettingsLogic.dark-mode;
                     text: @tr("De-register");
-                    clicked => { MainLogic.remove_mod(MainLogic.current_mods[mod-index].name) }
+                    clicked => { MainLogic.remove-mod(MainLogic.current-mods[mod-index].name) }
                 }
             }
         }

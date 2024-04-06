@@ -24,9 +24,9 @@ export component SettingsPage inherits Page {
                 width: horizontal-box-width;
                 Switch {
                     text: @tr("Dark Mode");
-                    checked <=> SettingsLogic.dark_mode;
+                    checked <=> SettingsLogic.dark-mode;
                     toggled => {
-                        SettingsLogic.toggle_theme(self.checked);
+                        SettingsLogic.toggle-theme(self.checked);
                     }
                 }
             }
@@ -44,7 +44,7 @@ export component SettingsPage inherits Page {
                     vertical-alignment: center;
                     horizontal-alignment: left;
                     wrap: word-wrap;
-                    text: SettingsLogic.game_path;
+                    text: SettingsLogic.game-path;
                 }
             }
             HorizontalBox {
@@ -58,18 +58,18 @@ export component SettingsPage inherits Page {
                     height: 30px;
                     icon: @image-url("assets/folder.png");
                     colorize-icon: true;
-                    primary: !SettingsLogic.dark_mode;
+                    primary: !SettingsLogic.dark-mode;
                     clicked => {
-                        SettingsLogic.open_game_dir();
+                        SettingsLogic.open-game-dir();
                     }
                 }
                 Button { 
                     width: 115px;
                     height: 30px;
-                    primary: !SettingsLogic.dark_mode;
+                    primary: !SettingsLogic.dark-mode;
                     text: @tr("Set Path");
                     clicked => {
-                        SettingsLogic.select_game_dir();
+                        SettingsLogic.select-game-dir();
                     }
                 }
             }
@@ -77,7 +77,7 @@ export component SettingsPage inherits Page {
         FocusScope {
             key-pressed(event) => {
                 if (event.text == Key.Escape) {
-                    MainLogic.force_app_focus()
+                    MainLogic.force-app-focus()
                 }
                 // && doesn't work in slint conditonal statements
                 if (event.text == Key.Tab) {
@@ -92,7 +92,7 @@ export component SettingsPage inherits Page {
 
             GroupBox {
                 title: @tr("Mod Loader Options");
-                enabled: SettingsLogic.loader_installed;
+                enabled: SettingsLogic.loader-installed;
 
                 HorizontalBox {
                     row: 1;
@@ -102,9 +102,9 @@ export component SettingsPage inherits Page {
                     width: horizontal-box-width;
                     Switch {
                         text: @tr("Show Terminal");
-                        enabled: SettingsLogic.loader_installed;
-                        checked <=> SettingsLogic.show_terminal;
-                        toggled => { SettingsLogic.toggle_terminal(self.checked) }
+                        enabled: SettingsLogic.loader-installed;
+                        checked <=> SettingsLogic.show-terminal;
+                        toggled => { SettingsLogic.toggle-terminal(self.checked) }
                     }
                 }
                 HorizontalBox {
@@ -116,10 +116,10 @@ export component SettingsPage inherits Page {
                     width: horizontal-box-width;
                     Switch {
                         text: @tr("Disable All mods");
-                        enabled: SettingsLogic.loader_installed;
-                        checked <=> SettingsLogic.loader_disabled;
+                        enabled: SettingsLogic.loader-installed;
+                        checked <=> SettingsLogic.loader-disabled;
                         toggled => {
-                            SettingsLogic.toggle_all(self.checked);
+                            SettingsLogic.toggle-all(self.checked);
                         }
                     }
                 }
@@ -130,21 +130,21 @@ export component SettingsPage inherits Page {
                     load-delay := LineEdit {
                         width: 128px;
                         horizontal-alignment: right;
-                        enabled: SettingsLogic.loader_installed;
-                        placeholder-text <=> SettingsLogic.load_delay;
-                        text <=> SettingsLogic.delay_input;
+                        enabled: SettingsLogic.loader-installed;
+                        placeholder-text <=> SettingsLogic.load-delay;
+                        text <=> SettingsLogic.delay-input;
                         input-type: number;
                     }
                     set-delay := Button {
                         text: @tr("Set Mod Load Delay");
-                        enabled: SettingsLogic.loader_installed;
-                        primary: !SettingsLogic.dark_mode;
+                        enabled: SettingsLogic.loader-installed;
+                        primary: !SettingsLogic.dark-mode;
                         clicked => { 
                             if (load-delay.text != "") {
                                 if (load-delay.text.to-float() > 2147483647 ) {
-                                    SettingsLogic.delay_input = "2147483647";
+                                    SettingsLogic.delay-input = "2147483647";
                                 }
-                                SettingsLogic.set_load_delay(SettingsLogic.delay_input)
+                                SettingsLogic.set-load-delay(SettingsLogic.delay-input)
                             } else {
                                 load-delay.focus()
                             }
