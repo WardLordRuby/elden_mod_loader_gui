@@ -232,7 +232,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 Ok(files) => files,
                 Err(err) => {
                     info!("{err}");
-                    ui.display_msg(err);
+                    ui.display_msg(&err.to_string());
                     return;
                 }
             };
@@ -246,34 +246,48 @@ fn main() -> Result<(), slint::PlatformError> {
                             if receive_msg(receiver_clone.clone()).await != Message::Confirm {
                                 return;
                             }
-                            let mut install_files = err.long_paths;
-                            let install_dir = game_dir.join("mods");
-                            let mut install_files_display = install_files.iter().map(|path| 
-                                path.file_name().expect("file has name")
-                                    .to_string_lossy())
-                                    .collect::<Vec<_>>()
-                                    .join("\n");
+                            let mut install_files = InstallData::new(err.long_paths, &game_dir);
                             ui.display_confirm(&format!(
                                 "Current Files to install:\n{}\n\nWould you like to add a directory eg. Folder containing a config file?", 
-                                install_files_display), true);
+                                install_files.display_paths), true);
+                            let mut result: Vec<Result<(), ()>> = Vec::with_capacity(2);
                             if receive_msg(receiver_clone.clone()).await == Message::Confirm {
-                                let parent_dir = install_files[0].parent().expect("has parent");
-                                match get_user_folder(parent_dir) {
+                                match get_user_folder(&install_files.parent_dir) {
                                     Ok(path) => {
-                                        install_files_display = display_files_in_directory(&path, Some(parent_dir), Some(&install_files_display), Some(12_usize)).await.unwrap_or_else(|err| {
+                                        install_files.update_from_path_and_display_data(&path, Some(12_usize)).await.unwrap_or_else(|err| {
                                             error!("{err}");
-                                            format!("{install_files_display}\n\nError displaying files in directory:\n{err}")
+                                            result.push(Err(()));
+                                            install_files.display_paths = format!("{}\n\nError displaying files in directory:\n{err}", install_files.display_paths);
                                         });
-                                        install_files.push(path);
                                     }
-                                    Err(err) => warn!("{err}"),
+                                    Err(err) => match err.kind() {
+                                        std::io::ErrorKind::InvalidInput => (),
+                                        _ => {
+                                            result.push(Err(()));
+                                            error!("{err}")
+                                        }
+                                    },
                                 }
                             }
-                            ui.display_confirm(&format!("Confirm install of mod \"{mod_name}\"\n\nSelected files:\n{install_files_display}\n\nInstall at:\n{}", install_dir.display()), false);
+                            ui.display_confirm(&format!("Confirm install of mod \"{mod_name}\"\n\nSelected files:\n{}\n\nInstall at:\n{}", install_files.display_paths, &install_files.install_dir.display()), false);
                             if receive_msg(receiver_clone.clone()).await == Message::Confirm {
+                                if !result.is_empty() {
+                                    ui.display_msg("Error: Could not Install");
+                                    return;
+                                }
+                                let _zip = match install_files.zip_from_to_paths() {
+                                    Ok(zip) => zip,
+                                    Err(_) => {
+                                        ui.display_msg("Error: Could not Install\n\nStrip Prefix Error");
+                                        return;
+                                    }
+                                };
                                 // TODO: Check that every file doesn't already exist in the game directory
+                                //       long paths, long paths_new
                                 // TODO: Copy selected files and directories to game_dir
+                                //       same as above
                                 // TODO: pass along shortened paths to files
+                                //       run shorten paths with &game_dir
                                 eprintln!("install confirmed");
                             }
                             Vec::new()
@@ -403,7 +417,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 Err(err) => {
                     info!("{err}");
-                    ui.display_msg(err)
+                    ui.display_msg(&err.to_string())
                 }
             }
         }
@@ -471,7 +485,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 Ok(paths) => paths,
                 Err(err) => {
                     error!("{err}");
-                    ui.display_msg(err);
+                    ui.display_msg(&err.to_string());
                     return;
                 }
             };
@@ -772,40 +786,55 @@ async fn receive_msg(receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>) -> Me
     message
 }
 
-fn get_user_folder(path: &Path) -> Result<PathBuf, &'static str> {
+fn get_user_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
     match FileDialog::new().set_location(path).show_open_single_dir() {
         Ok(opt) => match opt {
             Some(selected_path) => Ok(selected_path),
-            None => Err("No Path Selected"),
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "No Path Selected",
+            )),
         },
         Err(err) => {
             error!("{err}");
-            Err("Error selecting path")
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                err.to_string(),
+            ))
         }
     }
 }
 
-fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, &'static str> {
+fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     match FileDialog::new()
         .set_location(path)
         .show_open_multiple_file()
     {
         Ok(files) => match files.len() {
-            0 => Err("No files selected"),
+            0 => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "No Path Selected",
+            )),
             _ => {
                 if files.iter().any(|file| {
                     RESTRICTED_FILES.iter().any(|restricted_file| {
                         file.file_name().expect("has name") == *restricted_file
                     })
                 }) {
-                    return Err("Error: Tried to add a restricted file");
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Error: Tried to add a restricted file",
+                    ));
                 }
                 Ok(files)
             }
         },
         Err(err) => {
             error!("{err}");
-            Err("Error selecting path")
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                err.to_string(),
+            ))
         }
     }
 }

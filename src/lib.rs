@@ -13,6 +13,7 @@ use log::{error, info, trace, warn};
 use std::{
     io,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 const DEFAULT_GAME_DIR: [&str; 6] = [
@@ -67,87 +68,170 @@ pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>
     }
 }
 
-pub async fn display_files_in_directory(
-    directory: &Path,
-    strip_prefix: Option<&Path>,
-    starting_string: Option<&str>,
-    cutoff: Option<usize>,
-) -> Result<String, std::io::Error> {
-    fn format_entries(
-        output: &mut Vec<String>,
-        directory: &Path,
-        strip_prefix: Option<&Path>,
-        cutoff: &mut Option<(usize, usize, usize)>,
-        cutoff_reached: &mut bool,
+#[derive(Debug, Clone)]
+pub struct InstallData {
+    from_paths: Vec<PathBuf>,
+    to_paths: Vec<PathBuf>,
+    pub display_paths: String,
+    pub parent_dir: PathBuf,
+    pub install_dir: PathBuf,
+}
+
+impl InstallData {
+    pub fn new(file_paths: Vec<PathBuf>, game_dir: &Path) -> Self {
+        InstallData {
+            from_paths: file_paths.clone(),
+            to_paths: Vec::new(),
+            display_paths: file_paths
+                .iter()
+                .map(|path| path.file_name().expect("file has name").to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            parent_dir: file_paths[0].parent().expect("has parent").to_path_buf(),
+            install_dir: game_dir.join("mods"),
+        }
+    }
+    pub fn zip_from_to_paths(&mut self) -> Result<Vec<(&Path, &Path)>, io::Error> {
+        let mut to_paths = Vec::with_capacity(self.from_paths.len());
+        to_paths = self
+            .from_paths
+            .iter()
+            .map(|path| {
+                self.install_dir
+                    .join(path.strip_prefix(&self.parent_dir).unwrap_or_else(|_| {
+                        to_paths.push(PathBuf::new());
+                        Path::new("")
+                    }))
+            })
+            .collect();
+        if self.from_paths.len() != to_paths.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "StripPrefixError",
+            ));
+        }
+        self.to_paths = to_paths;
+        Ok(self
+            .from_paths
+            .iter()
+            .map(|p| p.as_path())
+            .zip(self.to_paths.iter().map(|p| p.as_path()))
+            .collect::<Vec<_>>())
+    }
+    pub async fn update_from_path_and_display_data(
+        &mut self,
+        new_directory: &Path,
+        cutoff: Option<usize>,
     ) -> Result<(), std::io::Error> {
-        for entry in std::fs::read_dir(directory)? {
-            let entry = entry?;
-            let path = entry.path();
-            if let Some((stop_at, count, num_files)) = cutoff {
-                if *cutoff_reached {
-                    return Ok(());
-                } else if count >= stop_at {
-                    *cutoff_reached = true;
-                    let remainder: i64 = *num_files as i64 - *count as i64;
-                    match remainder {
-                        ..=-1 => output.push(String::from(
-                            "Unexpected behavior, file list might be wrong",
-                        )),
-                        0 => (),
-                        1 => output.push(String::from("Plus 1 more file")),
-                        2.. => output.push(format!("Plus {} more files...", remainder)),
-                    };
-                    return Ok(());
-                } else {
+        fn format_entries(
+            outer_self: &mut InstallData,
+            output: &mut Vec<String>,
+            directory: &Path,
+            cutoff: &mut Option<(usize, usize, usize)>,
+            cutoff_reached: &mut bool,
+        ) -> Result<(), std::io::Error> {
+            for entry in std::fs::read_dir(directory)? {
+                let entry = entry?;
+                let path = entry.path();
+                if let Some((stop_at, count, num_files)) = cutoff {
+                    if !*cutoff_reached {
+                        if count >= stop_at {
+                            *cutoff_reached = true;
+                            let remainder: i64 = *num_files as i64 - *count as i64;
+                            match remainder {
+                                ..=-1 => output.push(String::from(
+                                    "Unexpected behavior, file list might be wrong",
+                                )),
+                                0 => (),
+                                1 => output.push(String::from("Plus 1 more file")),
+                                2.. => output.push(format!("Plus {} more files...", remainder)),
+                            };
+                        } else {
+                            *count += 1;
+                        }
+                    }
+                }
+                if path.is_file() {
+                    if !*cutoff_reached {
+                        if let Ok(partial_path) = path.strip_prefix(&outer_self.parent_dir) {
+                            if let Some(partial_path_str) = partial_path.to_str() {
+                                output.push(partial_path_str.to_string());
+                            }
+                        } else if let Some(file_name) = path.file_name() {
+                            if let Some(file_name_str) = file_name.to_str() {
+                                output.push(file_name_str.to_string());
+                            }
+                        }
+                    }
+                    outer_self.from_paths.push(path.to_path_buf());
+                } else if path.is_dir() {
+                    format_entries(outer_self, output, &path, cutoff, cutoff_reached)?
+                }
+            }
+            Ok(())
+        }
+        fn count_files(count: &mut usize, directory: &Path) -> Result<(), std::io::Error> {
+            for entry in std::fs::read_dir(directory)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
                     *count += 1;
+                } else if path.is_dir() {
+                    count_files(count, &path)?;
                 }
             }
-            if path.is_file() {
-                if let Some(partial_path) =
-                    strip_prefix.and_then(|prefix| path.strip_prefix(prefix).ok())
-                {
-                    if let Some(partial_path_str) = partial_path.to_str() {
-                        output.push(partial_path_str.to_string());
-                    }
-                } else if let Some(file_name) = path.file_name() {
-                    if let Some(file_name_str) = file_name.to_str() {
-                        output.push(file_name_str.to_string());
-                    }
+            Ok(())
+        }
+        let self_arc = Arc::new(Mutex::new(self.clone()));
+        let new_directory_arc = Arc::new(Mutex::new(PathBuf::from(new_directory)));
+        let cutoff_arc = Arc::new(Mutex::new(cutoff));
+        let jh = std::thread::spawn(move || -> Result<InstallData, std::io::Error> {
+            let mut self_mutex = self_arc.lock().unwrap();
+            let new_directory_mutex = new_directory_arc.lock().unwrap();
+            let cutoff_mutex = cutoff_arc.lock().unwrap();
+            let mut file_count: usize = 0;
+            count_files(&mut file_count, &new_directory_mutex)?;
+            let mut files = Vec::with_capacity(file_count + 1);
+            let mut calc_cutoff =
+                cutoff_mutex.map_or_else(|| None, |num| Some((num, 0_usize, file_count)));
+            let mut cutoff_reached = false;
+
+            files.push(self_mutex.display_paths.to_string());
+            let from_path_clone = self_mutex.from_paths.clone();
+            self_mutex.from_paths = Vec::with_capacity(file_count + from_path_clone.len());
+            self_mutex.from_paths.extend(from_path_clone);
+
+            if new_directory_mutex.ancestors().count() < self_mutex.parent_dir.ancestors().count() {
+                self_mutex.parent_dir = new_directory_mutex
+                    .parent()
+                    .expect("has parent")
+                    .to_path_buf();
+            }
+
+            format_entries(
+                &mut self_mutex,
+                &mut files,
+                &new_directory_mutex,
+                &mut calc_cutoff,
+                &mut cutoff_reached,
+            )?;
+            self_mutex.display_paths = files.join("\n");
+            Ok(self_mutex.clone())
+        });
+        match jh.join() {
+            Ok(result) => match result {
+                Ok(data) => {
+                    *self = data;
+                    Ok(())
                 }
-            } else if path.is_dir() {
-                format_entries(output, &path, strip_prefix, cutoff, cutoff_reached)?
-            }
+                Err(err) => Err(err),
+            },
+            Err(err) => Err(std::io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                format!("Thread failed to join\n\n{err:?}"),
+            )),
         }
-        Ok(())
     }
-    fn count_files(count: &mut usize, directory: &Path) -> Result<(), std::io::Error> {
-        for entry in std::fs::read_dir(directory)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() {
-                *count += 1;
-            } else if path.is_dir() {
-                count_files(count, &path)?;
-            }
-        }
-        Ok(())
-    }
-    let mut file_count: usize = 0;
-    count_files(&mut file_count, directory)?;
-    let mut files = Vec::with_capacity(file_count + 1);
-    let mut calc_cutoff = cutoff.map_or_else(|| None, |num| Some((num, 0_usize, file_count)));
-    let mut cutoff_reached = false;
-    if let Some(string) = starting_string {
-        files.push(string.to_string());
-    }
-    format_entries(
-        &mut files,
-        directory,
-        strip_prefix,
-        &mut calc_cutoff,
-        &mut cutoff_reached,
-    )?;
-    Ok(files.join("\n"))
 }
 
 pub fn toggle_files(
