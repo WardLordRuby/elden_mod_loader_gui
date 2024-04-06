@@ -146,7 +146,7 @@ impl InstallData {
                                 1 => output.push(String::from("Plus 1 more file")),
                                 2.. => output.push(format!("Plus {} more files...", remainder)),
                             };
-                        } else {
+                        } else if path.is_file() {
                             *count += 1;
                         }
                     }
@@ -182,27 +182,34 @@ impl InstallData {
             }
             Ok(())
         }
-        let self_arc = Arc::new(Mutex::new(self.clone()));
-        let new_directory_arc = Arc::new(Mutex::new(PathBuf::from(new_directory)));
-        let cutoff_arc = Arc::new(Mutex::new(cutoff));
-        let jh = std::thread::spawn(move || -> Result<InstallData, std::io::Error> {
-            let mut self_mutex = self_arc.lock().unwrap();
-            let new_directory_mutex = new_directory_arc.lock().unwrap();
-            let cutoff_mutex = cutoff_arc.lock().unwrap();
+        let self_mutex = Arc::new(Mutex::new(self.clone()));
+        let self_mutex_clone = Arc::clone(&self_mutex);
+        let new_directory_arc = Arc::new(PathBuf::from(new_directory));
+        let cutoff_arc = Arc::new(cutoff);
+        let jh = std::thread::spawn(move || -> Result<(), std::io::Error> {
+            let mut self_mutex = self_mutex_clone.lock().unwrap();
             let mut file_count: usize = 0;
-            count_files(&mut file_count, &new_directory_mutex)?;
-            let mut files = Vec::with_capacity(file_count + 1);
-            let mut calc_cutoff =
-                cutoff_mutex.map_or_else(|| None, |num| Some((num, 0_usize, file_count)));
+            count_files(&mut file_count, &new_directory_arc)?;
+            let num_files_to_display: usize;
+            let mut calc_cutoff = match *cutoff_arc {
+                Some(num) => {
+                    num_files_to_display = num + 1;
+                    Some((num, 0_usize, file_count))
+                }
+                None => {
+                    num_files_to_display = file_count + 1;
+                    None
+                }
+            };
             let mut cutoff_reached = false;
-
-            files.push(self_mutex.display_paths.to_string());
+            let mut files_to_display = Vec::with_capacity(num_files_to_display);
+            files_to_display.push(self_mutex.display_paths.to_string());
             let from_path_clone = self_mutex.from_paths.clone();
             self_mutex.from_paths = Vec::with_capacity(file_count + from_path_clone.len());
             self_mutex.from_paths.extend(from_path_clone);
 
-            if new_directory_mutex.ancestors().count() < self_mutex.parent_dir.ancestors().count() {
-                self_mutex.parent_dir = new_directory_mutex
+            if new_directory_arc.ancestors().count() < self_mutex.parent_dir.ancestors().count() {
+                self_mutex.parent_dir = new_directory_arc
                     .parent()
                     .expect("has parent")
                     .to_path_buf();
@@ -210,18 +217,19 @@ impl InstallData {
 
             format_entries(
                 &mut self_mutex,
-                &mut files,
-                &new_directory_mutex,
+                &mut files_to_display,
+                &new_directory_arc,
                 &mut calc_cutoff,
                 &mut cutoff_reached,
             )?;
-            self_mutex.display_paths = files.join("\n");
-            Ok(self_mutex.clone())
+            self_mutex.display_paths = files_to_display.join("\n");
+            Ok(())
         });
         match jh.join() {
             Ok(result) => match result {
-                Ok(data) => {
-                    *self = data;
+                Ok(_) => {
+                    let mut new_self = self_mutex.lock().unwrap();
+                    std::mem::swap(&mut *new_self, self);
                     Ok(())
                 }
                 Err(err) => Err(err),

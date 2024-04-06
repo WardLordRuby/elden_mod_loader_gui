@@ -197,7 +197,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let (message_sender, message_receiver) = unbounded_channel::<MessageData>();
     let receiver = Arc::new(Mutex::new(message_receiver));
 
-    // Error check input text for invalid symbols
+    // TODO: Error check input text for invalid symbols
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
         let receiver_clone = receiver.clone();
@@ -251,23 +251,27 @@ fn main() -> Result<(), slint::PlatformError> {
                                 "Current Files to install:\n{}\n\nWould you like to add a directory eg. Folder containing a config file?", 
                                 install_files.display_paths), true);
                             let mut result: Vec<Result<(), ()>> = Vec::with_capacity(2);
-                            if receive_msg(receiver_clone.clone()).await == Message::Confirm {
-                                match get_user_folder(&install_files.parent_dir) {
-                                    Ok(path) => {
-                                        install_files.update_from_path_and_display_data(&path, Some(12_usize)).await.unwrap_or_else(|err| {
-                                            error!("{err}");
-                                            result.push(Err(()));
-                                            install_files.display_paths = format!("{}\n\nError displaying files in directory:\n{err}", install_files.display_paths);
-                                        });
-                                    }
-                                    Err(err) => match err.kind() {
-                                        std::io::ErrorKind::InvalidInput => (),
-                                        _ => {
-                                            result.push(Err(()));
-                                            error!("{err}")
+                            match receive_msg(receiver_clone.clone()).await {
+                                Message::Confirm => {
+                                    match get_user_folder(&install_files.parent_dir) {
+                                        Ok(path) => {
+                                            install_files.update_from_path_and_display_data(&path, Some(9_usize)).await.unwrap_or_else(|err| {
+                                                error!("{err}");
+                                                result.push(Err(()));
+                                                install_files.display_paths = format!("{}\n\nError displaying files in directory:\n{err}", install_files.display_paths);
+                                            });
                                         }
-                                    },
+                                        Err(err) => match err.kind() {
+                                            std::io::ErrorKind::InvalidInput => (),
+                                            _ => {
+                                                result.push(Err(()));
+                                                error!("{err}")
+                                            }
+                                        },
+                                    }
                                 }
+                                Message::Deny => (),
+                                Message::Esc => return,
                             }
                             ui.display_confirm(&format!("Confirm install of mod \"{mod_name}\"\n\nSelected files:\n{}\n\nInstall at:\n{}", install_files.display_paths, &install_files.install_dir.display()), false);
                             if receive_msg(receiver_clone.clone()).await == Message::Confirm {
