@@ -37,40 +37,35 @@ macro_rules! new_io_error {
 }
 
 pub struct PathErrors {
-    pub short_paths: Vec<PathBuf>,
-    pub long_paths: Vec<PathBuf>,
-    pub errs: Vec<std::path::StripPrefixError>,
+    pub ok_paths_short: Vec<PathBuf>,
+    pub err_paths_long: Vec<PathBuf>,
 }
 
 impl PathErrors {
     fn new(size: usize) -> Self {
         PathErrors {
-            short_paths: Vec::with_capacity(size),
-            long_paths: Vec::with_capacity(size),
-            errs: Vec::with_capacity(size),
+            ok_paths_short: Vec::with_capacity(size),
+            err_paths_long: Vec::with_capacity(size),
         }
     }
 }
 
 pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>, PathErrors> {
-    let mut output = Vec::with_capacity(paths.len());
-    let mut errors = PathErrors::new(paths.len());
+    let mut results = PathErrors::new(paths.len());
     paths
         .iter()
         .for_each(|path| match path.strip_prefix(remove) {
             Ok(file) => {
-                output.push(PathBuf::from(file));
-                errors.short_paths.push(PathBuf::from(file));
+                results.ok_paths_short.push(PathBuf::from(file));
             }
-            Err(err) => {
-                errors.long_paths.push(PathBuf::from(path));
-                errors.errs.push(err);
+            Err(_) => {
+                results.err_paths_long.push(PathBuf::from(path));
             }
         });
-    if errors.errs.is_empty() {
-        Ok(output)
+    if results.err_paths_long.is_empty() {
+        Ok(results.ok_paths_short)
     } else {
-        Err(errors)
+        Err(results)
     }
 }
 
@@ -80,42 +75,56 @@ fn check_parent_dir(input: &Path) -> Result<PathBuf, std::io::Error> {
             if data.is_dir() {
                 check_dir_contains_files(input)?
             } else if data.is_file() {
-                input.to_path_buf()
+                match input.parent() {
+                    Some(parent) => check_dir_contains_files(parent)?,
+                    None => {
+                        return new_io_error!(
+                            ErrorKind::InvalidData,
+                            "Failed to create a parent_dir"
+                        )
+                    }
+                }
             } else {
                 return new_io_error!(ErrorKind::InvalidData, "Unsuported file type");
             }
         }
         Err(_) => {
-            return new_io_error!(ErrorKind::InvalidInput, "Path has no metadata");
+            return new_io_error!(ErrorKind::InvalidData, "Unable to retrieve metadata");
         }
     };
-    if let Some(name) = valid_path.file_name() {
-        if name == "mods" {
-            return Ok(valid_path);
-        }
-    }
-    match valid_path.parent() {
-        Some(parent) => Ok(PathBuf::from(parent)),
-        None => new_io_error!(ErrorKind::InvalidInput, "Failed to create a parent_dir"),
-    }
+    Ok(valid_path)
 }
 
 fn check_dir_contains_files(path: &Path) -> Result<PathBuf, std::io::Error> {
-    if items_in_directory(path, FileType::File)? > 0 {
-        return Ok(PathBuf::from(path));
-    } else if items_in_directory(path, FileType::Any)? == 0 {
+    let num_of_dirs = items_in_directory(path, FileType::Dir)?;
+    if files_in_directory_tree(path)? == 0 {
         return new_io_error!(
             ErrorKind::InvalidInput,
             "No files in the selected directory"
         );
-    } else if items_in_directory(path, FileType::Dir)? == 1 {
+    } else if items_in_directory(path, FileType::File)? > 0 {
+        return Ok(PathBuf::from(path));
+    } else if num_of_dirs == 1 {
         return check_dir_contains_files(&next_dir(path)?);
-    } else if items_in_directory(path, FileType::Dir)? > 1 {
+    } else if num_of_dirs > 1 {
+        let mut non_empty_branches: usize = 0;
+        let mut non_empty_dirs = Vec::with_capacity(num_of_dirs);
+        for entry in std::fs::read_dir(path)? {
+            let dir = entry?.path();
+            if files_in_directory_tree(&dir)? != 0 {
+                non_empty_branches += 1;
+                non_empty_dirs.push(dir);
+            }
+        }
+        if non_empty_branches == 1 {
+            return check_dir_contains_files(&non_empty_dirs[0]);
+        }
         return Ok(PathBuf::from(path));
     }
     new_io_error!(ErrorKind::InvalidData, "Unsuported file type")
 }
 
+#[allow(dead_code)]
 enum FileType {
     File,
     Dir,
@@ -154,6 +163,27 @@ fn items_in_directory(path: &Path, f_type: FileType) -> Result<usize, std::io::E
     Ok(count)
 }
 
+fn files_in_directory_tree(directory: &Path) -> Result<usize, std::io::Error> {
+    fn count_loop(count: &mut usize, path: &Path) -> Result<(), std::io::Error> {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            if metadata.is_symlink() {
+                return new_io_error!(ErrorKind::InvalidData, "Unsuported file type");
+            } else if metadata.is_file() {
+                *count += 1;
+            } else if metadata.is_dir() {
+                count_loop(count, &entry.path())?;
+            }
+        }
+        Ok(())
+    }
+
+    let mut count: usize = 0;
+    count_loop(&mut count, directory)?;
+    Ok(count)
+}
+
 fn next_dir(path: &Path) -> Result<PathBuf, std::io::Error> {
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
@@ -164,8 +194,9 @@ fn next_dir(path: &Path) -> Result<PathBuf, std::io::Error> {
     new_io_error!(ErrorKind::InvalidData, "No files in the selected directory")
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 pub struct InstallData {
+    pub name: String,
     from_paths: Vec<PathBuf>,
     to_paths: Vec<PathBuf>,
     pub display_paths: String,
@@ -174,7 +205,11 @@ pub struct InstallData {
 }
 
 impl InstallData {
-    pub fn new(file_paths: Vec<PathBuf>, game_dir: &Path) -> Result<Self, std::io::Error> {
+    pub fn new(
+        name: &str,
+        file_paths: Vec<PathBuf>,
+        game_dir: &Path,
+    ) -> Result<Self, std::io::Error> {
         let parent_dir = match file_paths
             .iter()
             .min_by_key(|path| path.ancestors().count())
@@ -191,6 +226,7 @@ impl InstallData {
             .collect::<Vec<_>>()
             .join("\n");
         Ok(InstallData {
+            name: String::from(name),
             from_paths: file_paths,
             to_paths: Vec::new(),
             display_paths,
@@ -199,8 +235,13 @@ impl InstallData {
         })
     }
 
-    fn reconstruct(install_dir: PathBuf, new_directory: &Path) -> Result<Self, std::io::Error> {
+    fn reconstruct(
+        name: &str,
+        install_dir: PathBuf,
+        new_directory: &Path,
+    ) -> Result<Self, std::io::Error> {
         Ok(InstallData {
+            name: String::from(name),
             from_paths: Vec::new(),
             to_paths: Vec::new(),
             display_paths: String::new(),
@@ -304,19 +345,8 @@ impl InstallData {
             }
             Ok(())
         }
-        fn count_files(count: &mut usize, directory: &Path) -> Result<(), std::io::Error> {
-            for entry in std::fs::read_dir(directory)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_file() {
-                    *count += 1;
-                } else if path.is_dir() {
-                    count_files(count, &path)?;
-                }
-            }
-            Ok(())
-        }
-        let self_mutex = Arc::new(Mutex::new(std::mem::take(self)));
+
+        let self_mutex = Arc::new(Mutex::new(self.clone()));
         let self_mutex_clone = Arc::clone(&self_mutex);
         let new_directory_arc = Arc::new(PathBuf::from(new_directory));
         let cutoff_arc = Arc::new(cutoff);
@@ -333,6 +363,7 @@ impl InstallData {
                 {
                     info!("Selected directory contains the original files, reconstructing data");
                     *self_mutex = InstallData::reconstruct(
+                        &self_mutex.name,
                         self_mutex.install_dir.clone(),
                         new_directory_arc.as_ref(),
                     )?;
@@ -347,8 +378,7 @@ impl InstallData {
                 self_mutex.parent_dir = check_parent_dir(&new_directory_arc)?
             }
 
-            let mut file_count: usize = 0;
-            count_files(&mut file_count, &new_directory_arc)?;
+            let file_count = files_in_directory_tree(&new_directory_arc)?;
             let num_files_to_display: usize;
             let mut calc_cutoff = match *cutoff_arc {
                 Some(num) => {
