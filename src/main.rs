@@ -899,7 +899,7 @@ pub async fn add_dir_to_mod(
                     });
             }
             Err(err) => match err.kind() {
-                std::io::ErrorKind::InvalidInput => (),
+                ErrorKind::InvalidInput => (),
                 _ => {
                     error!("{err}");
                     result.push(Err(err));
@@ -913,7 +913,7 @@ pub async fn add_dir_to_mod(
         false => {
             let err = result[0].as_ref().unwrap_err();
             if result.len() == 1 {
-                if err.kind() == std::io::ErrorKind::InvalidInput {
+                if err.kind() == ErrorKind::InvalidInput {
                     debug!("1 InvalidInput err");
                     ui.display_msg(&format!("Error:\n\n{err}"));
                     let _ = receive_msg(receiver.clone()).await;

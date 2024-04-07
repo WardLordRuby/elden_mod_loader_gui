@@ -2,7 +2,7 @@ use ini::{EscapePolicy, Ini, LineSeparator, WriteOption};
 
 use std::{
     fs::{self, read_to_string, write, File},
-    io::{self, Write},
+    io::{ErrorKind, Write},
     path::{Path, PathBuf},
 };
 
@@ -87,8 +87,8 @@ pub fn new_cfg(path: &Path) -> Result<(), ini::Error> {
     let parent = match path.parent() {
         Some(parent) => parent,
         None => {
-            return Err(ini::Error::Io(io::Error::new(
-                io::ErrorKind::InvalidData,
+            return Err(ini::Error::Io(std::io::Error::new(
+                ErrorKind::InvalidData,
                 format!("Could not create a parent_dir of \"{}\"", path.display()),
             )))
         }
@@ -133,8 +133,8 @@ pub fn remove_entry(file_name: &Path, section: Option<&str>, key: &str) -> Resul
     let mut config: Ini = get_cfg(file_name)?;
     config
         .delete_from(section, key)
-        .ok_or(ini::Error::Io(io::Error::new(
-            io::ErrorKind::Other,
+        .ok_or(ini::Error::Io(std::io::Error::new(
+            ErrorKind::Other,
             format!(
                 "Could not delete \"{key}\" from Section: \"{}\"",
                 &section.expect("Passed in section should be valid")

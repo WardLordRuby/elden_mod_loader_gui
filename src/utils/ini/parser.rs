@@ -2,7 +2,7 @@ use ini::{Ini, Properties};
 use log::{error, trace, warn};
 use std::{
     collections::HashMap,
-    io::{self, ErrorKind},
+    io::ErrorKind,
     path::{Path, PathBuf},
     str::ParseBoolError,
 };
@@ -61,7 +61,7 @@ impl ValueType for u32 {
 }
 
 impl ValueType for PathBuf {
-    type ParseError = io::Error;
+    type ParseError = std::io::Error;
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -108,7 +108,7 @@ impl ValueType for PathBuf {
 }
 
 impl ValueType for Vec<PathBuf> {
-    type ParseError = io::Error;
+    type ParseError = std::io::Error;
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -161,7 +161,7 @@ impl ValueType for Vec<PathBuf> {
     }
 }
 
-fn validate_file(path: &Path) -> Result<(), io::Error> {
+fn validate_file(path: &Path) -> Result<(), std::io::Error> {
     if path.extension().is_none() {
         let input_file = path.to_string_lossy().to_string();
         let split = input_file.rfind('\\').unwrap_or(0);
@@ -177,7 +177,7 @@ fn validate_file(path: &Path) -> Result<(), io::Error> {
     validate_existance(path)
 }
 
-fn validate_existance(path: &Path) -> Result<(), io::Error> {
+fn validate_existance(path: &Path) -> Result<(), std::io::Error> {
     match path.try_exists() {
         Ok(result) => {
             if result {
