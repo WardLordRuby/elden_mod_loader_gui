@@ -7,30 +7,26 @@ use std::{
 
 use crate::new_io_error;
 
-fn check_parent_dir(input: &Path) -> Result<PathBuf, std::io::Error> {
-    let valid_path = match input.metadata() {
+fn get_parent_dir(input: &Path) -> Result<PathBuf, std::io::Error> {
+    match input.metadata() {
         Ok(data) => {
             if data.is_dir() {
-                check_dir_contains_files(input)?
+                Ok(check_dir_contains_files(input)?)
             } else if data.is_file() {
                 match input.parent() {
-                    Some(parent) => check_dir_contains_files(parent)?,
+                    Some(parent) => Ok(check_dir_contains_files(parent)?),
                     None => {
-                        return new_io_error!(
-                            ErrorKind::InvalidData,
-                            "Failed to create a parent_dir"
-                        )
+                        new_io_error!(ErrorKind::InvalidData, "Failed to create a parent_dir")
                     }
                 }
             } else {
-                return new_io_error!(ErrorKind::InvalidData, "Unsuported file type");
+                new_io_error!(ErrorKind::InvalidData, "Unsuported file type")
             }
         }
         Err(_) => {
-            return new_io_error!(ErrorKind::InvalidData, "Unable to retrieve metadata");
+            new_io_error!(ErrorKind::InvalidData, "Unable to retrieve metadata")
         }
-    };
-    Ok(valid_path)
+    }
 }
 
 fn check_dir_contains_files(path: &Path) -> Result<PathBuf, std::io::Error> {
@@ -152,7 +148,7 @@ impl InstallData {
             .iter()
             .min_by_key(|path| path.ancestors().count())
         {
-            Some(path) => check_parent_dir(path)?,
+            Some(path) => get_parent_dir(path)?,
             None => return new_io_error!(ErrorKind::Other, "Failed to create a parent_dir"),
         };
         let display_paths = file_paths
@@ -183,7 +179,7 @@ impl InstallData {
             from_paths: Vec::new(),
             to_paths: Vec::new(),
             display_paths: String::new(),
-            parent_dir: check_parent_dir(new_directory)?,
+            parent_dir: get_parent_dir(new_directory)?,
             install_dir,
         })
     }
@@ -204,7 +200,7 @@ impl InstallData {
             .collect::<Vec<_>>();
         if !err_indexes.is_empty() {
             error!("Encountered StripPrefixError on var \"to_paths\" at index(s) {err_indexes:?}");
-            let err_parent_path = check_parent_dir(
+            let err_parent_path = get_parent_dir(
                 err_indexes
                     .iter()
                     .map(|&i| self.from_paths.get(i).expect("index lookup to be correct"))
@@ -220,7 +216,7 @@ impl InstallData {
                 to_paths[i] = self.install_dir.join(
                     err_path
                         .strip_prefix(&err_parent_path)
-                        .expect("check_parent_dir works correctly"),
+                        .expect("get_parent_dir works correctly"),
                 );
             });
         }
@@ -313,7 +309,7 @@ impl InstallData {
                 info!("New directory selected contains unique files, and is inside the original_parent, entire folder will be moved");
             } else {
                 info!("New directory selected contains unique files, entire folder will be moved");
-                self_mutex.parent_dir = check_parent_dir(&new_directory_arc)?
+                self_mutex.parent_dir = get_parent_dir(&new_directory_arc)?
             }
 
             let file_count = files_in_directory_tree(&new_directory_arc)?;
