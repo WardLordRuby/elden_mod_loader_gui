@@ -84,29 +84,16 @@ pub fn save_value_ext(
 }
 
 pub fn new_cfg(path: &Path) -> Result<(), ini::Error> {
-    if path.components().count() > 1 {
-        let mut ancestors = Vec::new();
-        for ancestor in path.ancestors() {
-            if ancestor != Path::new("") && ancestor.extension().is_none() {
-                ancestors.push(ancestor)
-            }
+    let parent = match path.parent() {
+        Some(parent) => parent,
+        None => {
+            return Err(ini::Error::Io(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Could not create a parent_dir of \"{}\"", path.display()),
+            )))
         }
-        ancestors.reverse();
-        for ancestor in ancestors {
-            match ancestor.try_exists() {
-                Ok(bool) => match bool {
-                    true => (),
-                    false => fs::create_dir(ancestor).unwrap_or_default(),
-                },
-                Err(_) => {
-                    return Err(ini::Error::Io(io::Error::new(
-                        io::ErrorKind::PermissionDenied,
-                        "Permission Denied when trying to access directory",
-                    )))
-                }
-            }
-        }
-    }
+    };
+    fs::create_dir_all(parent)?;
     let mut new_ini = File::create(path)?;
 
     for section in INI_SECTIONS {
