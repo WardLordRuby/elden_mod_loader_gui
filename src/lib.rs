@@ -225,22 +225,17 @@ impl InstallData {
             .collect::<Vec<_>>();
         if !err_indexes.is_empty() {
             error!("Encountered StripPrefixError on var \"to_paths\" at index(s) {err_indexes:?}");
-            let err_parent_path = match check_parent_dir(
+            let err_parent_path = check_parent_dir(
                 err_indexes
                     .iter()
                     .map(|&i| self.from_paths.get(i).expect("index lookup to be correct"))
                     .min_by_key(|path| path.ancestors().count())
                     .expect("at least one path with an error exists"),
-            ) {
-                Ok(parent) => {
-                    info!(
-                        "Attempting to fix errors with parent_dir: \"{}\"",
-                        parent.display()
-                    );
-                    parent
-                }
-                Err(err) => return new_io_error!(ErrorKind::BrokenPipe, err),
-            };
+            )?;
+            info!(
+                "Attempting to fix errors with parent_dir: \"{}\"",
+                err_parent_path.display()
+            );
             err_indexes.iter().for_each(|&i| {
                 let err_path = self.from_paths.get(i).expect("index lookup to be correct");
                 to_paths[i] = self.install_dir.join(
