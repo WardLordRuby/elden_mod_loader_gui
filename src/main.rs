@@ -250,7 +250,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                 Ok(data) => data,
                                 Err(err) => {
                                     error!("{err}");
-                                    ui.display_msg(&err);
+                                    ui.display_msg(&err.to_string());
                                     return;
                                 }
                             };

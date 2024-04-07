@@ -11,7 +11,7 @@ use ini_tools::{
 use log::{error, info, trace, warn};
 
 use std::{
-    io,
+    io::ErrorKind,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -29,6 +29,12 @@ pub const REQUIRED_GAME_FILES: [&str; 3] = [
     "oo2core_6_win64.dll",
     "eossdk-win64-shipping.dll",
 ];
+
+macro_rules! new_io_error {
+    ($kind:expr, $msg:expr) => {
+        Err(std::io::Error::new($kind, $msg))
+    };
+}
 
 pub struct PathErrors {
     pub short_paths: Vec<PathBuf>,
@@ -76,17 +82,11 @@ fn check_parent_dir(input: &Path) -> Result<PathBuf, std::io::Error> {
             } else if data.is_file() {
                 input.to_path_buf()
             } else {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Unsuported file type",
-                ));
+                return new_io_error!(ErrorKind::InvalidData, "Unsuported file type");
             }
         }
         Err(_) => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path has no metadata",
-            ))
+            return new_io_error!(ErrorKind::InvalidInput, "Path has no metadata");
         }
     };
     if let Some(name) = valid_path.file_name() {
@@ -96,10 +96,7 @@ fn check_parent_dir(input: &Path) -> Result<PathBuf, std::io::Error> {
     }
     match valid_path.parent() {
         Some(parent) => Ok(PathBuf::from(parent)),
-        None => Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Failed to create a parent_dir",
-        )),
+        None => new_io_error!(ErrorKind::InvalidInput, "Failed to create a parent_dir"),
     }
 }
 
@@ -107,19 +104,16 @@ fn check_dir_contains_files(path: &Path) -> Result<PathBuf, std::io::Error> {
     if items_in_directory(path, FileType::File)? > 0 {
         return Ok(PathBuf::from(path));
     } else if items_in_directory(path, FileType::Any)? == 0 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "No files in the selected directory",
-        ));
+        return new_io_error!(
+            ErrorKind::InvalidInput,
+            "No files in the selected directory"
+        );
     } else if items_in_directory(path, FileType::Dir)? == 1 {
         return check_dir_contains_files(&next_dir(path)?);
     } else if items_in_directory(path, FileType::Dir)? > 1 {
         return Ok(PathBuf::from(path));
     }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::InvalidData,
-        "Unsuported file type",
-    ))
+    new_io_error!(ErrorKind::InvalidData, "Unsuported file type")
 }
 
 enum FileType {
@@ -129,7 +123,7 @@ enum FileType {
 }
 
 macro_rules! count_f_type {
-    ($metadata:expr, $count:ident, $f_type:ident) => {
+    ($metadata:ident, $count:ident, $f_type:ident) => {
         match $f_type {
             FileType::File => {
                 if $metadata.is_file() {
@@ -167,10 +161,7 @@ fn next_dir(path: &Path) -> Result<PathBuf, std::io::Error> {
             return Ok(entry.path());
         }
     }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::InvalidData,
-        "No files in the selected directory",
-    ))
+    new_io_error!(ErrorKind::InvalidData, "No files in the selected directory")
 }
 
 #[derive(Debug, Default)]
@@ -183,16 +174,13 @@ pub struct InstallData {
 }
 
 impl InstallData {
-    pub fn new(file_paths: Vec<PathBuf>, game_dir: &Path) -> Result<Self, String> {
+    pub fn new(file_paths: Vec<PathBuf>, game_dir: &Path) -> Result<Self, std::io::Error> {
         let parent_dir = match file_paths
             .iter()
             .min_by_key(|path| path.ancestors().count())
         {
-            Some(path) => match check_parent_dir(path) {
-                Ok(parent) => parent,
-                Err(err) => return Err(err.to_string()),
-            },
-            None => return Err(String::from("Failed to create a parent_dir")),
+            Some(path) => check_parent_dir(path)?,
+            None => return new_io_error!(ErrorKind::Other, "Failed to create a parent_dir"),
         };
         let display_paths = file_paths
             .iter()
@@ -211,20 +199,17 @@ impl InstallData {
         })
     }
 
-    fn reconstruct(install_dir: PathBuf, new_directory: &Path) -> Result<Self, String> {
+    fn reconstruct(install_dir: PathBuf, new_directory: &Path) -> Result<Self, std::io::Error> {
         Ok(InstallData {
             from_paths: Vec::new(),
             to_paths: Vec::new(),
             display_paths: String::new(),
-            parent_dir: match check_parent_dir(new_directory) {
-                Ok(dir) => dir,
-                Err(err) => return Err(err.to_string()),
-            },
+            parent_dir: check_parent_dir(new_directory)?,
             install_dir,
         })
     }
 
-    pub fn zip_from_to_paths(&mut self) -> Result<Vec<(&Path, &Path)>, io::Error> {
+    pub fn zip_from_to_paths(&mut self) -> Result<Vec<(&Path, &Path)>, std::io::Error> {
         let mut err_indexes = Vec::new();
         let mut to_paths = self
             .from_paths
@@ -252,9 +237,9 @@ impl InstallData {
                         "Attempting to fix errors with parent_dir: \"{}\"",
                         parent.display()
                     );
-                    dbg!(parent)
+                    parent
                 }
-                Err(err) => return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, err)),
+                Err(err) => return new_io_error!(ErrorKind::BrokenPipe, err),
             };
             err_indexes.iter().for_each(|&i| {
                 let err_path = self.from_paths.get(i).expect("index lookup to be correct");
@@ -352,15 +337,10 @@ impl InstallData {
                     <= self_mutex.parent_dir.ancestors().count()
                 {
                     info!("Selected directory contains the original files, reconstructing data");
-                    *self_mutex = match InstallData::reconstruct(
+                    *self_mutex = InstallData::reconstruct(
                         self_mutex.install_dir.clone(),
                         new_directory_arc.as_ref(),
-                    ) {
-                        Ok(install_data) => install_data,
-                        Err(err) => {
-                            return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, err))
-                        }
-                    };
+                    )?;
                 }
             } else if new_directory_arc
                 .strip_prefix(&self_mutex.parent_dir)
@@ -369,12 +349,7 @@ impl InstallData {
                 info!("New directory selected contains unique files, and is inside the original_parent, entire folder will be moved");
             } else {
                 info!("New directory selected contains unique files, entire folder will be moved");
-                self_mutex.parent_dir = match check_parent_dir(&new_directory_arc) {
-                    Ok(path) => path,
-                    Err(err) => {
-                        return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, err))
-                    }
-                }
+                self_mutex.parent_dir = check_parent_dir(&new_directory_arc)?
             }
 
             let mut file_count: usize = 0;
@@ -418,10 +393,10 @@ impl InstallData {
                 }
                 Err(err) => Err(err),
             },
-            Err(err) => Err(std::io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                format!("Thread failed to join\n\n{err:?}"),
-            )),
+            Err(err) => new_io_error!(
+                ErrorKind::BrokenPipe,
+                format!("Thread failed to join\n\n{err:?}")
+            ),
         }
     }
 }
@@ -463,12 +438,12 @@ pub fn toggle_files(
         num_files: &usize,
         paths: &[PathBuf],
         new_paths: &[PathBuf],
-    ) -> Result<(), io::Error> {
+    ) -> Result<(), std::io::Error> {
         if *num_files != paths.len() || *num_files != new_paths.len() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Number of files and new paths must match",
-            ));
+            return new_io_error!(
+                ErrorKind::InvalidInput,
+                "Number of files and new paths must match"
+            );
         }
 
         paths
@@ -530,7 +505,7 @@ pub fn get_cfg(input_file: &Path) -> Result<Ini, ini::Error> {
     Ini::load_from_file_noescape(input_file)
 }
 
-pub fn does_dir_contain(path: &Path, list: &[&str]) -> Result<(), io::Error> {
+pub fn does_dir_contain(path: &Path, list: &[&str]) -> Result<(), std::io::Error> {
     match std::fs::read_dir(path) {
         Ok(_) => {
             let entries = std::fs::read_dir(path)?;
@@ -550,10 +525,10 @@ pub fn does_dir_contain(path: &Path, list: &[&str]) -> Result<(), io::Error> {
                     "{}",
                     format!("Failure: {list:?} not found in: \"{}\"", path.display(),)
                 );
-                Err(io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("Game files not found in selected path\n{}", path.display()),
-                ))
+                new_io_error!(
+                    ErrorKind::NotFound,
+                    format!("Game files not found in selected path\n{}", path.display())
+                )
             }
         }
         Err(err) => Err(err),
