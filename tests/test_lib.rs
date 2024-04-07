@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use elden_mod_loader_gui::{
-        ini_tools::{
+        utils::ini::{
             parser::{split_out_config_files, RegMod},
             writer::new_cfg,
         },

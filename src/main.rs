@@ -2,17 +2,18 @@
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
 // #![windows_subsystem = "windows"]
 
-slint::include_modules!();
-
 use elden_mod_loader_gui::{
-    ini_tools::{
-        parser::{split_out_config_files, IniProperty, RegMod, Valitidity},
-        writer::*,
+    utils::{
+        ini::{
+            parser::{file_registered, split_out_config_files, IniProperty, RegMod, Valitidity},
+            writer::*,
+        },
+        installer::InstallData,
     },
     *,
 };
 use i_slint_backend_winit::WinitWindowAccessor;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{
@@ -30,11 +31,9 @@ use tokio::sync::{
     Mutex,
 };
 
+slint::include_modules!();
+
 const CONFIG_NAME: &str = "EML_gui_config.ini";
-const LOADER_FILES: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll"];
-const LOADER_FILES_DISABLED: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll.disabled"];
-const LOADER_SECTIONS: [Option<&str>; 2] = [Some("modloader"), Some("loadorder")];
-const LOADER_KEYS: [&str; 2] = ["load_delay", "show_terminal"];
 static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
 lazy_static::lazy_static! {
     static ref CURRENT_INI: PathBuf = get_ini_dir();
@@ -241,73 +240,16 @@ fn main() -> Result<(), slint::PlatformError> {
                 let files = match shorten_paths(&file_paths, &game_dir) {
                     Ok(files) => files,
                     Err(err) => {
-                        if file_paths.len() == err.errs.len() {
-                            ui.display_confirm(&format!("Mod files are not installed in game directory.\nAttempt to install \"{mod_name}\"?"), true);
-                            if receive_msg(receiver_clone.clone()).await != Message::Confirm {
-                                return;
-                            }
-                            let mut install_files = match InstallData::new(err.long_paths, &game_dir) {
-                                Ok(data) => data,
-                                Err(err) => {
-                                    error!("{err}");
-                                    ui.display_msg(&err.to_string());
-                                    return;
-                                }
-                            };
-                            ui.display_confirm(&format!(
-                                "Current Files to install:\n{}\n\nWould you like to add a directory eg. Folder containing a config file?", 
-                                install_files.display_paths), true);
-                            let mut result: Vec<Result<(), ()>> = Vec::with_capacity(2);
-                            match receive_msg(receiver_clone.clone()).await {
-                                Message::Confirm => {
-                                    match get_user_folder(&install_files.parent_dir) {
-                                        Ok(path) => {
-                                            install_files.update_from_path_and_display_data(&path, Some(9_usize)).await.unwrap_or_else(|err| {
-                                                error!("{err}");
-                                                result.push(Err(()));
-                                                install_files.display_paths = format!("{}\n\nError displaying files in directory:\n{err}", install_files.display_paths);
-                                            });
-                                        }
-                                        Err(err) => match err.kind() {
-                                            std::io::ErrorKind::InvalidInput => (),
-                                            _ => {
-                                                result.push(Err(()));
-                                                error!("{err}")
-                                            }
-                                        },
-                                    }
-                                }
-                                Message::Deny => (),
-                                Message::Esc => return,
-                            }
-                            ui.display_confirm(&format!("Confirm install of mod \"{mod_name}\"\n\nSelected files:\n{}\n\nInstall at:\n{}", install_files.display_paths, &install_files.install_dir.display()), false);
-                            if receive_msg(receiver_clone.clone()).await == Message::Confirm {
-                                if !result.is_empty() {
-                                    ui.display_msg("Error: Could not Install");
-                                    return;
-                                }
-                                let _zip = match install_files.zip_from_to_paths() {
-                                    Ok(zip) => zip,
-                                    Err(_) => {
-                                        ui.display_msg("Error: Could not Install\n\nStrip Prefix Error");
-                                        return;
-                                    }
-                                };
-                                dbg!(&install_files);
-                                // TODO: Check that every file doesn't already exist in the game directory
-                                //       long paths, long paths_new
-                                // TODO: Copy selected files and directories to game_dir
-                                //       same as above
-                                // TODO: pass along shortened paths to files
-                                //       run shorten paths with &game_dir
-                                eprintln!("install confirmed");
-                            }
-                            Vec::new()
+                        if file_paths.len() == err.err_paths_long.len() {
+                            let ui_handle = ui.as_weak();
+                            install_mod(&mod_name, err.err_paths_long, &game_dir, ui_handle, receiver_clone.clone()).await;
                         } else {
-                            info!("{}", err.errs[0]);
-                            ui.display_msg(&err.errs[0].to_string());
+                            error!("Encountered {} StripPrefixError on input files", err.err_paths_long.len());
+                            ui.display_msg(&format!("Some selected files are already installed\n\nSelected Files Installed: {}\nSelected Files not installed: {}", err.ok_paths_short.len(), err.err_paths_long.len()));
                             return;
                         }
+                        // TODO: return install mod data here to continue fn
+                        Vec::new()
                     }
                 };
                 if file_registered(&registered_mods, &files) {
@@ -508,7 +450,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 let files = match shorten_paths(&file_paths, &game_dir) {
                     Ok(files) => files,
                     Err(err) => {
-                        error!("{}", err.errs[0]);
+                        error!(
+                            "Encountered {} StripPrefixError on input files",
+                            err.err_paths_long.len()
+                        );
                         ui.display_msg("Mod files must be within the selected game directory");
                         return;
                     }
@@ -768,19 +713,19 @@ fn main() -> Result<(), slint::PlatformError> {
 }
 
 impl App {
-    fn display_msg(&self, msg: &str) {
+    pub fn display_msg(&self, msg: &str) {
         self.set_display_message(SharedString::from(msg));
         self.invoke_show_error_popup();
     }
 
-    fn display_confirm(&self, msg: &str, alt_buttons: bool) {
+    pub fn display_confirm(&self, msg: &str, alt_buttons: bool) {
         self.set_alt_std_buttons(alt_buttons);
         self.set_display_message(SharedString::from(msg));
         self.invoke_show_confirm_popup();
     }
 }
 
-struct MessageData {
+pub struct MessageData {
     message: Message,
     key: u32,
 }
@@ -802,17 +747,11 @@ fn get_user_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
     match FileDialog::new().set_location(path).show_open_single_dir() {
         Ok(opt) => match opt {
             Some(selected_path) => Ok(selected_path),
-            None => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "No Path Selected",
-            )),
+            None => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
         },
         Err(err) => {
             error!("{err}");
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                err.to_string(),
-            ))
+            new_io_error!(ErrorKind::Other, err.to_string())
         }
     }
 }
@@ -823,30 +762,24 @@ fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
         .show_open_multiple_file()
     {
         Ok(files) => match files.len() {
-            0 => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "No Path Selected",
-            )),
+            0 => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
             _ => {
                 if files.iter().any(|file| {
                     RESTRICTED_FILES.iter().any(|restricted_file| {
                         file.file_name().expect("has valid name") == *restricted_file
                     })
                 }) {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Error: Tried to add a restricted file",
-                    ));
+                    return new_io_error!(
+                        ErrorKind::InvalidData,
+                        "Error: Tried to add a restricted file"
+                    );
                 }
                 Ok(files)
             }
         },
         Err(err) => {
             error!("{err}");
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                err.to_string(),
-            ))
+            new_io_error!(ErrorKind::Other, err.to_string())
         }
     }
 }
@@ -868,60 +801,6 @@ fn populate_restricted_files() -> [&'static OsStr; 6] {
         OsStr::new(LOADER_FILES_DISABLED[1]);
 
     restricted_files
-}
-
-fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
-    files.iter().any(|path| {
-        mod_data.iter().any(|registered_mod| {
-            registered_mod.files.iter().any(|mod_file| path == mod_file)
-                || registered_mod
-                    .config_files
-                    .iter()
-                    .any(|mod_file| path == mod_file)
-        })
-    })
-}
-
-#[derive(Default)]
-struct ModLoader {
-    installed: bool,
-    disabled: bool,
-    cfg: PathBuf,
-}
-
-fn elden_mod_loader_properties(game_dir: &Path) -> ModLoader {
-    let disabled: bool;
-    let cfg: PathBuf;
-    let installed = match does_dir_contain(game_dir, &LOADER_FILES) {
-        Ok(_) => {
-            info!("Found mod loader files");
-            cfg = game_dir.join(LOADER_FILES[0]);
-            disabled = false;
-            true
-        }
-        Err(_) => {
-            warn!("Checking if mod loader is disabled");
-            match does_dir_contain(game_dir, &LOADER_FILES_DISABLED) {
-                Ok(_) => {
-                    info!("Found mod loader files in the disabled state");
-                    cfg = game_dir.join(LOADER_FILES[0]);
-                    disabled = true;
-                    true
-                }
-                Err(_) => {
-                    error!("Mod Loader Files not found in selected path");
-                    cfg = PathBuf::new();
-                    disabled = false;
-                    false
-                }
-            }
-        }
-    };
-    ModLoader {
-        installed,
-        disabled,
-        cfg,
-    }
 }
 
 fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
@@ -969,4 +848,119 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
         })
     }
     ModelRc::from(display_mod)
+}
+
+pub async fn install_mod(
+    name: &str,
+    files: Vec<PathBuf>,
+    game_dir: &Path,
+    ui_weak: slint::Weak<App>,
+    receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
+) {
+    let ui = ui_weak.unwrap();
+    let mod_name = name.trim();
+    ui.display_confirm(
+        &format!(
+            "Mod files are not installed in game directory.\nAttempt to install \"{mod_name}\"?"
+        ),
+        true,
+    );
+    if receive_msg(receiver.clone()).await != Message::Confirm {
+        return;
+    }
+    match InstallData::new(mod_name, files, game_dir) {
+        Ok(data) => add_dir_to_mod(data, ui_weak, receiver).await,
+        Err(err) => {
+            error!("{err}");
+            ui.display_msg(&err.to_string())
+        }
+    };
+}
+
+pub async fn add_dir_to_mod(
+    mut install_files: InstallData,
+    ui_weak: slint::Weak<App>,
+    receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
+) {
+    let ui = ui_weak.unwrap();
+    ui.display_confirm(&format!(
+        "Current Files to install:\n{}\n\nWould you like to add a directory eg. Folder containing a config file?", 
+        install_files.display_paths), true);
+    let mut result: Vec<Result<(), std::io::Error>> = Vec::with_capacity(2);
+    match receive_msg(receiver.clone()).await {
+        Message::Confirm => match get_user_folder(&install_files.parent_dir) {
+            Ok(path) => {
+                install_files
+                    .update_from_path_and_display_data(&path, Some(9_usize))
+                    .await
+                    .unwrap_or_else(|err| {
+                        error!("{err}");
+                        result.push(Err(err));
+                    });
+            }
+            Err(err) => match err.kind() {
+                std::io::ErrorKind::InvalidInput => (),
+                _ => {
+                    error!("{err}");
+                    result.push(Err(err));
+                }
+            },
+        },
+        Message::Deny => (),
+        Message::Esc => return,
+    }
+    match result.is_empty() {
+        false => {
+            let err = result[0].as_ref().unwrap_err();
+            if result.len() == 1 {
+                if err.kind() == std::io::ErrorKind::InvalidInput {
+                    debug!("1 InvalidInput err");
+                    ui.display_msg(&format!("Error:\n\n{err}"));
+                    let _ = receive_msg(receiver.clone()).await;
+                    let future = async {
+                        add_dir_to_mod(install_files, ui_weak, receiver).await;
+                    };
+                    let recursive_future = Box::pin(future);
+                    recursive_future.await;
+                }
+            } else {
+                ui.display_msg(&format!("Error: Could not Install\n\n{err}"));
+            }
+        }
+        true => confirm_install(install_files, ui_weak, receiver).await,
+    }
+}
+
+pub async fn confirm_install(
+    mut install_files: InstallData,
+    ui_weak: slint::Weak<App>,
+    receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
+) {
+    let ui = ui_weak.unwrap();
+    ui.display_confirm(
+        &format!(
+            "Confirm install of mod \"{}\"\n\nSelected files:\n{}\n\nInstall at:\n{}",
+            install_files.name,
+            install_files.display_paths,
+            &install_files.install_dir.display()
+        ),
+        false,
+    );
+    if receive_msg(receiver.clone()).await == Message::Confirm {
+        let _zip = match install_files.zip_from_to_paths() {
+            Ok(zip) => zip,
+            Err(_) => {
+                ui.display_msg("Error: Could not Install\n\nStrip Prefix Error");
+                return;
+            }
+        };
+        dbg!(&install_files);
+        // TODO: Check that every file doesn't already exist in the game directory
+        //       long paths, long paths_new
+        // TODO: Copy selected files and directories to game_dir
+        //       same as above
+        // TODO: pass along shortened paths to files
+        //       run shorten paths with &game_dir
+        eprintln!("install confirmed");
+    }
 }

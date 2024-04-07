@@ -7,7 +7,7 @@ mod tests {
 
     use elden_mod_loader_gui::{
         get_cfg,
-        ini_tools::{
+        utils::ini::{
             parser::{IniProperty, RegMod, Valitidity},
             writer::*,
         },

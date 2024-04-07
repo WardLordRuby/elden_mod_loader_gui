@@ -8,9 +8,8 @@ use std::{
 };
 
 use crate::{
-    get_cfg,
-    ini_tools::writer::{remove_array, remove_entry, INI_SECTIONS},
-    toggle_files,
+    get_cfg, toggle_files,
+    utils::ini::writer::{remove_array, remove_entry, INI_SECTIONS},
 };
 
 pub trait ValueType: Sized {
@@ -485,6 +484,17 @@ impl RegMod {
         }
         Ok(())
     }
+}
+pub fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
+    files.iter().any(|path| {
+        mod_data.iter().any(|registered_mod| {
+            registered_mod.files.iter().any(|mod_file| path == mod_file)
+                || registered_mod
+                    .config_files
+                    .iter()
+                    .any(|mod_file| path == mod_file)
+        })
+    })
 }
 
 pub fn split_out_config_files(files: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {

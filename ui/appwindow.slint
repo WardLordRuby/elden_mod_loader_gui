@@ -92,6 +92,7 @@ export component App inherits Window {
                 kind: ok; 
                 clicked => { 
                     popup-msg-visible = false;
+                    MainLogic.send-message(Message.esc);
                     err-popup.close()
                 }
             }
@@ -179,6 +180,7 @@ export component App inherits Window {
             if (event.text == Key.Escape) {
                 if (popup-msg-visible) {
                     popup-msg-visible = false;
+                    MainLogic.send-message(Message.esc);
                     err-popup.close()
                 } else if (confirm-popup-visible) {
                     confirm-popup-visible = false;
