@@ -246,7 +246,14 @@ fn main() -> Result<(), slint::PlatformError> {
                             if receive_msg(receiver_clone.clone()).await != Message::Confirm {
                                 return;
                             }
-                            let mut install_files = InstallData::new(err.long_paths, &game_dir);
+                            let mut install_files = match InstallData::new(err.long_paths, &game_dir) {
+                                Ok(data) => data,
+                                Err(err) => {
+                                    error!("{err}");
+                                    ui.display_msg(&err);
+                                    return;
+                                }
+                            };
                             ui.display_confirm(&format!(
                                 "Current Files to install:\n{}\n\nWould you like to add a directory eg. Folder containing a config file?", 
                                 install_files.display_paths), true);
@@ -286,6 +293,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                         return;
                                     }
                                 };
+                                dbg!(&install_files);
                                 // TODO: Check that every file doesn't already exist in the game directory
                                 //       long paths, long paths_new
                                 // TODO: Copy selected files and directories to game_dir
@@ -822,7 +830,7 @@ fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
             _ => {
                 if files.iter().any(|file| {
                     RESTRICTED_FILES.iter().any(|restricted_file| {
-                        file.file_name().expect("has name") == *restricted_file
+                        file.file_name().expect("has valid name") == *restricted_file
                     })
                 }) {
                     return Err(std::io::Error::new(
