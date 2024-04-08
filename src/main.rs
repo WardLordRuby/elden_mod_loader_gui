@@ -14,7 +14,6 @@ use elden_mod_loader_gui::{
 };
 use i_slint_backend_winit::WinitWindowAccessor;
 use log::{error, info, warn};
-use native_dialog::FileDialog;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{
     ffi::OsStr,
@@ -229,7 +228,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let game_dir_arc = Arc::from(game_dir.as_path());
             let receiver_clone = receiver_clone.clone();
             slint::spawn_local(async move {
-                let file_paths = match get_user_files(&game_dir_arc).await {
+                let file_paths = match get_user_files(&game_dir_arc) {
                     Ok(files) => files,
                     Err(err) => {
                         info!("{err}");
@@ -327,7 +326,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
             let game_dir_arc = Arc::from(game_dir.as_path());
             slint::spawn_local(async move {
-                let path_result = get_user_folder(&game_dir_arc).await;
+                let path_result = get_user_folder(&game_dir_arc);
                 let path = match path_result {
                     Ok(path) => path,
                     Err(err) => {
@@ -440,7 +439,7 @@ fn main() -> Result<(), slint::PlatformError> {
             };
 
             slint::spawn_local(async move {
-                let file_paths = match get_user_files(&game_dir_arc).await {
+                let file_paths = match get_user_files(&game_dir_arc) {
                     Ok(paths) => paths,
                     Err(err) => {
                         error!("{err}");
@@ -757,26 +756,18 @@ async fn receive_msg(receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>) -> Me
     message
 }
 
-async fn get_user_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
-    match FileDialog::new().set_location(path).show_open_single_dir() {
-        Ok(opt) => match opt {
-            Some(selected_path) => Ok(selected_path),
-            None => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
-        },
-        Err(err) => {
-            error!("{err}");
-            new_io_error!(ErrorKind::Other, err.to_string())
-        }
+// Slint snapshot 1.6.0 offers a way to access WindowHandle for setting parent with rfd api
+fn get_user_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
+    match rfd::FileDialog::new().set_directory(path).pick_folder() {
+        Some(file) => Ok(file),
+        None => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
     }
 }
 
-async fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
-    match FileDialog::new()
-        .set_location(path)
-        .show_open_multiple_file()
-    {
-        Ok(files) => match files.len() {
-            0 => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
+fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
+    match rfd::FileDialog::new().set_directory(path).pick_files() {
+        Some(files) => match files.len() {
+            0 => new_io_error!(ErrorKind::InvalidInput, "No Files Selected"),
             _ => {
                 if files.iter().any(|file| {
                     RESTRICTED_FILES.iter().any(|restricted_file| {
@@ -791,9 +782,8 @@ async fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
                 Ok(files)
             }
         },
-        Err(err) => {
-            error!("{err}");
-            new_io_error!(ErrorKind::Other, err.to_string())
+        None => {
+            new_io_error!(ErrorKind::InvalidInput, "No Files Selected")
         }
     }
 }
@@ -902,7 +892,7 @@ async fn add_dir_to_mod(
         install_files.display_paths), true);
     let mut result: Vec<Result<(), std::io::Error>> = Vec::with_capacity(2);
     match receive_msg(receiver.clone()).await {
-        Message::Confirm => match get_user_folder(&install_files.parent_dir).await {
+        Message::Confirm => match get_user_folder(&install_files.parent_dir) {
             Ok(path) => {
                 install_files
                     .update_from_path_and_display_data(&path, Some(9_usize))
@@ -930,8 +920,8 @@ async fn add_dir_to_mod(
                 let future = async {
                     add_dir_to_mod(install_files, ui_weak, receiver).await;
                 };
-                let recursive_future = Box::pin(future);
-                recursive_future.await;
+                let reselect_dir = Box::pin(future);
+                reselect_dir.await;
             } else {
                 ui.display_msg(&format!("Error: Could not Install\n\n{err}"));
             }
@@ -955,21 +945,22 @@ async fn confirm_install(
         ),
         false,
     );
-    if receive_msg(receiver.clone()).await == Message::Confirm {
-        let _zip = match install_files.zip_from_to_paths() {
-            Ok(zip) => zip,
-            Err(_) => {
-                ui.display_msg("Error: Could not Install\n\nStrip Prefix Error");
-                return;
-            }
-        };
-        dbg!(&install_files);
-        // TODO: Check that every file doesn't already exist in the game directory
-        //       long paths, long paths_new
-        // TODO: Copy selected files and directories to game_dir
-        //       same as above
-        // TODO: pass along shortened paths to files
-        //       run shorten paths with &game_dir
-        eprintln!("install confirmed");
+    if receive_msg(receiver.clone()).await != Message::Confirm {
+        return;
     }
+    let _zip = match install_files.zip_from_to_paths() {
+        Ok(zip) => zip,
+        Err(err) => {
+            ui.display_msg(&err.to_string());
+            return;
+        }
+    };
+    dbg!(&install_files);
+    // TODO: Check that every file doesn't already exist in the game directory
+    //       long paths, long paths_new
+    // TODO: Copy selected files and directories to game_dir
+    //       same as above
+    // TODO: pass along shortened paths to files
+    //       run shorten paths with &game_dir
+    eprintln!("install confirmed");
 }
