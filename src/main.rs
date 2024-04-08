@@ -226,17 +226,17 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-            let game_dir_ref: Rc<Path> = Rc::from(game_dir.as_path());
-            let file_paths = match get_user_files(&game_dir_ref) {
-                Ok(files) => files,
-                Err(err) => {
-                    info!("{err}");
-                    ui.display_msg(&err.to_string());
-                    return;
-                }
-            };
+            let game_dir_arc = Arc::from(game_dir.as_path());
             let receiver_clone = receiver_clone.clone();
             slint::spawn_local(async move {
+                let file_paths = match get_user_files(&game_dir_arc).await {
+                    Ok(files) => files,
+                    Err(err) => {
+                        info!("{err}");
+                        ui.display_msg(&err.to_string());
+                        return;
+                    }
+                };
                 let files = match shorten_paths(&file_paths, &game_dir) {
                     Ok(files) => files,
                     Err(err) => {
@@ -325,55 +325,56 @@ fn main() -> Result<(), slint::PlatformError> {
         move || {
             let ui = ui_handle.unwrap();
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-            let game_dir_ref = Rc::from(game_dir.as_path());
-            let user_path = get_user_folder(&game_dir_ref);
-
-            match user_path {
-                Ok(path) => {
-                    info!("User Selected Path: \"{}\"", path.display());
-                    let try_path: PathBuf = if does_dir_contain(&path, &["Game"]).is_ok()
-                    {
-                        PathBuf::from(&format!("{}\\Game", path.display()))
-                    } else {
-                        path
-                    };
-                    match does_dir_contain(Path::new(&try_path), &REQUIRED_GAME_FILES) {
-                        Ok(_) => {
-                            let result = save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path);
-                            if result.is_err() && save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path).is_err() {
-                                let err = result.unwrap_err();
-                                error!("Failed to save directory. {err}");
-                                ui.display_msg(&err.to_string());
-                                return;
-                            };
-                            info!("Success: Files found, saved diretory");
-                            let mod_loader = elden_mod_loader_properties(&try_path);
-                            ui.global::<SettingsLogic>()
-                                .set_game_path(try_path.to_string_lossy().to_string().into());
-                            ui.global::<MainLogic>().set_game_path_valid(true);
-                            ui.global::<MainLogic>().set_current_subpage(0);
-                            ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed);
-                            ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled);
-                            if mod_loader.installed {
-                                ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!")
-                            } else {
-                                ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
-                            }
-                        }
-                        Err(err) => {
-                            match err.kind() {
-                                ErrorKind::NotFound => warn!("{err}"),
-                                _ => error!("Error: {err}"),
-                            }
-                            ui.display_msg(&err.to_string())
+            let game_dir_arc = Arc::from(game_dir.as_path());
+            slint::spawn_local(async move {
+                let path_result = get_user_folder(&game_dir_arc).await;
+                let path = match path_result {
+                    Ok(path) => path,
+                    Err(err) => {
+                        info!("{err}");
+                        ui.display_msg(&err.to_string());
+                        return;
+                    }
+                };
+                info!("User Selected Path: \"{}\"", path.display());
+                let try_path: PathBuf = if does_dir_contain(&path, &["Game"]).is_ok()
+                {
+                    PathBuf::from(&format!("{}\\Game", path.display()))
+                } else {
+                    path
+                };
+                match does_dir_contain(Path::new(&try_path), &REQUIRED_GAME_FILES) {
+                    Ok(_) => {
+                        let result = save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path);
+                        if result.is_err() && save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path).is_err() {
+                            let err = result.unwrap_err();
+                            error!("Failed to save directory. {err}");
+                            ui.display_msg(&err.to_string());
+                            return;
+                        };
+                        info!("Success: Files found, saved diretory");
+                        let mod_loader = elden_mod_loader_properties(&try_path);
+                        ui.global::<SettingsLogic>()
+                            .set_game_path(try_path.to_string_lossy().to_string().into());
+                        ui.global::<MainLogic>().set_game_path_valid(true);
+                        ui.global::<MainLogic>().set_current_subpage(0);
+                        ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed);
+                        ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled);
+                        if mod_loader.installed {
+                            ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!")
+                        } else {
+                            ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
                         }
                     }
+                    Err(err) => {
+                        match err.kind() {
+                            ErrorKind::NotFound => warn!("{err}"),
+                            _ => error!("Error: {err}"),
+                        }
+                        ui.display_msg(&err.to_string())
+                    }
                 }
-                Err(err) => {
-                    info!("{err}");
-                    ui.display_msg(&err.to_string())
-                }
-            }
+            }).unwrap();
         }
     });
     ui.global::<MainLogic>().on_toggleMod({
@@ -426,96 +427,109 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |key| {
             let ui = ui_handle.unwrap();
-            let format_key = key.replace(' ', "_");
-            let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-            let registered_mods = match RegMod::collect(&CURRENT_INI, false) {
-                Ok(data) => data,
+            let format_key_arc = Arc::new(key.replace(' ', "_"));
+            let game_dir_arc = Arc::new(PathBuf::from(
+                ui.global::<SettingsLogic>().get_game_path().to_string(),
+            ));
+            let registered_mods_arc = match RegMod::collect(&CURRENT_INI, false) {
+                Ok(data) => Arc::new(data),
                 Err(err) => {
                     ui.display_msg(&err.to_string());
                     return;
                 }
             };
-            let file_paths = match get_user_files(&game_dir) {
-                Ok(paths) => paths,
-                Err(err) => {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
-                    return;
-                }
-            };
-            if let Some(found_mod) = registered_mods
-                .iter()
-                .find(|reg_mod| format_key == reg_mod.name)
-            {
-                let files = match shorten_paths(&file_paths, &game_dir) {
-                    Ok(files) => files,
+
+            slint::spawn_local(async move {
+                let file_paths = match get_user_files(&game_dir_arc).await {
+                    Ok(paths) => paths,
                     Err(err) => {
-                        error!(
-                            "Encountered {} StripPrefixError on input files",
-                            err.err_paths_long.len()
-                        );
-                        ui.display_msg("Mod files must be within the selected game directory");
+                        error!("{err}");
+                        ui.display_msg(&err.to_string());
                         return;
                     }
                 };
-                if file_registered(&registered_mods, &files) {
-                    ui.display_msg("A selected file is already registered to a mod");
-                } else {
-                    let mut new_data = found_mod.files.clone();
-                    new_data.extend(files);
-                    let mut results = Vec::with_capacity(2);
-                    if !found_mod.config_files.is_empty() {
-                        new_data.extend(found_mod.config_files.iter().cloned());
-                    }
-                    if found_mod.files.len() + found_mod.config_files.len() == 1 {
-                        results.push(remove_entry(
-                            &CURRENT_INI,
-                            Some("mod-files"),
-                            &found_mod.name,
-                        ));
-                    } else {
-                        results.push(remove_array(&CURRENT_INI, &found_mod.name));
-                    }
-                    results.push(save_path_bufs(&CURRENT_INI, &found_mod.name, &new_data));
-                    if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
-                        ui.display_msg(&err.to_string());
-                        let _ = remove_entry(&CURRENT_INI, Some("registered-mods"), &format_key);
-                    }
-                    let (config_files, files) = split_out_config_files(new_data.clone());
-                    let updated_mod = RegMod {
-                        name: found_mod.name.clone(),
-                        state: found_mod.state,
-                        files,
-                        config_files,
+                if let Some(found_mod) = registered_mods_arc
+                    .iter()
+                    .find(|reg_mod| *format_key_arc == reg_mod.name)
+                {
+                    let files = match shorten_paths(&file_paths, &game_dir_arc) {
+                        Ok(files) => files,
+                        Err(err) => {
+                            error!(
+                                "Encountered {} StripPrefixError on input files",
+                                err.err_paths_long.len()
+                            );
+                            ui.display_msg("Mod files must be within the selected game directory");
+                            return;
+                        }
                     };
-                    updated_mod
-                        .verify_state(&game_dir, &CURRENT_INI)
-                        .unwrap_or_else(|err| {
-                            if updated_mod.verify_state(&game_dir, &CURRENT_INI).is_err() {
-                                ui.display_msg(&err.to_string());
-                                let _ = remove_entry(
-                                    &CURRENT_INI,
-                                    Some("registered-mods"),
-                                    &updated_mod.name,
-                                );
-                            };
-                        });
-                    ui.global::<MainLogic>().set_current_mods(deserialize(
-                        &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|_| {
-                            match RegMod::collect(&CURRENT_INI, false) {
-                                Ok(mods) => mods,
-                                Err(err) => {
+                    if file_registered(&registered_mods_arc, &files) {
+                        ui.display_msg("A selected file is already registered to a mod");
+                    } else {
+                        let mut new_data = found_mod.files.clone();
+                        new_data.extend(files);
+                        let mut results = Vec::with_capacity(2);
+                        if !found_mod.config_files.is_empty() {
+                            new_data.extend(found_mod.config_files.iter().cloned());
+                        }
+                        if found_mod.files.len() + found_mod.config_files.len() == 1 {
+                            results.push(remove_entry(
+                                &CURRENT_INI,
+                                Some("mod-files"),
+                                &found_mod.name,
+                            ));
+                        } else {
+                            results.push(remove_array(&CURRENT_INI, &found_mod.name));
+                        }
+                        results.push(save_path_bufs(&CURRENT_INI, &found_mod.name, &new_data));
+                        if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
+                            ui.display_msg(&err.to_string());
+                            let _ = remove_entry(
+                                &CURRENT_INI,
+                                Some("registered-mods"),
+                                &format_key_arc,
+                            );
+                        }
+                        let (config_files, files) = split_out_config_files(new_data.clone());
+                        let updated_mod = RegMod {
+                            name: found_mod.name.clone(),
+                            state: found_mod.state,
+                            files,
+                            config_files,
+                        };
+                        updated_mod
+                            .verify_state(&game_dir_arc, &CURRENT_INI)
+                            .unwrap_or_else(|err| {
+                                if updated_mod
+                                    .verify_state(&game_dir_arc, &CURRENT_INI)
+                                    .is_err()
+                                {
                                     ui.display_msg(&err.to_string());
-                                    vec![RegMod::default()]
+                                    let _ = remove_entry(
+                                        &CURRENT_INI,
+                                        Some("registered-mods"),
+                                        &updated_mod.name,
+                                    );
+                                };
+                            });
+                        ui.global::<MainLogic>().set_current_mods(deserialize(
+                            &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|_| {
+                                match RegMod::collect(&CURRENT_INI, false) {
+                                    Ok(mods) => mods,
+                                    Err(err) => {
+                                        ui.display_msg(&err.to_string());
+                                        vec![RegMod::default()]
+                                    }
                                 }
-                            }
-                        }),
-                    ));
-                }
-            } else {
-                error!("Mod: \"{key}\" not found");
-                ui.display_msg(&format!("Mod: \"{key}\" not found"));
-            };
+                            }),
+                        ));
+                    }
+                } else {
+                    error!("Mod: \"{key}\" not found");
+                    ui.display_msg(&format!("Mod: \"{key}\" not found"));
+                };
+            })
+            .unwrap();
         }
     });
     ui.global::<MainLogic>().on_remove_mod({
@@ -743,7 +757,7 @@ async fn receive_msg(receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>) -> Me
     message
 }
 
-fn get_user_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
+async fn get_user_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
     match FileDialog::new().set_location(path).show_open_single_dir() {
         Ok(opt) => match opt {
             Some(selected_path) => Ok(selected_path),
@@ -756,7 +770,7 @@ fn get_user_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
     }
 }
 
-fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
+async fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     match FileDialog::new()
         .set_location(path)
         .show_open_multiple_file()
@@ -888,7 +902,7 @@ async fn add_dir_to_mod(
         install_files.display_paths), true);
     let mut result: Vec<Result<(), std::io::Error>> = Vec::with_capacity(2);
     match receive_msg(receiver.clone()).await {
-        Message::Confirm => match get_user_folder(&install_files.parent_dir) {
+        Message::Confirm => match get_user_folder(&install_files.parent_dir).await {
             Ok(path) => {
                 install_files
                     .update_from_path_and_display_data(&path, Some(9_usize))
