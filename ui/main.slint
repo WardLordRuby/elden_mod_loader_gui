@@ -114,7 +114,8 @@ export component MainPage inherits Page {
                         enabled: add-mod-box.enabled;
                         clicked => {
                             if(input-mod.text != "") {
-                                MainLogic.select-mod-files(input-mod.text);
+                                MainLogic.force-app-focus();
+                                MainLogic.select-mod-files(input-mod.text)
                             } else {
                                 input-mod.focus();
                             }

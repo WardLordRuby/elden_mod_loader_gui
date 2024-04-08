@@ -7,8 +7,7 @@ export { MainLogic, SettingsLogic, DisplayMod }
 export component App inherits Window {
     in property <string> display-message;
     in property <bool> alt-std-buttons;
-    property <bool> popup-msg-visible;
-    property <bool> confirm-popup-visible;
+    property <bool> popup-visible;
     // popup-window-height = text-height + (standard-button-height + distance between text and button) + dialog boarder
     property <length> popup-window-height: msg-size.height + 39px + 13px;
     // popup-window-width = text-width + dialog boarder
@@ -46,11 +45,11 @@ export component App inherits Window {
     callback show-confirm-popup;
     focus-app => { fs.focus() }
     show-error-popup => {
-        popup-msg-visible = true;
+        popup-visible = true;
         err-popup.show()
     }
     show-confirm-popup => {
-        confirm-popup-visible = true;
+        popup-visible = true;
         if (!alt-std-buttons) {
             confirm-popup.show()
         } else {
@@ -91,7 +90,7 @@ export component App inherits Window {
             StandardButton {
                 kind: ok; 
                 clicked => { 
-                    popup-msg-visible = false;
+                    popup-visible = false;
                     MainLogic.send-message(Message.esc);
                     err-popup.close()
                 }
@@ -178,13 +177,10 @@ export component App inherits Window {
     fs := FocusScope {
         key-pressed(event) => {
             if (event.text == Key.Escape) {
-                if (popup-msg-visible) {
-                    popup-msg-visible = false;
+                if (popup-visible) {
+                    popup-visible = false;
                     MainLogic.send-message(Message.esc);
-                    err-popup.close()
-                } else if (confirm-popup-visible) {
-                    confirm-popup-visible = false;
-                    MainLogic.send-message(Message.esc);
+                    err-popup.close();
                     confirm-popup.close();
                     confirm-popup-2.close()
                 } else {
@@ -192,7 +188,10 @@ export component App inherits Window {
                 }
             }
             if (event.text == Key.Tab) {
-                mp.focus-line-edit()
+                if (!popup-visible) {
+                    mp.focus-line-edit()
+                }
+                
             }
             accept
         }

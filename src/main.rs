@@ -315,7 +315,6 @@ fn main() -> Result<(), slint::PlatformError> {
                         }),
                     ));
                 }
-                ui.invoke_focus_app();
             }).unwrap();
         }
     });
