@@ -27,6 +27,12 @@ const EXT_OPTIONS: WriteOption = WriteOption {
     kv_separator: " = ",
 };
 
+macro_rules! new_io_error {
+    ($kind:expr, $msg:expr) => {
+        ini::Error::Io(std::io::Error::new($kind, $msg))
+    };
+}
+
 pub fn save_path_bufs(file_name: &Path, key: &str, files: &[PathBuf]) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
     let save_paths = files
@@ -87,10 +93,10 @@ pub fn new_cfg(path: &Path) -> Result<(), ini::Error> {
     let parent = match path.parent() {
         Some(parent) => parent,
         None => {
-            return Err(ini::Error::Io(std::io::Error::new(
+            return Err(new_io_error!(
                 ErrorKind::InvalidData,
-                format!("Could not create a parent_dir of \"{}\"", path.display()),
-            )))
+                format!("Could not create a parent_dir of \"{}\"", path.display())
+            ))
         }
     };
     fs::create_dir_all(parent)?;
@@ -131,15 +137,13 @@ pub fn remove_array(file_name: &Path, key: &str) -> Result<(), ini::Error> {
 
 pub fn remove_entry(file_name: &Path, section: Option<&str>, key: &str) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
-    config
-        .delete_from(section, key)
-        .ok_or(ini::Error::Io(std::io::Error::new(
-            ErrorKind::Other,
-            format!(
-                "Could not delete \"{key}\" from Section: \"{}\"",
-                &section.expect("Passed in section should be valid")
-            ),
-        )))?;
+    config.delete_from(section, key).ok_or(new_io_error!(
+        ErrorKind::Other,
+        format!(
+            "Could not delete \"{key}\" from Section: \"{}\"",
+            &section.expect("Passed in section should be valid")
+        )
+    ))?;
     config
         .write_to_file_opt(file_name, WRITE_OPTIONS)
         .map_err(ini::Error::Io)

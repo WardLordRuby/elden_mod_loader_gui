@@ -1,4 +1,4 @@
-use log::{error, info};
+use log::trace;
 use std::{
     io::ErrorKind,
     path::{Path, PathBuf},
@@ -65,34 +65,28 @@ enum FileType {
     Any,
 }
 
-macro_rules! count_f_type {
-    ($metadata:ident, $count:ident, $f_type:ident) => {
-        match $f_type {
-            FileType::File => {
-                if $metadata.is_file() {
-                    $count += 1;
-                }
-            }
-            FileType::Dir => {
-                if $metadata.is_dir() {
-                    $count += 1;
-                }
-            }
-            FileType::Any => {
-                if $metadata.is_file() || $metadata.is_dir() {
-                    $count += 1;
-                }
-            }
-        }
-    };
-}
-
 fn items_in_directory(path: &Path, f_type: FileType) -> Result<usize, std::io::Error> {
     let mut count = 0;
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
         let metadata = entry.metadata()?;
-        count_f_type!(metadata, count, f_type)
+        match f_type {
+            FileType::File => {
+                if metadata.is_file() {
+                    count += 1;
+                }
+            }
+            FileType::Dir => {
+                if metadata.is_dir() {
+                    count += 1;
+                }
+            }
+            FileType::Any => {
+                if metadata.is_file() || metadata.is_dir() {
+                    count += 1;
+                }
+            }
+        }
     }
     Ok(count)
 }
@@ -118,6 +112,12 @@ fn files_in_directory_tree(directory: &Path) -> Result<usize, std::io::Error> {
     Ok(count)
 }
 
+fn contains_dir_with_name(path: &Path, name: &str) -> Result<bool, std::io::Error> {
+    Ok(std::fs::read_dir(path)?
+        .filter_map(|e| e.ok())
+        .any(|dir| dir.file_name() == name))
+}
+
 fn next_dir(path: &Path) -> Result<PathBuf, std::io::Error> {
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
@@ -126,6 +126,13 @@ fn next_dir(path: &Path) -> Result<PathBuf, std::io::Error> {
         }
     }
     new_io_error!(ErrorKind::InvalidData, "No files in the selected directory")
+}
+
+fn parent_or_err(path: &Path) -> Result<&Path, std::io::Error> {
+    match path.parent() {
+        Some(parent) => Ok(parent),
+        None => new_io_error!(ErrorKind::InvalidData, "Could not get parent_dir"),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -159,14 +166,16 @@ impl InstallData {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        Ok(InstallData {
+        let mut data = InstallData {
             name: String::from(name),
             from_paths: file_paths,
             to_paths: Vec::new(),
             display_paths,
             parent_dir,
             install_dir: game_dir.join("mods"),
-        })
+        };
+        data.collect_to_paths();
+        Ok(data)
     }
 
     fn reconstruct(
@@ -183,44 +192,23 @@ impl InstallData {
             install_dir,
         })
     }
+    fn collect_to_paths(&mut self) {
+        self.to_paths.extend(
+            self.from_paths
+                .iter()
+                .skip(self.to_paths.len())
+                .filter_map(|path| path.strip_prefix(&self.parent_dir).ok())
+                .map(|path| self.install_dir.join(path)),
+        )
+    }
 
     pub fn zip_from_to_paths(&mut self) -> Result<Vec<(&Path, &Path)>, std::io::Error> {
-        let mut err_indexes = Vec::new();
-        let mut to_paths = self
-            .from_paths
-            .iter()
-            .enumerate()
-            .map(|(i, path)| match path.strip_prefix(&self.parent_dir) {
-                Ok(path) => self.install_dir.join(path),
-                Err(_) => {
-                    err_indexes.push(i);
-                    PathBuf::from("Encountered StripPrefixValue")
-                }
-            })
-            .collect::<Vec<_>>();
-        if !err_indexes.is_empty() {
-            error!("Encountered StripPrefixError on var \"to_paths\" at index(s) {err_indexes:?}");
-            let err_parent_path = get_parent_dir(
-                err_indexes
-                    .iter()
-                    .map(|&i| self.from_paths.get(i).expect("index lookup to be correct"))
-                    .min_by_key(|path| path.ancestors().count())
-                    .expect("at least one path with an error exists"),
-            )?;
-            info!(
-                "Attempting to fix errors with parent_dir: \"{}\"",
-                err_parent_path.display()
-            );
-            err_indexes.iter().for_each(|&i| {
-                let err_path = self.from_paths.get(i).expect("index lookup to be correct");
-                to_paths[i] = self.install_dir.join(
-                    err_path
-                        .strip_prefix(&err_parent_path)
-                        .expect("get_parent_dir works correctly"),
-                );
-            });
+        if self.from_paths.len() != self.to_paths.len() {
+            self.collect_to_paths();
+        };
+        if self.from_paths.len() != self.to_paths.len() {
+            return new_io_error!(ErrorKind::BrokenPipe, "Failed to create all to_paths");
         }
-        self.to_paths = to_paths;
         Ok(self
             .from_paths
             .iter()
@@ -285,34 +273,40 @@ impl InstallData {
         let new_directory_arc = Arc::new(PathBuf::from(new_directory));
         let cutoff_arc = Arc::new(cutoff);
         let jh = std::thread::spawn(move || -> Result<(), std::io::Error> {
+            let valid_dir = check_dir_contains_files(&new_directory_arc)?;
+            if contains_dir_with_name(&valid_dir, "mods")? {
+                return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
+            }
             let mut self_mutex = self_mutex_clone.lock().unwrap();
 
-            if self_mutex
-                .parent_dir
-                .strip_prefix(new_directory_arc.as_ref())
-                .is_ok()
-            {
-                if new_directory_arc.ancestors().count()
-                    <= self_mutex.parent_dir.ancestors().count()
-                {
-                    info!("Selected directory contains the original files, reconstructing data");
+            if self_mutex.parent_dir.strip_prefix(&valid_dir).is_ok() {
+                if valid_dir.ancestors().count() <= self_mutex.parent_dir.ancestors().count() {
+                    trace!("Selected directory contains the original files, reconstructing data");
                     *self_mutex = InstallData::reconstruct(
                         &self_mutex.name,
                         self_mutex.install_dir.clone(),
-                        new_directory_arc.as_ref(),
+                        &valid_dir,
                     )?;
                 }
-            } else if new_directory_arc
-                .strip_prefix(&self_mutex.parent_dir)
-                .is_ok()
-            {
-                info!("New directory selected contains unique files, and is inside the original_parent, entire folder will be moved");
+            } else if valid_dir.strip_prefix(&self_mutex.parent_dir).is_ok() {
+                trace!("New directory selected contains unique files, and is inside the original_parent, entire folder will be moved");
+                if valid_dir.ends_with("mods")
+                    && items_in_directory(parent_or_err(&valid_dir)?, FileType::File)? > 0
+                {
+                    return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
+                }
+                self_mutex.parent_dir = parent_or_err(&valid_dir)?.to_path_buf()
             } else {
-                info!("New directory selected contains unique files, entire folder will be moved");
-                self_mutex.parent_dir = get_parent_dir(&new_directory_arc)?
+                trace!("New directory selected contains unique files, entire folder will be moved");
+                match items_in_directory(&valid_dir, FileType::Dir)? == 0
+                    && items_in_directory(&valid_dir, FileType::File)? > 1
+                {
+                    true => self_mutex.parent_dir = parent_or_err(&valid_dir)?.to_path_buf(),
+                    false => self_mutex.parent_dir = valid_dir.clone(),
+                }
             }
 
-            let file_count = files_in_directory_tree(&new_directory_arc)?;
+            let file_count = files_in_directory_tree(&valid_dir)?;
             let num_files_to_display: usize;
             let mut calc_cutoff = match *cutoff_arc {
                 Some(num) => {
@@ -336,11 +330,14 @@ impl InstallData {
             format_entries(
                 &mut self_mutex,
                 &mut files_to_display,
-                &new_directory_arc,
+                &valid_dir,
                 &mut calc_cutoff,
                 &mut cutoff_reached,
             )?;
             self_mutex.display_paths = files_to_display.join("\n");
+            if self_mutex.to_paths.is_empty() {
+                self_mutex.collect_to_paths();
+            }
             Ok(())
         });
         match jh.join() {

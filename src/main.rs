@@ -13,7 +13,7 @@ use elden_mod_loader_gui::{
     *,
 };
 use i_slint_backend_winit::WinitWindowAccessor;
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use native_dialog::FileDialog;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{
@@ -850,7 +850,7 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
     ModelRc::from(display_mod)
 }
 
-pub async fn install_mod(
+async fn install_mod(
     name: &str,
     files: Vec<PathBuf>,
     game_dir: &Path,
@@ -877,7 +877,7 @@ pub async fn install_mod(
     };
 }
 
-pub async fn add_dir_to_mod(
+async fn add_dir_to_mod(
     mut install_files: InstallData,
     ui_weak: slint::Weak<App>,
     receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
@@ -898,13 +898,11 @@ pub async fn add_dir_to_mod(
                         result.push(Err(err));
                     });
             }
-            Err(err) => match err.kind() {
-                ErrorKind::InvalidInput => (),
-                _ => {
-                    error!("{err}");
-                    result.push(Err(err));
+            Err(err) => {
+                if err.kind() == ErrorKind::Other {
+                    result.push(Err(err))
                 }
-            },
+            }
         },
         Message::Deny => (),
         Message::Esc => return,
@@ -912,17 +910,14 @@ pub async fn add_dir_to_mod(
     match result.is_empty() {
         false => {
             let err = result[0].as_ref().unwrap_err();
-            if result.len() == 1 {
-                if err.kind() == ErrorKind::InvalidInput {
-                    debug!("1 InvalidInput err");
-                    ui.display_msg(&format!("Error:\n\n{err}"));
-                    let _ = receive_msg(receiver.clone()).await;
-                    let future = async {
-                        add_dir_to_mod(install_files, ui_weak, receiver).await;
-                    };
-                    let recursive_future = Box::pin(future);
-                    recursive_future.await;
-                }
+            if result.len() == 1 && err.kind() == ErrorKind::InvalidInput {
+                ui.display_msg(&format!("Error:\n\n{err}"));
+                let _ = receive_msg(receiver.clone()).await;
+                let future = async {
+                    add_dir_to_mod(install_files, ui_weak, receiver).await;
+                };
+                let recursive_future = Box::pin(future);
+                recursive_future.await;
             } else {
                 ui.display_msg(&format!("Error: Could not Install\n\n{err}"));
             }
@@ -931,7 +926,7 @@ pub async fn add_dir_to_mod(
     }
 }
 
-pub async fn confirm_install(
+async fn confirm_install(
     mut install_files: InstallData,
     ui_weak: slint::Weak<App>,
     receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
