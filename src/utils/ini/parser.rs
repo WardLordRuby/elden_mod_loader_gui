@@ -2,15 +2,14 @@ use ini::{Ini, Properties};
 use log::{error, trace, warn};
 use std::{
     collections::HashMap,
-    io,
+    io::ErrorKind,
     path::{Path, PathBuf},
     str::ParseBoolError,
 };
 
 use crate::{
-    get_cfg,
-    ini_tools::writer::{remove_array, remove_entry, INI_SECTIONS},
-    toggle_files,
+    get_cfg, new_io_error, toggle_files,
+    utils::ini::writer::{remove_array, remove_entry, INI_SECTIONS},
 };
 
 pub trait ValueType: Sized {
@@ -62,13 +61,13 @@ impl ValueType for u32 {
 }
 
 impl ValueType for PathBuf {
-    type ParseError = io::Error;
+    type ParseError = std::io::Error;
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> Result<Self, Self::ParseError> {
+    ) -> std::io::Result<Self> {
         let parsed_value = PathBuf::from(
             ini.get_from(section, key)
                 .expect("Validated by IniProperty::is_valid"),
@@ -79,23 +78,13 @@ impl ValueType for PathBuf {
             parsed_value.validate(ini, section, skip_validation)
         }
     }
-    fn validate(
-        self,
-        ini: &Ini,
-        section: Option<&str>,
-        disable: bool,
-    ) -> Result<Self, Self::ParseError> {
+    fn validate(self, ini: &Ini, section: Option<&str>, disable: bool) -> std::io::Result<Self> {
         if !disable {
             if section == Some("mod-files") {
                 let game_dir =
                     match IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false) {
                         Some(ini_property) => ini_property.value,
-                        None => {
-                            return Err(io::Error::new(
-                                io::ErrorKind::NotFound,
-                                "game_dir is not valid",
-                            ))
-                        }
+                        None => return new_io_error!(ErrorKind::NotFound, "game_dir is not valid"),
                     };
                 match validate_file(&game_dir.join(&self)) {
                     Ok(()) => Ok(self),
@@ -114,13 +103,13 @@ impl ValueType for PathBuf {
 }
 
 impl ValueType for Vec<PathBuf> {
-    type ParseError = io::Error;
+    type ParseError = std::io::Error;
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> Result<Self, Self::ParseError> {
+    ) -> std::io::Result<Self> {
         fn read_array(section: &Properties, key: &str) -> Vec<PathBuf> {
             section
                 .iter()
@@ -141,22 +130,12 @@ impl ValueType for Vec<PathBuf> {
             parsed_value.validate(ini, section, skip_validation)
         }
     }
-    fn validate(
-        self,
-        ini: &Ini,
-        _section: Option<&str>,
-        disable: bool,
-    ) -> Result<Self, Self::ParseError> {
+    fn validate(self, ini: &Ini, _section: Option<&str>, disable: bool) -> std::io::Result<Self> {
         if !disable {
             let game_dir = match IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
             {
                 Some(ini_property) => ini_property.value,
-                None => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::NotFound,
-                        "game_dir is not valid",
-                    ))
-                }
+                None => return new_io_error!(ErrorKind::NotFound, "game_dir is not valid"),
             };
             if let Some(err) = self
                 .iter()
@@ -172,7 +151,7 @@ impl ValueType for Vec<PathBuf> {
     }
 }
 
-fn validate_file(path: &Path) -> Result<(), io::Error> {
+fn validate_file(path: &Path) -> std::io::Result<()> {
     if path.extension().is_none() {
         let input_file = path.to_string_lossy().to_string();
         let split = input_file.rfind('\\').unwrap_or(0);
@@ -180,33 +159,33 @@ fn validate_file(path: &Path) -> Result<(), io::Error> {
             .split_at(if split != 0 { split + 1 } else { split })
             .1
             .to_string();
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("\"{input_file}\" does not have an extention"),
-        ));
+        return new_io_error!(
+            ErrorKind::InvalidInput,
+            format!("\"{input_file}\" does not have an extention")
+        );
     }
     validate_existance(path)
 }
 
-fn validate_existance(path: &Path) -> Result<(), io::Error> {
+fn validate_existance(path: &Path) -> std::io::Result<()> {
     match path.try_exists() {
         Ok(result) => {
             if result {
                 Ok(())
             } else {
-                Err(io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("Path: \"{}\" can not be found on machine", path.display()),
-                ))
+                new_io_error!(
+                    ErrorKind::NotFound,
+                    format!("Path: \"{}\" can not be found on machine", path.display())
+                )
             }
         }
-        Err(_) => Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
+        Err(_) => new_io_error!(
+            ErrorKind::PermissionDenied,
             format!(
                 "Path \"{}\"'s existance can neither be confirmed nor denied",
                 path.display()
-            ),
-        )),
+            )
+        ),
     }
 }
 
@@ -485,6 +464,17 @@ impl RegMod {
         }
         Ok(())
     }
+}
+pub fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
+    files.iter().any(|path| {
+        mod_data.iter().any(|registered_mod| {
+            registered_mod.files.iter().any(|mod_file| path == mod_file)
+                || registered_mod
+                    .config_files
+                    .iter()
+                    .any(|mod_file| path == mod_file)
+        })
+    })
 }
 
 pub fn split_out_config_files(files: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {

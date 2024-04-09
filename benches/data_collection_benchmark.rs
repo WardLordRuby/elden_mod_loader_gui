@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use elden_mod_loader_gui::ini_tools::{parser::RegMod, writer::*};
+use elden_mod_loader_gui::utils::ini::{parser::RegMod, writer::*};
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
     fs::remove_file,

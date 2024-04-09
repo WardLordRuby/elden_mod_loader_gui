@@ -2,7 +2,7 @@ use ini::{EscapePolicy, Ini, LineSeparator, WriteOption};
 
 use std::{
     fs::{self, read_to_string, write, File},
-    io::{self, Write},
+    io::{ErrorKind, Write},
     path::{Path, PathBuf},
 };
 
@@ -26,6 +26,12 @@ const EXT_OPTIONS: WriteOption = WriteOption {
     line_separator: LineSeparator::CRLF,
     kv_separator: " = ",
 };
+
+macro_rules! new_io_error {
+    ($kind:expr, $msg:expr) => {
+        ini::Error::Io(std::io::Error::new($kind, $msg))
+    };
+}
 
 pub fn save_path_bufs(file_name: &Path, key: &str, files: &[PathBuf]) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
@@ -84,29 +90,16 @@ pub fn save_value_ext(
 }
 
 pub fn new_cfg(path: &Path) -> Result<(), ini::Error> {
-    if path.components().count() > 1 {
-        let mut ancestors = Vec::new();
-        for ancestor in path.ancestors() {
-            if ancestor != Path::new("") && ancestor.extension().is_none() {
-                ancestors.push(ancestor)
-            }
+    let parent = match path.parent() {
+        Some(parent) => parent,
+        None => {
+            return Err(new_io_error!(
+                ErrorKind::InvalidData,
+                format!("Could not create a parent_dir of \"{}\"", path.display())
+            ))
         }
-        ancestors.reverse();
-        for ancestor in ancestors {
-            match ancestor.try_exists() {
-                Ok(bool) => match bool {
-                    true => (),
-                    false => fs::create_dir(ancestor).unwrap_or_default(),
-                },
-                Err(_) => {
-                    return Err(ini::Error::Io(io::Error::new(
-                        io::ErrorKind::PermissionDenied,
-                        "Permission Denied when trying to access directory",
-                    )))
-                }
-            }
-        }
-    }
+    };
+    fs::create_dir_all(parent)?;
     let mut new_ini = File::create(path)?;
 
     for section in INI_SECTIONS {
@@ -144,15 +137,13 @@ pub fn remove_array(file_name: &Path, key: &str) -> Result<(), ini::Error> {
 
 pub fn remove_entry(file_name: &Path, section: Option<&str>, key: &str) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
-    config
-        .delete_from(section, key)
-        .ok_or(ini::Error::Io(io::Error::new(
-            io::ErrorKind::Other,
-            format!(
-                "Could not delete \"{key}\" from Section: \"{}\"",
-                &section.expect("Passed in section should be valid")
-            ),
-        )))?;
+    config.delete_from(section, key).ok_or(new_io_error!(
+        ErrorKind::Other,
+        format!(
+            "Could not delete \"{key}\" from Section: \"{}\"",
+            &section.expect("Passed in section should be valid")
+        )
+    ))?;
     config
         .write_to_file_opt(file_name, WRITE_OPTIONS)
         .map_err(ini::Error::Io)

@@ -10,12 +10,12 @@ export component MainPage inherits Page {
     // ------------up alignment if left on-------------
     // height: 400px;
 
-    callback focus_line_edit;
-    callback edit_mod(int);
-    focus_line_edit => { input-mod.focus() }
-    edit_mod(i) => {
+    callback focus-line-edit;
+    callback edit-mod(int);
+    focus-line-edit => { input-mod.focus() }
+    edit-mod(i) => {
         mod-settings.mod-index = i;
-        MainLogic.current_subpage = 2
+        MainLogic.current-subpage = 2
     }
 
     VerticalLayout {
@@ -26,7 +26,7 @@ export component MainPage inherits Page {
 
         reg-mod-box := GroupBox {
             title: @tr("Registered-Mods:");
-            enabled: MainLogic.game_path_valid && !SettingsLogic.loader_disabled;
+            enabled: MainLogic.game-path-valid && !SettingsLogic.loader-disabled;
 
             list-view := ListView {
                 for mod[idx] in MainLogic.current-mods:  re := Rectangle {
@@ -41,11 +41,11 @@ export component MainPage inherits Page {
                         enabled: reg-mod-box.enabled;
                         toggled => {
                             MainLogic.if-err-bool = self.checked;
-                            MainLogic.current_mods[idx].enabled = self.checked;
+                            MainLogic.current-mods[idx].enabled = self.checked;
                             MainLogic.toggleMod(mod.name, self.checked);
                             if (MainLogic.if-err-bool != self.checked) {
                                 self.checked = MainLogic.if-err-bool;
-                                MainLogic.current_mods[idx].enabled = MainLogic.if-err-bool;
+                                MainLogic.current-mods[idx].enabled = MainLogic.if-err-bool;
                             }
                         }
                     }
@@ -57,11 +57,11 @@ export component MainPage inherits Page {
                         source: @image-url("assets/arrow.png");
                         colorize: ColorPalette.button-image-base;
                         ta := TouchArea {
-                            enabled: MainLogic.game_path_valid;
+                            enabled: MainLogic.game-path-valid;
                             x: mod-box.width - 284px;
                             height: 28px;
                             width: root.width - mod-box.width;
-                            clicked => { edit_mod(idx) }
+                            clicked => { edit-mod(idx) }
                         }
                     }
                     states [
@@ -80,11 +80,11 @@ export component MainPage inherits Page {
         add-mod-box := GroupBox {
             height: 95px;
             title: @tr("Add Mod");
-            enabled: MainLogic.game_path_valid;
+            enabled: MainLogic.game-path-valid;
             FocusScope {
                 key-pressed(event) => {
                     if (event.text == Key.Escape) {
-                        MainLogic.force_app_focus()
+                        MainLogic.force-app-focus()
                     }
                     // && doesn't work in slint conditonal statements
                     if (event.text == Key.Tab) {
@@ -104,17 +104,18 @@ export component MainPage inherits Page {
                         horizontal-alignment: left;
                         placeholder-text: @tr("Mod Name");
                         enabled: add-mod-box.enabled;
-                        text <=> MainLogic.line_edit_text;
+                        text <=> MainLogic.line-edit-text;
                     }
                     add-mod := Button {
                         width: 89px;
                         height: 36px;
                         text: @tr("Select Files");
-                        primary: !SettingsLogic.dark_mode;
+                        primary: !SettingsLogic.dark-mode;
                         enabled: add-mod-box.enabled;
                         clicked => {
                             if(input-mod.text != "") {
-                                MainLogic.select_mod_files(input-mod.text);
+                                MainLogic.force-app-focus();
+                                MainLogic.select-mod-files(input-mod.text)
                             } else {
                                 input-mod.focus();
                             }

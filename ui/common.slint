@@ -11,17 +11,17 @@ export enum Message { confirm, deny, esc }
 
 export global MainLogic {
     callback toggleMod(string, bool);
-    callback select_mod_files(string);
-    callback add_to_mod(string);
-    callback remove_mod(string);
-    callback edit_config([string]);
-    callback force_app_focus();
-    callback send_message(Message);
-    in property <string> line_edit_text;
+    callback select-mod-files(string);
+    callback add-to-mod(string);
+    callback remove-mod(string);
+    callback edit-config([string]);
+    callback force-app-focus();
+    callback send-message(Message);
+    in property <string> line-edit-text;
     in-out property <bool> if-err-bool;
-    in-out property <bool> game_path_valid;
-    in-out property <int> current_subpage: 0;
-    in-out property <[DisplayMod]> current_mods: [
+    in-out property <bool> game-path-valid;
+    in-out property <int> current-subpage: 0;
+    in-out property <[DisplayMod]> current-mods: [
         {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true, files: "\\placeholder\\path\\data"},
         {displayname: "Placeholder Name", name: "Placeholder Name Two", enabled: false, files: "\\placeholder\\path\\data"},
         {displayname: "Placeholder Name", name: "Placeholder Name Three", enabled: true, files: "\\placeholder\\path\\data"},
@@ -29,19 +29,19 @@ export global MainLogic {
 }
 
 export global SettingsLogic  {
-    callback select_game_dir();
-    callback open_game_dir();
-    callback toggle_theme(bool);
-    callback toggle_terminal(bool);
-    callback set_load_delay(string);
-    callback toggle_all(bool);
-    in property <string> game_path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
-    in property <bool> loader_installed;
-    in-out property <bool> dark_mode: true;
-    in-out property <bool> loader_disabled;
-    in-out property <bool> show_terminal;
-    in-out property <string> load_delay: "5000ms";
-    in property <string> delay_input;
+    callback select-game-dir();
+    callback open-game-dir();
+    callback toggle-theme(bool);
+    callback toggle-terminal(bool);
+    callback set-load-delay(string);
+    callback toggle-all(bool);
+    in property <string> game-path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
+    in property <bool> loader-installed;
+    in-out property <bool> dark-mode: true;
+    in-out property <bool> loader-disabled;
+    in-out property <bool> show-terminal;
+    in-out property <string> load-delay: "5000ms";
+    in property <string> delay-input;
 }
 
 struct ButtonColors  {
@@ -50,23 +50,23 @@ struct ButtonColors  {
 }
 
 export global ColorPalette  {
-    out property <color> page-background-color: SettingsLogic.dark_mode ? #1b1b1b : #60a0a4;
-    out property <color> popup-background-color: SettingsLogic.dark_mode ? #00393d : #1b1b1b;
-    out property <color> popup-border-color: SettingsLogic.dark_mode ? #17575c : #1b1b1b;
+    out property <color> page-background-color: SettingsLogic.dark-mode ? #1b1b1b : #60a0a4;
+    out property <color> popup-background-color: SettingsLogic.dark-mode ? #00393d : #1b1b1b;
+    out property <color> popup-border-color: SettingsLogic.dark-mode ? #17575c : #1b1b1b;
 
     out property <color> text-foreground-color: #ffffff;
     out property <color> text-base: #aeaeae;
     out property <ButtonColors> text-shade-colors: {
-        pressed: SettingsLogic.dark_mode ? root.text-base.darker(30%) : root.text-base.darker(10%),
+        pressed: SettingsLogic.dark-mode ? root.text-base.darker(30%) : root.text-base.darker(10%),
         hovered: root.text-base.brighter(20%),
     };
 
-    out property <color> button-image-base: SettingsLogic.dark_mode ? #505150 : #aeaeae;
+    out property <color> button-image-base: SettingsLogic.dark-mode ? #505150 : #aeaeae;
     out property <ButtonColors> button-image-colors: {
         pressed: root.button-image-base.darker(40%),
         hovered: root.button-image-base.brighter(20%),
     };
-    out property <color> button-background-base: SettingsLogic.dark_mode ? #4b4b4b83 : #6fc5ffaf;
+    out property <color> button-background-base: SettingsLogic.dark-mode ? #4b4b4b83 : #6fc5ffaf;
     out property <ButtonColors> button-background-colors: {
         pressed: root.button-background-base.darker(40%),
         hovered: root.button-background-base.darker(20%),

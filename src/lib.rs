@@ -1,17 +1,20 @@
-pub mod ini_tools {
-    pub mod parser;
-    pub mod writer;
+pub mod utils {
+    pub mod installer;
+    pub mod ini {
+        pub mod parser;
+        pub mod writer;
+    }
 }
 
 use ini::Ini;
-use ini_tools::{
+use log::{error, info, trace, warn};
+use utils::ini::{
     parser::{IniProperty, RegMod},
     writer::{remove_array, save_bool, save_path, save_path_bufs},
 };
-use log::{error, info, trace, warn};
 
 use std::{
-    io,
+    io::ErrorKind,
     path::{Path, PathBuf},
 };
 
@@ -29,14 +32,93 @@ pub const REQUIRED_GAME_FILES: [&str; 3] = [
     "eossdk-win64-shipping.dll",
 ];
 
-pub fn shorten_paths(
-    paths: Vec<PathBuf>,
-    remove: &PathBuf,
-) -> Result<Vec<PathBuf>, std::path::StripPrefixError> {
+pub const LOADER_FILES: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll"];
+pub const LOADER_FILES_DISABLED: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll.disabled"];
+pub const LOADER_SECTIONS: [Option<&str>; 2] = [Some("modloader"), Some("loadorder")];
+pub const LOADER_KEYS: [&str; 2] = ["load_delay", "show_terminal"];
+
+#[macro_export]
+macro_rules! new_io_error {
+    ($kind:expr, $msg:expr) => {
+        Err(std::io::Error::new($kind, $msg))
+    };
+}
+
+pub struct PathErrors {
+    pub ok_paths_short: Vec<PathBuf>,
+    pub err_paths_long: Vec<PathBuf>,
+}
+
+impl PathErrors {
+    fn new(size: usize) -> Self {
+        PathErrors {
+            ok_paths_short: Vec::with_capacity(size),
+            err_paths_long: Vec::with_capacity(size),
+        }
+    }
+}
+
+pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>, PathErrors> {
+    let mut results = PathErrors::new(paths.len());
     paths
-        .into_iter()
-        .map(|path| path.strip_prefix(remove).map(|p| p.to_path_buf()))
-        .collect()
+        .iter()
+        .for_each(|path| match path.strip_prefix(remove) {
+            Ok(file) => {
+                results.ok_paths_short.push(PathBuf::from(file));
+            }
+            Err(_) => {
+                results.err_paths_long.push(PathBuf::from(path));
+            }
+        });
+    if results.err_paths_long.is_empty() {
+        Ok(results.ok_paths_short)
+    } else {
+        Err(results)
+    }
+}
+
+#[derive(Default)]
+pub struct ModLoader {
+    pub installed: bool,
+    pub disabled: bool,
+    pub cfg: PathBuf,
+}
+
+pub fn elden_mod_loader_properties(game_dir: &Path) -> std::io::Result<ModLoader> {
+    let disabled: bool;
+    let cfg: PathBuf;
+    let installed = match does_dir_contain(game_dir, Operation::All, &LOADER_FILES) {
+        Ok(true) => {
+            info!("Found mod loader files");
+            cfg = game_dir.join(LOADER_FILES[0]);
+            disabled = false;
+            true
+        }
+        Ok(false) => {
+            warn!("Checking if mod loader is disabled");
+            match does_dir_contain(game_dir, Operation::All, &LOADER_FILES_DISABLED) {
+                Ok(true) => {
+                    info!("Found mod loader files in the disabled state");
+                    cfg = game_dir.join(LOADER_FILES[0]);
+                    disabled = true;
+                    true
+                }
+                Ok(false) => {
+                    error!("Mod Loader Files not found in selected path");
+                    cfg = PathBuf::new();
+                    disabled = false;
+                    false
+                }
+                Err(err) => return Err(err),
+            }
+        }
+        Err(err) => return Err(err),
+    };
+    Ok(ModLoader {
+        installed,
+        disabled,
+        cfg,
+    })
 }
 
 pub fn toggle_files(
@@ -76,12 +158,12 @@ pub fn toggle_files(
         num_files: &usize,
         paths: &[PathBuf],
         new_paths: &[PathBuf],
-    ) -> Result<(), io::Error> {
+    ) -> std::io::Result<()> {
         if *num_files != paths.len() || *num_files != new_paths.len() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Number of files and new paths must match",
-            ));
+            return new_io_error!(
+                ErrorKind::InvalidInput,
+                "Number of files and new paths must match"
+            );
         }
 
         paths
@@ -143,35 +225,28 @@ pub fn get_cfg(input_file: &Path) -> Result<Ini, ini::Error> {
     Ini::load_from_file_noescape(input_file)
 }
 
-pub fn does_dir_contain(path: &Path, list: &[&str]) -> Result<(), io::Error> {
-    match std::fs::read_dir(path) {
-        Ok(_) => {
-            let entries = std::fs::read_dir(path)?;
-            let file_names: Vec<_> = entries
-                .filter_map(|entry| entry.ok())
-                .map(|entry| entry.file_name())
-                .filter_map(|file_name| file_name.to_str().map(String::from))
-                .collect();
+pub enum Operation {
+    All,
+    Any,
+}
 
-            let all_files_exist = list
-                .iter()
-                .all(|check_file| file_names.iter().any(|file_name| file_name == check_file));
+pub fn does_dir_contain(path: &Path, operation: Operation, list: &[&str]) -> std::io::Result<bool> {
+    let entries = std::fs::read_dir(path)?;
+    let file_names = entries
+        .map(|entry| Ok(entry?.file_name()))
+        .collect::<std::io::Result<Vec<std::ffi::OsString>>>();
 
-            if all_files_exist {
-                Ok(())
-            } else {
-                error!(
-                    "{}",
-                    format!("Failure: {list:?} not found in: \"{}\"", path.display(),)
-                );
-                Err(io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("Game files not found in selected path\n{}", path.display()),
-                ))
-            }
-        }
-        Err(err) => Err(err),
-    }
+    let file_names = file_names?;
+
+    let result = match operation {
+        Operation::All => list
+            .iter()
+            .all(|check_file| file_names.iter().any(|file_name| file_name == check_file)),
+        Operation::Any => list
+            .iter()
+            .any(|check_file| file_names.iter().any(|file_name| file_name == check_file)),
+    };
+    Ok(result)
 }
 
 pub enum PathResult {
@@ -199,8 +274,18 @@ pub fn attempt_locate_game(file_name: &Path) -> Result<PathResult, ini::Error> {
     };
     if let Some(path) = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
         .and_then(|ini_property| {
-            match does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
-                Ok(_) => Some(ini_property.value),
+            match does_dir_contain(&ini_property.value, Operation::All, &REQUIRED_GAME_FILES) {
+                Ok(true) => Some(ini_property.value),
+                Ok(false) => {
+                    error!(
+                        "{}",
+                        format!(
+                            "Required Game files not found in:\n\"{}\"",
+                            ini_property.value.display()
+                        )
+                    );
+                    None
+                }
                 Err(err) => {
                     error!("Error: {err}");
                     None
@@ -212,7 +297,7 @@ pub fn attempt_locate_game(file_name: &Path) -> Result<PathResult, ini::Error> {
         return Ok(PathResult::Full(path));
     }
     let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
-    if does_dir_contain(&try_locate, &REQUIRED_GAME_FILES).is_ok() {
+    if does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES).unwrap_or(false) {
         info!("Success: located \"game_dir\" on drive");
         save_path(file_name, Some("paths"), "game_dir", try_locate.as_path())?;
         return Ok(PathResult::Full(try_locate));
