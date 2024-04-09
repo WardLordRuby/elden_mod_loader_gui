@@ -16,14 +16,17 @@ export component ModDetailsPage inherits Page {
     property <LayoutAlignment> button-layout: MainLogic.current-mods[mod-index].has-config ? center : end;
     
     Text {
-        x: 8px;
-        y: 39px;
+        width: 313px;
+        x: -2px;
+        y: 40px;
         font-size: 14pt;
-        text: @tr("Details");
+        horizontal-alignment: center;
+        font-weight: 550;
+        text: @tr("Mod Details");
     }
 
     details := VerticalLayout {
-        y: 60px;
+        y: 50px;
         height: root.height - edit-mod-box.height - 55px;
         padding-top: 4px;
         padding-left: 12px;

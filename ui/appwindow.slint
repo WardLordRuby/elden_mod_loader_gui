@@ -23,7 +23,7 @@ export component App inherits Window {
     };
     property <length> popup-window-y-pos: {
         if ((window-height - popup-window-height) / 2) < 0px {
-            10px
+            60px
         } else {
             (window-height - popup-window-height) / 2
         }
@@ -191,7 +191,6 @@ export component App inherits Window {
                 if (!popup-visible) {
                     mp.focus-line-edit()
                 }
-                
             }
             accept
         }
