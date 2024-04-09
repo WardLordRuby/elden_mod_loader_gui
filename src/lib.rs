@@ -191,7 +191,7 @@ pub fn toggle_files(
         Ok(())
     }
     let num_rename_files = reg_mod.files.len();
-    let num_total_files = num_rename_files + reg_mod.config_files.len();
+    let num_total_files = num_rename_files + reg_mod.config_files.len() + reg_mod.other_files.len();
 
     let file_paths = std::sync::Arc::new(reg_mod.files.clone());
     let file_paths_clone = file_paths.clone();
@@ -206,6 +206,7 @@ pub fn toggle_files(
     let full_path_new = join_paths(Path::new(game_dir), &short_path_new);
     let full_path_original = original_full_paths_thread.join().unwrap_or(Vec::new());
     short_path_new.extend(reg_mod.config_files.iter().cloned());
+    short_path_new.extend(reg_mod.other_files.iter().cloned());
 
     rename_files(&num_rename_files, &full_path_original, &full_path_new)?;
 
@@ -234,9 +235,7 @@ pub fn does_dir_contain(path: &Path, operation: Operation, list: &[&str]) -> std
     let entries = std::fs::read_dir(path)?;
     let file_names = entries
         .map(|entry| Ok(entry?.file_name()))
-        .collect::<std::io::Result<Vec<std::ffi::OsString>>>();
-
-    let file_names = file_names?;
+        .collect::<std::io::Result<Vec<std::ffi::OsString>>>()?;
 
     let result = match operation {
         Operation::All => list

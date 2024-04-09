@@ -1,10 +1,7 @@
 #[cfg(test)]
 mod tests {
     use elden_mod_loader_gui::{
-        utils::ini::{
-            parser::{split_out_config_files, RegMod},
-            writer::new_cfg,
-        },
+        utils::ini::{parser::RegMod, writer::new_cfg},
         *,
     };
     use std::{
@@ -36,20 +33,16 @@ mod tests {
             PathBuf::from("test_files\\config.ini"),
         ];
 
-        let (config_files, files) = split_out_config_files(test_files.clone());
-        let test_files_disabled = files
+        let test_mod = RegMod::new("Test", true, test_files.clone());
+        let test_files_disabled = test_mod
+            .files
             .iter()
             .map(|file| PathBuf::from(format!("{}.disabled", file.display())))
             .collect::<Vec<_>>();
 
-        let test_mod = RegMod {
-            name: String::from("Test"),
-            state: true,
-            files,
-            config_files,
-        };
-        assert_eq!(test_mod.files.len(), 5);
+        assert_eq!(test_mod.files.len(), 4);
         assert_eq!(test_mod.config_files.len(), 1);
+        assert_eq!(test_mod.other_files.len(), 1);
 
         for test_file in test_files.iter() {
             File::create(test_file.to_string_lossy().to_string()).unwrap();
@@ -72,7 +65,9 @@ mod tests {
             state: false,
             files: test_files_disabled,
             config_files: test_mod.config_files,
+            other_files: test_mod.other_files,
         };
+
         toggle_files(
             dir_to_test_files,
             !test_mod.state,

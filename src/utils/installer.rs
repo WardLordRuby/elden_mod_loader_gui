@@ -218,9 +218,12 @@ impl InstallData {
                             *cutoff_reached = true;
                             let remainder: i64 = *num_files as i64 - *count as i64;
                             match remainder {
-                                ..=-1 => output.push(String::from(
-                                    "Unexpected behavior, file list might be wrong",
-                                )),
+                                ..=-1 => {
+                                    return new_io_error!(
+                                        ErrorKind::BrokenPipe,
+                                        "Unexpected behavior, remainder < 0"
+                                    )
+                                }
                                 0 => (),
                                 1 => output.push(String::from("Plus 1 more file")),
                                 2.. => output.push(format!("Plus {} more files...", remainder)),

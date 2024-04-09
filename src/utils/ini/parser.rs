@@ -269,9 +269,36 @@ pub struct RegMod {
     pub state: bool,
     pub files: Vec<PathBuf>,
     pub config_files: Vec<PathBuf>,
+    pub other_files: Vec<PathBuf>,
 }
 
 impl RegMod {
+    pub fn new(name: &str, state: bool, in_files: Vec<PathBuf>) -> Self {
+        fn split_out_config_files(
+            in_files: Vec<PathBuf>,
+        ) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<PathBuf>) {
+            let mut files = Vec::with_capacity(in_files.len());
+            let mut config_files = Vec::with_capacity(in_files.len());
+            let mut other_files = Vec::with_capacity(in_files.len());
+            in_files.into_iter().for_each(|file| {
+                let string = file.to_string_lossy();
+                match string[string.len() - 3..].as_ref() {
+                    "txt" => other_files.push(file),
+                    "ini" => config_files.push(file),
+                    _ => files.push(file),
+                }
+            });
+            (files, config_files, other_files)
+        }
+        let (files, config_files, other_files) = split_out_config_files(in_files);
+        RegMod {
+            name: String::from(name),
+            state,
+            files,
+            config_files,
+            other_files,
+        }
+    }
     pub fn collect(path: &Path, skip_validation: bool) -> Result<Vec<Self>, ini::Error> {
         type ModData<'a> = Vec<(&'a str, Result<bool, ParseBoolError>, Vec<PathBuf>)>;
         fn sync_keys<'a>(ini: &'a Ini, path: &Path) -> Result<ModData<'a>, ini::Error> {
@@ -374,14 +401,11 @@ impl RegMod {
             Ok(parsed_data
                 .iter()
                 .map(|(n, s, f)| {
-                    let (config_files, files) =
-                        split_out_config_files(f.iter().map(PathBuf::from).collect());
-                    RegMod {
-                        name: n.to_string(),
-                        state: s.to_lowercase().parse::<bool>().unwrap_or(true),
-                        files,
-                        config_files,
-                    }
+                    RegMod::new(
+                        n,
+                        s.to_lowercase().parse::<bool>().unwrap_or(true),
+                        f.iter().map(PathBuf::from).collect(),
+                    )
                 })
                 .collect())
         } else {
@@ -396,15 +420,7 @@ impl RegMod {
                                 .to_owned()
                                 .validate(&ini, Some("mod-files"), skip_validation)
                             {
-                                Ok(path) => {
-                                    let (config_files, files) = split_out_config_files(vec![path]);
-                                    Some(RegMod {
-                                        name: k.to_string(),
-                                        state: *bool,
-                                        files,
-                                        config_files,
-                                    })
-                                }
+                                Ok(path) => Some(RegMod::new(k, *bool, vec![path])),
                                 Err(err) => {
                                     error!("Error: {err}");
                                     remove_entry(path, Some("registered-mods"), k)
@@ -417,15 +433,7 @@ impl RegMod {
                             .to_owned()
                             .validate(&ini, Some("mod-files"), skip_validation)
                         {
-                            Ok(paths) => {
-                                let (config_files, files) = split_out_config_files(paths);
-                                Some(RegMod {
-                                    name: k.to_string(),
-                                    state: *bool,
-                                    files,
-                                    config_files,
-                                })
-                            }
+                            Ok(paths) => Some(RegMod::new(k, *bool, paths)),
                             Err(err) => {
                                 error!("Error: {err}");
                                 remove_entry(path, Some("registered-mods"), k)
@@ -468,20 +476,14 @@ impl RegMod {
 pub fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
     files.iter().any(|path| {
         mod_data.iter().any(|registered_mod| {
-            registered_mod.files.iter().any(|mod_file| path == mod_file)
-                || registered_mod
-                    .config_files
-                    .iter()
-                    .any(|mod_file| path == mod_file)
+            let mut files = registered_mod.files.clone();
+            files.extend(registered_mod.config_files.iter().cloned());
+            files.extend(registered_mod.other_files.iter().cloned());
+            files.iter().any(|mod_file| path == mod_file)
         })
     })
 }
 
-pub fn split_out_config_files(files: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
-    files
-        .into_iter()
-        .partition(|file| file.extension().expect("file with extention") == "ini")
-}
 // ----------------------Optimized original implementation-------------------------------
 // let mod_state_data = ini.section(Some("registered-mods")).unwrap();
 // mod_state_data

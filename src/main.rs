@@ -5,7 +5,7 @@
 use elden_mod_loader_gui::{
     utils::{
         ini::{
-            parser::{file_registered, split_out_config_files, IniProperty, RegMod, Valitidity},
+            parser::{file_registered, IniProperty, RegMod, Valitidity},
             writer::*,
         },
         installer::InstallData,
@@ -295,13 +295,8 @@ fn main() -> Result<(), slint::PlatformError> {
                         let _ =
                         remove_entry(&CURRENT_INI, Some("registered-mods"), &format_key);
                     }
-                    let (config_files, files) = split_out_config_files(files);
-                    let new_mod = RegMod {
-                        name: format_key,
-                        state,
-                        files,
-                        config_files,
-                    };
+                    let new_mod = RegMod::new(&format_key, state, files);
+                    
                     new_mod
                     .verify_state(&game_dir, &CURRENT_INI)
                     .unwrap_or_else(|err| {
@@ -519,13 +514,8 @@ fn main() -> Result<(), slint::PlatformError> {
                                 &format_key_arc,
                             );
                         }
-                        let (config_files, files) = split_out_config_files(new_data.clone());
-                        let updated_mod = RegMod {
-                            name: found_mod.name.clone(),
-                            state: found_mod.state,
-                            files,
-                            config_files,
-                        };
+                        let updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data.clone());
+                        
                         updated_mod
                             .verify_state(&game_dir_arc, &CURRENT_INI)
                             .unwrap_or_else(|err| {
@@ -699,16 +689,12 @@ fn main() -> Result<(), slint::PlatformError> {
         move |state| {
             let ui = ui_handle.unwrap();
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-            let main_dll = RegMod {
-                name: String::from("main"),
-                state: !state,
-                files: if state {
-                    vec![PathBuf::from(LOADER_FILES[1])]
-                } else {
-                    vec![PathBuf::from(LOADER_FILES_DISABLED[1])]
-                },
-                config_files: vec![PathBuf::new()],
+            let files = if state {
+                vec![PathBuf::from(LOADER_FILES[1])]
+            } else {
+                vec![PathBuf::from(LOADER_FILES_DISABLED[1])]
             };
+            let main_dll = RegMod::new("main", !state, files);
             match toggle_files(&game_dir, !state, &main_dll, None) {
                 Ok(_) => ui.global::<SettingsLogic>().set_loader_disabled(state),
                 Err(err) => {
@@ -859,23 +845,14 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
             name: SharedString::from(name.clone()),
             enabled: mod_data.state,
             files: SharedString::from({
-                let files = mod_data
-                    .files
-                    .iter()
-                    .map(|path_buf| path_buf.to_string_lossy().replace(".disabled", ""))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let config_files = mod_data
-                    .config_files
-                    .iter()
-                    .map(|f| f.to_string_lossy())
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if files.is_empty() {
-                    config_files
-                } else {
-                    format!("{files}\n{config_files}")
-                }
+                let files: Vec<String> = {
+                    let mut files = Vec::with_capacity(mod_data.files.len() + mod_data.config_files.len() + mod_data.other_files.len());
+                    files.extend(mod_data.files.iter().map(|f| f.to_string_lossy().replace(".disabled", "")));
+                    files.extend(mod_data.config_files.iter().map(|f| f.to_string_lossy().to_string()));
+                    files.extend(mod_data.other_files.iter().map(|f| f.to_string_lossy().to_string()));
+                    files
+                };
+                files.join("\n")
             }),
             has_config,
             config_files: ModelRc::from(config_files),
@@ -973,19 +950,16 @@ async fn confirm_install(
     }
     install_files.collect_to_paths();
     let zip = install_files.zip_from_to_paths()?;
-    if zip.iter().any(|(_, to_path)| {
-        let existance = to_path.try_exists();
-        match existance {
+    if zip.iter().any(|(_, to_path)| match to_path.try_exists() {
             Ok(true) => true,
             Ok(false) => false,
             Err(_) => true,
-        }
-    }) {
+        }) {
         return new_io_error!(ErrorKind::InvalidInput, format!("Could not install \"{}\".\nA selected file is already installed", install_files.name));
     };
     let parents = zip.iter().map(|(_, to_path)| parent_or_err(to_path)).collect::<std::io::Result<Vec<&Path>>>()?;
     parents.iter().try_for_each(std::fs::create_dir_all)?;
-    zip.iter().map(|(from_path, to_path)| std::fs::copy(from_path, to_path)).collect::<std::io::Result<Vec<u64>>>()?;
+    zip.iter().try_for_each(|(from_path, to_path)| std::fs::copy(from_path, to_path).map(|_| ()))?;
     ui.display_msg(&format!("Successfully Installed mod \"{}\"", &install_files.name));
     Ok(zip.iter().map(|(_, to_path)| to_path.to_path_buf()).collect::<Vec<_>>())
 }
