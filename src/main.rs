@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -236,7 +236,6 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 };
-                let mut fresh_install = false;
                 let files = match shorten_paths(&file_paths, &game_dir) {
                     Ok(files) => files,
                     Err(err) => {
@@ -244,7 +243,6 @@ fn main() -> Result<(), slint::PlatformError> {
                             let ui_handle = ui.as_weak();
                             match install_mod(&mod_name, err.err_paths_long, &game_dir, ui_handle, receiver_clone.clone()).await {
                                 Ok(installed_files) => {
-                                    fresh_install = true;
                                     match shorten_paths(&installed_files, &game_dir) {
                                         Ok(installed_and_shortend) => installed_and_shortend,
                                         Err(err) => {
@@ -268,7 +266,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }
                 };
-                if !fresh_install && file_registered(&registered_mods, &files) {
+                if file_registered(&registered_mods, &files) {
                     ui.display_msg("A selected file is already registered to a mod");
                 } else {
                     let state = !files.iter().all(|file| {
