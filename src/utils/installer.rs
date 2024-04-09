@@ -5,20 +5,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{does_dir_contain, new_io_error};
+use crate::{does_dir_contain, new_io_error, parent_or_err};
 
+/// Returns the deepest occurance of a directory that contains at least 1 file
+/// use parent_or_err for a direct binding to what is one level up
 fn get_parent_dir(input: &Path) -> std::io::Result<PathBuf> {
     match input.metadata() {
         Ok(data) => {
             if data.is_dir() {
                 Ok(check_dir_contains_files(input)?)
             } else if data.is_file() {
-                match input.parent() {
-                    Some(parent) => Ok(check_dir_contains_files(parent)?),
-                    None => {
-                        new_io_error!(ErrorKind::InvalidData, "Failed to create a parent_dir")
-                    }
-                }
+                Ok(check_dir_contains_files(parent_or_err(input)?)?)
             } else {
                 new_io_error!(ErrorKind::InvalidData, "Unsuported file type")
             }
@@ -122,13 +119,6 @@ fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
     new_io_error!(ErrorKind::InvalidData, "No dir in the selected directory")
 }
 
-fn parent_or_err(path: &Path) -> std::io::Result<&Path> {
-    match path.parent() {
-        Some(parent) => Ok(parent),
-        None => new_io_error!(ErrorKind::InvalidData, "Could not get parent_dir"),
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct InstallData {
     pub name: String,
@@ -182,7 +172,7 @@ impl InstallData {
             install_dir,
         })
     }
-    fn collect_to_paths(&mut self) {
+    pub fn collect_to_paths(&mut self) {
         self.to_paths.extend(
             self.from_paths
                 .iter()
@@ -192,12 +182,12 @@ impl InstallData {
         )
     }
 
-    pub fn zip_from_to_paths(&mut self) -> std::io::Result<Vec<(&Path, &Path)>> {
+    pub fn zip_from_to_paths(&self) -> std::io::Result<Vec<(&Path, &Path)>> {
         if self.from_paths.len() != self.to_paths.len() {
-            self.collect_to_paths();
-        };
-        if self.from_paths.len() != self.to_paths.len() {
-            return new_io_error!(ErrorKind::BrokenPipe, "Failed to create all to_paths");
+            return new_io_error!(
+                ErrorKind::BrokenPipe,
+                "collect_to_paths either failed or was not ran"
+            );
         }
         Ok(self
             .from_paths

@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::get_cfg;
+use crate::{get_cfg, parent_or_err};
 
 pub const INI_SECTIONS: [&str; 4] = [
     "[app-settings]",
@@ -90,15 +90,7 @@ pub fn save_value_ext(
 }
 
 pub fn new_cfg(path: &Path) -> Result<(), ini::Error> {
-    let parent = match path.parent() {
-        Some(parent) => parent,
-        None => {
-            return Err(new_io_error!(
-                ErrorKind::InvalidData,
-                format!("Could not create a parent_dir of \"{}\"", path.display())
-            ))
-        }
-    };
+    let parent = parent_or_err(path)?;
     fs::create_dir_all(parent)?;
     let mut new_ini = File::create(path)?;
 

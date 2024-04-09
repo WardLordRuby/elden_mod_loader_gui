@@ -249,6 +249,14 @@ pub fn does_dir_contain(path: &Path, operation: Operation, list: &[&str]) -> std
     Ok(result)
 }
 
+/// Convience function to map Option None to an io Error
+pub fn parent_or_err(path: &Path) -> std::io::Result<&Path> {
+    match path.parent() {
+        Some(parent) => Ok(parent),
+        None => new_io_error!(ErrorKind::InvalidData, "Could not get parent_dir"),
+    }
+}
+
 pub enum PathResult {
     Full(PathBuf),
     Partial(PathBuf),

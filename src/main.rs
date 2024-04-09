@@ -971,6 +971,7 @@ async fn confirm_install(
     if receive_msg(receiver.clone()).await != Message::Confirm {
         return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled");
     }
+    install_files.collect_to_paths();
     let zip = install_files.zip_from_to_paths()?;
     if zip.iter().any(|(_, to_path)| {
         let existance = to_path.try_exists();
@@ -982,11 +983,9 @@ async fn confirm_install(
     }) {
         return new_io_error!(ErrorKind::InvalidInput, format!("Could not install \"{}\".\nA selected file is already installed", install_files.name));
     };
-    match zip.iter().max_by_key(|(_, to_path)| to_path.ancestors().count()).map(|(_, path)| path.parent()) {
-        Some(Some(path)) => std::fs::create_dir_all(path)?,
-        Some(None) => return new_io_error!(ErrorKind::InvalidData, "Failed to create a parent_dir"),
-        None => return new_io_error!(ErrorKind::BrokenPipe, "Failed to find the deepest to_dir"),
-    };
+    let parents = zip.iter().map(|(_, to_path)| parent_or_err(to_path)).collect::<std::io::Result<Vec<&Path>>>()?;
+    parents.iter().try_for_each(std::fs::create_dir_all)?;
     zip.iter().map(|(from_path, to_path)| std::fs::copy(from_path, to_path)).collect::<std::io::Result<Vec<u64>>>()?;
+    ui.display_msg(&format!("Successfully Installed mod \"{}\"", &install_files.name));
     Ok(zip.iter().map(|(_, to_path)| to_path.to_path_buf()).collect::<Vec<_>>())
 }
