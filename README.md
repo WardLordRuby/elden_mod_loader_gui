@@ -1,7 +1,7 @@
 [TechieW-Loader-Link]: https://www.nexusmods.com/eldenring/mods/117  
 [Download-Link]: https://github.com/WardLordRuby/elden_mod_loader_gui/releases
 <div align="center">
-    <img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML_icon.png" width="20%" height="20%">
+    <img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML-icon.png" width="20%" height="20%">
 </div>
 
 # Elden Mod Loader GUI   
@@ -29,6 +29,7 @@ the files to the game directory. If you move the app you will have to move the c
 
 ## Features  
 
+* Install mods inside the app! (v0.9.3 feat)  
 * Easily open game directory with windows explorer  
 * Edit load_delay time and show_terminal in settings 
 * App will attempt to locate game dir for you  
@@ -42,7 +43,10 @@ the files to the game directory. If you move the app you will have to move the c
 
 ##### To be added:  
 
-* Interface to set the load order of each mod registered with the app  
+* Confirmation to uninstall or de-register a mod from within the app (v0.9.3 feat)  
+* Auto import already installed mods on initial app open (v0.9.3 feat)  
+* Dump logs to file on app crash (v0.9.35 feat)  
+* Interface to set the load order of each mod registered with the app  (v0.9.4 feat)  
 
 ## Screenshots  
 
