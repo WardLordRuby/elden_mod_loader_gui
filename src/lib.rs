@@ -98,18 +98,21 @@ pub fn elden_mod_loader_properties(game_dir: &Path) -> std::io::Result<ModLoader
             false => {
                 warn!("Checking if mod loader is disabled");
                 match does_dir_contain(game_dir, Operation::All, &LOADER_FILES_DISABLED) {
-                    Ok(_) => {
-                        info!("Found mod loader files in the disabled state");
-                        cfg = game_dir.join(LOADER_FILES[0]);
-                        disabled = true;
-                        true
-                    }
-                    Err(_) => {
-                        error!("Mod Loader Files not found in selected path");
-                        cfg = PathBuf::new();
-                        disabled = false;
-                        false
-                    }
+                    Ok(val) => match val {
+                        true => {
+                            info!("Found mod loader files in the disabled state");
+                            cfg = game_dir.join(LOADER_FILES[0]);
+                            disabled = true;
+                            true
+                        }
+                        false => {
+                            error!("Mod Loader Files not found in selected path");
+                            cfg = PathBuf::new();
+                            disabled = false;
+                            false
+                        }
+                    },
+                    Err(err) => return Err(err),
                 }
             }
         },
