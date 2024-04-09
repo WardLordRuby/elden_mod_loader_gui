@@ -88,34 +88,30 @@ pub fn elden_mod_loader_properties(game_dir: &Path) -> std::io::Result<ModLoader
     let disabled: bool;
     let cfg: PathBuf;
     let installed = match does_dir_contain(game_dir, Operation::All, &LOADER_FILES) {
-        Ok(val) => match val {
-            true => {
-                info!("Found mod loader files");
-                cfg = game_dir.join(LOADER_FILES[0]);
-                disabled = false;
-                true
-            }
-            false => {
-                warn!("Checking if mod loader is disabled");
-                match does_dir_contain(game_dir, Operation::All, &LOADER_FILES_DISABLED) {
-                    Ok(val) => match val {
-                        true => {
-                            info!("Found mod loader files in the disabled state");
-                            cfg = game_dir.join(LOADER_FILES[0]);
-                            disabled = true;
-                            true
-                        }
-                        false => {
-                            error!("Mod Loader Files not found in selected path");
-                            cfg = PathBuf::new();
-                            disabled = false;
-                            false
-                        }
-                    },
-                    Err(err) => return Err(err),
+        Ok(true) => {
+            info!("Found mod loader files");
+            cfg = game_dir.join(LOADER_FILES[0]);
+            disabled = false;
+            true
+        }
+        Ok(false) => {
+            warn!("Checking if mod loader is disabled");
+            match does_dir_contain(game_dir, Operation::All, &LOADER_FILES_DISABLED) {
+                Ok(true) => {
+                    info!("Found mod loader files in the disabled state");
+                    cfg = game_dir.join(LOADER_FILES[0]);
+                    disabled = true;
+                    true
                 }
+                Ok(false) => {
+                    error!("Mod Loader Files not found in selected path");
+                    cfg = PathBuf::new();
+                    disabled = false;
+                    false
+                }
+                Err(err) => return Err(err),
             }
-        },
+        }
         Err(err) => return Err(err),
     };
     Ok(ModLoader {
@@ -279,19 +275,17 @@ pub fn attempt_locate_game(file_name: &Path) -> Result<PathResult, ini::Error> {
     if let Some(path) = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
         .and_then(|ini_property| {
             match does_dir_contain(&ini_property.value, Operation::All, &REQUIRED_GAME_FILES) {
-                Ok(val) => match val {
-                    true => Some(ini_property.value),
-                    false => {
-                        error!(
-                            "{}",
-                            format!(
-                                "Required Game files not found in:\n\"{}\"",
-                                ini_property.value.display()
-                            )
-                        );
-                        None
-                    }
-                },
+                Ok(true) => Some(ini_property.value),
+                Ok(false) => {
+                    error!(
+                        "{}",
+                        format!(
+                            "Required Game files not found in:\n\"{}\"",
+                            ini_property.value.display()
+                        )
+                    );
+                    None
+                }
                 Err(err) => {
                     error!("Error: {err}");
                     None

@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -236,22 +236,39 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 };
+                let mut fresh_install = false;
                 let files = match shorten_paths(&file_paths, &game_dir) {
                     Ok(files) => files,
                     Err(err) => {
                         if file_paths.len() == err.err_paths_long.len() {
                             let ui_handle = ui.as_weak();
-                            install_mod(&mod_name, err.err_paths_long, &game_dir, ui_handle, receiver_clone.clone()).await;
+                            match install_mod(&mod_name, err.err_paths_long, &game_dir, ui_handle, receiver_clone.clone()).await {
+                                Ok(installed_files) => {
+                                    fresh_install = true;
+                                    match shorten_paths(&installed_files, &game_dir) {
+                                        Ok(installed_and_shortend) => installed_and_shortend,
+                                        Err(err) => {
+                                            let err_string = format!("New mod installed but ran into StripPrefixError on {:?}", err.err_paths_long);
+                                            error!("{err_string}");
+                                            ui.display_msg(&err_string);
+                                            return;
+                                        }
+                                    }
+                                },
+                                Err(err) => {
+                                    error!("{err}");
+                                    ui.display_msg(&err.to_string());
+                                    return;
+                                }
+                            }
                         } else {
                             error!("Encountered {} StripPrefixError on input files", err.err_paths_long.len());
                             ui.display_msg(&format!("Some selected files are already installed\n\nSelected Files Installed: {}\nSelected Files not installed: {}", err.ok_paths_short.len(), err.err_paths_long.len()));
                             return;
                         }
-                        // TODO: return install mod data here to continue fn
-                        Vec::new()
                     }
                 };
-                if file_registered(&registered_mods, &files) {
+                if !fresh_install && file_registered(&registered_mods, &files) {
                     ui.display_msg("A selected file is already registered to a mod");
                 } else {
                     let state = !files.iter().all(|file| {
@@ -337,53 +354,48 @@ fn main() -> Result<(), slint::PlatformError> {
                 info!("User Selected Path: \"{}\"", path.display());
                 let try_path: PathBuf = match does_dir_contain(&path, Operation::All, &["Game"])
                 {
-                    Ok(val) => match val {
-                        true => PathBuf::from(&format!("{}\\Game", path.display())),
-                        false => path, 
-                    }
+                    Ok(true) => PathBuf::from(&format!("{}\\Game", path.display())),
+                    Ok(false) => path, 
                     Err(err) => {
                         error!("{err}");
                         ui.display_msg(&err.to_string());
                         return;
                     }
-                    
                 };
                 match does_dir_contain(Path::new(&try_path), Operation::All, &REQUIRED_GAME_FILES) {
-                    Ok(val) => match val {
-                        true => {
-                            let result = save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path);
-                            if result.is_err() && save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path).is_err() {
-                                let err = result.unwrap_err();
-                                error!("Failed to save directory. {err}");
+                    Ok(true) => {
+                        let result = save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path);
+                        if result.is_err() && save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path).is_err() {
+                            let err = result.unwrap_err();
+                            error!("Failed to save directory. {err}");
+                            ui.display_msg(&err.to_string());
+                            return;
+                        };
+                        info!("Success: Files found, saved diretory");
+                        let mod_loader = match elden_mod_loader_properties(&try_path) {
+                            Ok(loader) => loader,
+                            Err(err) => {
+                                error!("{err}");
                                 ui.display_msg(&err.to_string());
                                 return;
-                            };
-                            info!("Success: Files found, saved diretory");
-                            let mod_loader = match elden_mod_loader_properties(&try_path) {
-                                Ok(loader) => loader,
-                                Err(err) => {
-                                    error!("{err}");
-                                    ui.display_msg(&err.to_string());
-                                    return;
-                                }
-                            };
-                            ui.global::<SettingsLogic>()
-                                .set_game_path(try_path.to_string_lossy().to_string().into());
-                            ui.global::<MainLogic>().set_game_path_valid(true);
-                            ui.global::<MainLogic>().set_current_subpage(0);
-                            ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed);
-                            ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled);
-                            if mod_loader.installed {
-                                ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!")
-                            } else {
-                                ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
                             }
+                        };
+                        ui.global::<SettingsLogic>()
+                            .set_game_path(try_path.to_string_lossy().to_string().into());
+                        ui.global::<MainLogic>().set_game_path_valid(true);
+                        ui.global::<MainLogic>().set_current_subpage(0);
+                        ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed);
+                        ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled);
+                        if mod_loader.installed {
+                            ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!")
+                        } else {
+                            ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
                         }
-                        false => {
-                            let err = format!("Required Game files not found in:\n\"{}\"", try_path.display());
-                            error!("{err}");
-                            ui.display_msg(&err);
-                        }
+                    }
+                    Ok(false) => {
+                        let err = format!("Required Game files not found in:\n\"{}\"", try_path.display());
+                        error!("{err}");
+                        ui.display_msg(&err);
                     }
                     Err(err) => {
                         match err.kind() {
@@ -880,7 +892,7 @@ async fn install_mod(
     game_dir: &Path,
     ui_weak: slint::Weak<App>,
     receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
-) {
+) -> std::io::Result<Vec<PathBuf>> {
     let ui = ui_weak.unwrap();
     let mod_name = name.trim();
     ui.display_confirm(
@@ -890,22 +902,19 @@ async fn install_mod(
         true,
     );
     if receive_msg(receiver.clone()).await != Message::Confirm {
-        return;
+        return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled");
     }
     match InstallData::new(mod_name, files, game_dir) {
         Ok(data) => add_dir_to_mod(data, ui_weak, receiver).await,
-        Err(err) => {
-            error!("{err}");
-            ui.display_msg(&err.to_string())
-        }
-    };
+        Err(err) => Err(err)
+    }
 }
 
 async fn add_dir_to_mod(
     mut install_files: InstallData,
     ui_weak: slint::Weak<App>,
     receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
-) {
+) -> std::io::Result<Vec<PathBuf>> {
     let ui = ui_weak.unwrap();
     ui.display_confirm(&format!(
         "Current Files to install:\n{}\n\nWould you like to add a directory eg. Folder containing a config file?", 
@@ -925,7 +934,7 @@ async fn add_dir_to_mod(
             Err(err) => result.push(Err(err)),
         },
         Message::Deny => (),
-        Message::Esc => return,
+        Message::Esc => return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled"),
     }
     match result.is_empty() {
         false => {
@@ -934,12 +943,12 @@ async fn add_dir_to_mod(
                 ui.display_msg(&format!("Error:\n\n{err}"));
                 let _ = receive_msg(receiver.clone()).await;
                 let future = async {
-                    add_dir_to_mod(install_files, ui_weak, receiver).await;
+                    add_dir_to_mod(install_files, ui_weak, receiver).await
                 };
                 let reselect_dir = Box::pin(future);
-                reselect_dir.await;
+                reselect_dir.await
             } else {
-                ui.display_msg(&format!("Error: Could not Install\n\n{err}"));
+                new_io_error!(ErrorKind::Other, format!("Error: Could not Install\n\n{err}"))
             }
         }
         true => confirm_install(install_files, ui_weak, receiver).await,
@@ -950,7 +959,7 @@ async fn confirm_install(
     mut install_files: InstallData,
     ui_weak: slint::Weak<App>,
     receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
-) {
+) -> std::io::Result<Vec<PathBuf>> {
     let ui = ui_weak.unwrap();
     ui.display_confirm(
         &format!(
@@ -962,22 +971,24 @@ async fn confirm_install(
         false,
     );
     if receive_msg(receiver.clone()).await != Message::Confirm {
-        return;
+        return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled");
     }
-    let _zip = match install_files.zip_from_to_paths() {
-        Ok(zip) => zip,
-        Err(err) => {
-            ui.display_msg(&err.to_string());
-            return;
+    let zip = install_files.zip_from_to_paths()?;
+    if zip.iter().any(|(_, to_path)| {
+        let existance = to_path.try_exists();
+        match existance {
+            Ok(true) => true,
+            Ok(false) => false,
+            Err(_) => true,
         }
+    }) {
+        return new_io_error!(ErrorKind::InvalidInput, format!("Could not install \"{}\".\nA selected file is already installed", install_files.name));
     };
-    dbg!(&install_files);
-    // TODO: Check that every file doesn't already exist in the game directory
-    //       long paths, long paths_new
-    
-    // TODO: Copy selected files and directories to game_dir
-    //       same as above
-    // TODO: pass along shortened paths to files
-    //       run shorten paths with &game_dir
-    eprintln!("install confirmed");
+    match zip.iter().max_by_key(|(_, to_path)| to_path.ancestors().count()).map(|(_, path)| path.parent()) {
+        Some(Some(path)) => std::fs::create_dir_all(path)?,
+        Some(None) => return new_io_error!(ErrorKind::InvalidData, "Failed to create a parent_dir"),
+        None => return new_io_error!(ErrorKind::BrokenPipe, "Failed to find the deepest to_dir"),
+    };
+    zip.iter().map(|(from_path, to_path)| std::fs::copy(from_path, to_path)).collect::<std::io::Result<Vec<u64>>>()?;
+    Ok(zip.iter().map(|(_, to_path)| to_path.to_path_buf()).collect::<Vec<_>>())
 }
