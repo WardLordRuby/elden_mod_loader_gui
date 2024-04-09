@@ -67,7 +67,7 @@ impl ValueType for PathBuf {
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> Result<Self, Self::ParseError> {
+    ) -> std::io::Result<Self> {
         let parsed_value = PathBuf::from(
             ini.get_from(section, key)
                 .expect("Validated by IniProperty::is_valid"),
@@ -78,12 +78,7 @@ impl ValueType for PathBuf {
             parsed_value.validate(ini, section, skip_validation)
         }
     }
-    fn validate(
-        self,
-        ini: &Ini,
-        section: Option<&str>,
-        disable: bool,
-    ) -> Result<Self, Self::ParseError> {
+    fn validate(self, ini: &Ini, section: Option<&str>, disable: bool) -> std::io::Result<Self> {
         if !disable {
             if section == Some("mod-files") {
                 let game_dir =
@@ -114,7 +109,7 @@ impl ValueType for Vec<PathBuf> {
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> Result<Self, Self::ParseError> {
+    ) -> std::io::Result<Self> {
         fn read_array(section: &Properties, key: &str) -> Vec<PathBuf> {
             section
                 .iter()
@@ -135,12 +130,7 @@ impl ValueType for Vec<PathBuf> {
             parsed_value.validate(ini, section, skip_validation)
         }
     }
-    fn validate(
-        self,
-        ini: &Ini,
-        _section: Option<&str>,
-        disable: bool,
-    ) -> Result<Self, Self::ParseError> {
+    fn validate(self, ini: &Ini, _section: Option<&str>, disable: bool) -> std::io::Result<Self> {
         if !disable {
             let game_dir = match IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
             {
@@ -161,7 +151,7 @@ impl ValueType for Vec<PathBuf> {
     }
 }
 
-fn validate_file(path: &Path) -> Result<(), std::io::Error> {
+fn validate_file(path: &Path) -> std::io::Result<()> {
     if path.extension().is_none() {
         let input_file = path.to_string_lossy().to_string();
         let split = input_file.rfind('\\').unwrap_or(0);
@@ -177,7 +167,7 @@ fn validate_file(path: &Path) -> Result<(), std::io::Error> {
     validate_existance(path)
 }
 
-fn validate_existance(path: &Path) -> Result<(), std::io::Error> {
+fn validate_existance(path: &Path) -> std::io::Result<()> {
     match path.try_exists() {
         Ok(result) => {
             if result {

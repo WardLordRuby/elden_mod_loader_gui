@@ -84,39 +84,42 @@ pub struct ModLoader {
     pub cfg: PathBuf,
 }
 
-pub fn elden_mod_loader_properties(game_dir: &Path) -> ModLoader {
+pub fn elden_mod_loader_properties(game_dir: &Path) -> std::io::Result<ModLoader> {
     let disabled: bool;
     let cfg: PathBuf;
-    let installed = match does_dir_contain(game_dir, &LOADER_FILES) {
-        Ok(_) => {
-            info!("Found mod loader files");
-            cfg = game_dir.join(LOADER_FILES[0]);
-            disabled = false;
-            true
-        }
-        Err(_) => {
-            warn!("Checking if mod loader is disabled");
-            match does_dir_contain(game_dir, &LOADER_FILES_DISABLED) {
-                Ok(_) => {
-                    info!("Found mod loader files in the disabled state");
-                    cfg = game_dir.join(LOADER_FILES[0]);
-                    disabled = true;
-                    true
-                }
-                Err(_) => {
-                    error!("Mod Loader Files not found in selected path");
-                    cfg = PathBuf::new();
-                    disabled = false;
-                    false
+    let installed = match does_dir_contain(game_dir, Operation::All, &LOADER_FILES) {
+        Ok(val) => match val {
+            true => {
+                info!("Found mod loader files");
+                cfg = game_dir.join(LOADER_FILES[0]);
+                disabled = false;
+                true
+            }
+            false => {
+                warn!("Checking if mod loader is disabled");
+                match does_dir_contain(game_dir, Operation::All, &LOADER_FILES_DISABLED) {
+                    Ok(_) => {
+                        info!("Found mod loader files in the disabled state");
+                        cfg = game_dir.join(LOADER_FILES[0]);
+                        disabled = true;
+                        true
+                    }
+                    Err(_) => {
+                        error!("Mod Loader Files not found in selected path");
+                        cfg = PathBuf::new();
+                        disabled = false;
+                        false
+                    }
                 }
             }
-        }
+        },
+        Err(err) => return Err(err),
     };
-    ModLoader {
+    Ok(ModLoader {
         installed,
         disabled,
         cfg,
-    }
+    })
 }
 
 pub fn toggle_files(
@@ -156,7 +159,7 @@ pub fn toggle_files(
         num_files: &usize,
         paths: &[PathBuf],
         new_paths: &[PathBuf],
-    ) -> Result<(), std::io::Error> {
+    ) -> std::io::Result<()> {
         if *num_files != paths.len() || *num_files != new_paths.len() {
             return new_io_error!(
                 ErrorKind::InvalidInput,
@@ -223,34 +226,28 @@ pub fn get_cfg(input_file: &Path) -> Result<Ini, ini::Error> {
     Ini::load_from_file_noescape(input_file)
 }
 
-pub fn does_dir_contain(path: &Path, list: &[&str]) -> Result<(), std::io::Error> {
-    match std::fs::read_dir(path) {
-        Ok(_) => {
-            let entries = std::fs::read_dir(path)?;
-            let file_names: Vec<_> = entries
-                .filter_map(|entry| entry.ok())
-                .map(|entry| String::from(entry.file_name().to_string_lossy()))
-                .collect();
+pub enum Operation {
+    All,
+    Any,
+}
 
-            let all_files_exist = list
-                .iter()
-                .all(|check_file| file_names.iter().any(|file_name| file_name == check_file));
+pub fn does_dir_contain(path: &Path, operation: Operation, list: &[&str]) -> std::io::Result<bool> {
+    let entries = std::fs::read_dir(path)?;
+    let file_names = entries
+        .map(|entry| Ok(entry?.file_name()))
+        .collect::<std::io::Result<Vec<std::ffi::OsString>>>();
 
-            if all_files_exist {
-                Ok(())
-            } else {
-                error!(
-                    "{}",
-                    format!("Failure: {list:?} not found in: \"{}\"", path.display(),)
-                );
-                new_io_error!(
-                    ErrorKind::NotFound,
-                    format!("Game files not found in selected path\n{}", path.display())
-                )
-            }
-        }
-        Err(err) => Err(err),
-    }
+    let file_names = file_names?;
+
+    let result = match operation {
+        Operation::All => list
+            .iter()
+            .all(|check_file| file_names.iter().any(|file_name| file_name == check_file)),
+        Operation::Any => list
+            .iter()
+            .any(|check_file| file_names.iter().any(|file_name| file_name == check_file)),
+    };
+    Ok(result)
 }
 
 pub enum PathResult {
@@ -278,8 +275,20 @@ pub fn attempt_locate_game(file_name: &Path) -> Result<PathResult, ini::Error> {
     };
     if let Some(path) = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
         .and_then(|ini_property| {
-            match does_dir_contain(&ini_property.value, &REQUIRED_GAME_FILES) {
-                Ok(_) => Some(ini_property.value),
+            match does_dir_contain(&ini_property.value, Operation::All, &REQUIRED_GAME_FILES) {
+                Ok(val) => match val {
+                    true => Some(ini_property.value),
+                    false => {
+                        error!(
+                            "{}",
+                            format!(
+                                "Required Game files not found in:\n\"{}\"",
+                                ini_property.value.display()
+                            )
+                        );
+                        None
+                    }
+                },
                 Err(err) => {
                     error!("Error: {err}");
                     None
@@ -291,7 +300,7 @@ pub fn attempt_locate_game(file_name: &Path) -> Result<PathResult, ini::Error> {
         return Ok(PathResult::Full(path));
     }
     let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
-    if does_dir_contain(&try_locate, &REQUIRED_GAME_FILES).is_ok() {
+    if does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES).unwrap_or(false) {
         info!("Success: located \"game_dir\" on drive");
         save_path(file_name, Some("paths"), "game_dir", try_locate.as_path())?;
         return Ok(PathResult::Full(try_locate));

@@ -146,7 +146,7 @@ fn main() -> Result<(), slint::PlatformError> {
             mod_loader = ModLoader::default();
         } else {
             let game_dir = game_dir.expect("game dir verified");
-            mod_loader = elden_mod_loader_properties(&game_dir);
+            mod_loader = elden_mod_loader_properties(&game_dir).unwrap_or_default();
             ui.global::<SettingsLogic>()
                 .set_loader_disabled(mod_loader.disabled);
             if mod_loader.installed {
@@ -335,33 +335,54 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 };
                 info!("User Selected Path: \"{}\"", path.display());
-                let try_path: PathBuf = if does_dir_contain(&path, &["Game"]).is_ok()
+                let try_path: PathBuf = match does_dir_contain(&path, Operation::All, &["Game"])
                 {
-                    PathBuf::from(&format!("{}\\Game", path.display()))
-                } else {
-                    path
+                    Ok(val) => match val {
+                        true => PathBuf::from(&format!("{}\\Game", path.display())),
+                        false => path, 
+                    }
+                    Err(err) => {
+                        error!("{err}");
+                        ui.display_msg(&err.to_string());
+                        return;
+                    }
+                    
                 };
-                match does_dir_contain(Path::new(&try_path), &REQUIRED_GAME_FILES) {
-                    Ok(_) => {
-                        let result = save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path);
-                        if result.is_err() && save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path).is_err() {
-                            let err = result.unwrap_err();
-                            error!("Failed to save directory. {err}");
-                            ui.display_msg(&err.to_string());
-                            return;
-                        };
-                        info!("Success: Files found, saved diretory");
-                        let mod_loader = elden_mod_loader_properties(&try_path);
-                        ui.global::<SettingsLogic>()
-                            .set_game_path(try_path.to_string_lossy().to_string().into());
-                        ui.global::<MainLogic>().set_game_path_valid(true);
-                        ui.global::<MainLogic>().set_current_subpage(0);
-                        ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed);
-                        ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled);
-                        if mod_loader.installed {
-                            ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!")
-                        } else {
-                            ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
+                match does_dir_contain(Path::new(&try_path), Operation::All, &REQUIRED_GAME_FILES) {
+                    Ok(val) => match val {
+                        true => {
+                            let result = save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path);
+                            if result.is_err() && save_path(&CURRENT_INI, Some("paths"), "game_dir", &try_path).is_err() {
+                                let err = result.unwrap_err();
+                                error!("Failed to save directory. {err}");
+                                ui.display_msg(&err.to_string());
+                                return;
+                            };
+                            info!("Success: Files found, saved diretory");
+                            let mod_loader = match elden_mod_loader_properties(&try_path) {
+                                Ok(loader) => loader,
+                                Err(err) => {
+                                    error!("{err}");
+                                    ui.display_msg(&err.to_string());
+                                    return;
+                                }
+                            };
+                            ui.global::<SettingsLogic>()
+                                .set_game_path(try_path.to_string_lossy().to_string().into());
+                            ui.global::<MainLogic>().set_game_path_valid(true);
+                            ui.global::<MainLogic>().set_current_subpage(0);
+                            ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed);
+                            ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled);
+                            if mod_loader.installed {
+                                ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!")
+                            } else {
+                                ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
+                            }
+                        }
+                        false => {
+                            let err = format!("Required Game files not found in:\n\"{}\"", try_path.display());
+                            error!("{err}");
+                            ui.display_msg(&err);
                         }
                     }
                     Err(err) => {
@@ -737,7 +758,7 @@ impl App {
     }
 }
 
-pub struct MessageData {
+struct MessageData {
     message: Message,
     key: u32,
 }
@@ -901,11 +922,7 @@ async fn add_dir_to_mod(
                         result.push(Err(err));
                     });
             }
-            Err(err) => {
-                if err.kind() == ErrorKind::Other {
-                    result.push(Err(err))
-                }
-            }
+            Err(err) => result.push(Err(err)),
         },
         Message::Deny => (),
         Message::Esc => return,
@@ -957,6 +974,7 @@ async fn confirm_install(
     dbg!(&install_files);
     // TODO: Check that every file doesn't already exist in the game directory
     //       long paths, long paths_new
+    
     // TODO: Copy selected files and directories to game_dir
     //       same as above
     // TODO: pass along shortened paths to files

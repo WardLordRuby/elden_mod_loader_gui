@@ -5,9 +5,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::new_io_error;
+use crate::{does_dir_contain, new_io_error};
 
-fn get_parent_dir(input: &Path) -> Result<PathBuf, std::io::Error> {
+fn get_parent_dir(input: &Path) -> std::io::Result<PathBuf> {
     match input.metadata() {
         Ok(data) => {
             if data.is_dir() {
@@ -29,7 +29,7 @@ fn get_parent_dir(input: &Path) -> Result<PathBuf, std::io::Error> {
     }
 }
 
-fn check_dir_contains_files(path: &Path) -> Result<PathBuf, std::io::Error> {
+fn check_dir_contains_files(path: &Path) -> std::io::Result<PathBuf> {
     let num_of_dirs = items_in_directory(path, FileType::Dir)?;
     if files_in_directory_tree(path)? == 0 {
         return new_io_error!(
@@ -65,7 +65,7 @@ enum FileType {
     Any,
 }
 
-fn items_in_directory(path: &Path, f_type: FileType) -> Result<usize, std::io::Error> {
+fn items_in_directory(path: &Path, f_type: FileType) -> std::io::Result<usize> {
     let mut count = 0;
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
@@ -91,7 +91,7 @@ fn items_in_directory(path: &Path, f_type: FileType) -> Result<usize, std::io::E
     Ok(count)
 }
 
-fn files_in_directory_tree(directory: &Path) -> Result<usize, std::io::Error> {
+fn files_in_directory_tree(directory: &Path) -> std::io::Result<usize> {
     fn count_loop(count: &mut usize, path: &Path) -> Result<(), std::io::Error> {
         for entry in std::fs::read_dir(path)? {
             let entry = entry?;
@@ -112,23 +112,17 @@ fn files_in_directory_tree(directory: &Path) -> Result<usize, std::io::Error> {
     Ok(count)
 }
 
-fn contains_dir_with_name(path: &Path, name: &str) -> Result<bool, std::io::Error> {
-    Ok(std::fs::read_dir(path)?
-        .filter_map(|e| e.ok())
-        .any(|dir| dir.file_name() == name))
-}
-
-fn next_dir(path: &Path) -> Result<PathBuf, std::io::Error> {
+fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
             return Ok(entry.path());
         }
     }
-    new_io_error!(ErrorKind::InvalidData, "No files in the selected directory")
+    new_io_error!(ErrorKind::InvalidData, "No dir in the selected directory")
 }
 
-fn parent_or_err(path: &Path) -> Result<&Path, std::io::Error> {
+fn parent_or_err(path: &Path) -> std::io::Result<&Path> {
     match path.parent() {
         Some(parent) => Ok(parent),
         None => new_io_error!(ErrorKind::InvalidData, "Could not get parent_dir"),
@@ -146,11 +140,7 @@ pub struct InstallData {
 }
 
 impl InstallData {
-    pub fn new(
-        name: &str,
-        file_paths: Vec<PathBuf>,
-        game_dir: &Path,
-    ) -> Result<Self, std::io::Error> {
+    pub fn new(name: &str, file_paths: Vec<PathBuf>, game_dir: &Path) -> std::io::Result<Self> {
         let parent_dir = match file_paths
             .iter()
             .min_by_key(|path| path.ancestors().count())
@@ -182,7 +172,7 @@ impl InstallData {
         name: &str,
         install_dir: PathBuf,
         new_directory: &Path,
-    ) -> Result<Self, std::io::Error> {
+    ) -> std::io::Result<Self> {
         Ok(InstallData {
             name: String::from(name),
             from_paths: Vec::new(),
@@ -202,7 +192,7 @@ impl InstallData {
         )
     }
 
-    pub fn zip_from_to_paths(&mut self) -> Result<Vec<(&Path, &Path)>, std::io::Error> {
+    pub fn zip_from_to_paths(&mut self) -> std::io::Result<Vec<(&Path, &Path)>> {
         if self.from_paths.len() != self.to_paths.len() {
             self.collect_to_paths();
         };
@@ -221,14 +211,14 @@ impl InstallData {
         &mut self,
         new_directory: &Path,
         cutoff: Option<usize>,
-    ) -> Result<(), std::io::Error> {
+    ) -> std::io::Result<()> {
         fn format_entries(
             outer_self: &mut InstallData,
             output: &mut Vec<String>,
             directory: &Path,
             cutoff: &mut Option<(usize, usize, usize)>,
             cutoff_reached: &mut bool,
-        ) -> Result<(), std::io::Error> {
+        ) -> std::io::Result<()> {
             for entry in std::fs::read_dir(directory)? {
                 let entry = entry?;
                 let path = entry.path();
@@ -274,7 +264,7 @@ impl InstallData {
         let cutoff_arc = Arc::new(cutoff);
         let jh = std::thread::spawn(move || -> Result<(), std::io::Error> {
             let valid_dir = check_dir_contains_files(&new_directory_arc)?;
-            if contains_dir_with_name(&valid_dir, "mods")? {
+            if does_dir_contain(&valid_dir, crate::Operation::All, &["mods"])? {
                 return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
             }
             let mut self_mutex = self_mutex_clone.lock().unwrap();
