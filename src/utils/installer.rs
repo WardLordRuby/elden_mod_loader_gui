@@ -368,29 +368,30 @@ pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<(
         }
     };
 
-    let mut parent_dirs = parent_dirs
+    let parent_dirs = parent_dirs
         .iter()
-        .filter(|&&dir| !dir.ends_with("mods") && !dir.ends_with(game_dir_parent_name))
+        .filter(|dir| !dir.ends_with("mods") && !dir.ends_with(game_dir_parent_name))
         .copied()
         .collect::<HashSet<_>>();
     let base_ancestor_count = game_dir.ancestors().count() + 1;
     let mut skip_names = vec![std::ffi::OsStr::new("mods")];
-    for entry in parent_dirs.clone() {
+    let mut missed_paths = Vec::new();
+    for entry in &parent_dirs {
         if entry.ancestors().count() > base_ancestor_count && !entry.ends_with("mods") {
             let parent = entry.parent().expect("verified to exist");
             let name = parent.file_name().expect("verified to exist");
-            if skip_names.iter().any(|name| parent.ends_with(name)) {
+            if skip_names.iter().any(|skip| parent.ends_with(skip)) {
                 continue;
             }
             if !parent_dirs.iter().any(|path| path.ends_with(name)) {
-                parent_dirs.insert(parent);
+                missed_paths.push(parent);
                 skip_names.push(name);
             }
         }
     }
     let mut parent_dirs = parent_dirs.into_iter().collect::<Vec<_>>();
+    parent_dirs.extend(missed_paths);
     parent_dirs.sort_by_key(|path| path.ancestors().count());
-    dbg!(&parent_dirs);
 
     remove_files.iter().try_for_each(std::fs::remove_file)?;
 
