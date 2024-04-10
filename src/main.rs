@@ -8,7 +8,7 @@ use elden_mod_loader_gui::{
             parser::{file_registered, IniProperty, RegMod, Valitidity},
             writer::*,
         },
-        installer::InstallData,
+        installer::{remove_mod_files, InstallData}
     },
     *,
 };
@@ -16,14 +16,10 @@ use i_slint_backend_winit::WinitWindowAccessor;
 use log::{error, info, warn};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{
-    ffi::OsStr,
-    io::ErrorKind,
-    path::{Path, PathBuf},
-    rc::Rc,
-    sync::{
+    ffi::OsStr, io::ErrorKind, path::{Path, PathBuf}, rc::Rc, sync::{
         atomic::{AtomicU32, Ordering},
         Arc,
-    },
+    }
 };
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver},
@@ -226,7 +222,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
             let game_dir_arc = Arc::from(game_dir.as_path());
-            let receiver_clone = receiver_clone.clone();
+            let receiver = receiver_clone.clone();
             slint::spawn_local(async move {
                 let file_paths = match get_user_files(&game_dir_arc) {
                     Ok(files) => files,
@@ -241,7 +237,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     Err(err) => {
                         if file_paths.len() == err.err_paths_long.len() {
                             let ui_handle = ui.as_weak();
-                            match install_mod(&mod_name, err.err_paths_long, &game_dir, ui_handle, receiver_clone.clone()).await {
+                            match install_mod(&mod_name, err.err_paths_long, &game_dir, ui_handle, receiver).await {
                                 Ok(installed_files) => {
                                     match shorten_paths(&installed_files, &game_dir) {
                                         Ok(installed_and_shortend) => installed_and_shortend,
@@ -560,36 +556,52 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = ui_handle.unwrap();
             let format_key = key.replace(' ', "_");
             ui.display_confirm(&format!("Are you sure you want to de-register: \"{key}\""), false);
-            let receiver_clone = receiver_clone.clone();
+            let receiver = receiver_clone.clone();
             slint::spawn_local(async move {
-                if receive_msg(receiver_clone).await != Message::Confirm {
+                if receive_msg(receiver.clone()).await != Message::Confirm {
                     return
                 }
-                match RegMod::collect(&CURRENT_INI, false) {
-                    Ok(reg_mods) => {
-                        let game_dir =
-                            PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-                        if let Some(found_mod) =
-                            reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
-                        {
-                            if found_mod.files.iter().any(|file| {
-                                file.extension().expect("file with extention") == "disabled"
-                            }) {
-                                if let Err(err) = toggle_files(&game_dir, true, found_mod, Some(&CURRENT_INI)) {
-                                    ui.display_msg(&format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}"));
-                                    return;
-                                }
-                            }
-                            remove_entry(&CURRENT_INI, Some("registered-mods"), &found_mod.name)
-                                .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-                            // we can let sync keys take care of removing files from ini
-                        } else {
-                            let err = &format!("Mod: \"{key}\" not found");
-                            error!("{err}");
-                            ui.display_msg(&format!("{err}\nRemoving invalid entries"))
-                        };
+                let reg_mods = match RegMod::collect(&CURRENT_INI, false) {
+                    Ok(reg_mods) => reg_mods,
+                    Err(err) => {
+                        ui.display_msg(&err.to_string());
+                        return;
                     }
-                    Err(err) => ui.display_msg(&err.to_string()),
+                        
+                };
+                let game_dir =
+                    PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
+                if let Some(found_mod) =
+                    reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
+                {
+                    let mut found_files = found_mod.files.clone();
+                    if found_files.iter().any(|file| {
+                        file.extension().expect("file with extention") == "disabled"
+                    }) {
+                        match toggle_files(&game_dir, true, found_mod, Some(&CURRENT_INI)) {
+                            Ok(files) => found_files = files,
+                            Err(err) => {
+                                ui.display_msg(&format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}"));
+                                return;
+                            }
+                        }
+                    }
+                    // we can let sync keys take care of removing files from ini
+                    remove_entry(&CURRENT_INI, Some("registered-mods"), &found_mod.name)
+                        .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                    let file_refs = found_mod.add_other_files_to_files(&found_files);
+                    let ui_handle = ui.as_weak();
+                    match confirm_remove_mod(ui_handle, receiver, &game_dir, file_refs).await {
+                        Ok(_) => ui.display_msg(&format!("Successfully removed all files associated with the previously registered mod \"{key}\"")),
+                        Err(err) => {
+                            error!("{err}");
+                            ui.display_msg(&err.to_string())
+                        }
+                    }
+                } else {
+                    let err = &format!("Mod: \"{key}\" not found");
+                    error!("{err}");
+                    ui.display_msg(&format!("{err}\nRemoving invalid entries"))
                 };
                 ui.global::<MainLogic>().set_current_subpage(0);
                 ui.global::<MainLogic>().set_current_mods(deserialize(
@@ -964,4 +976,24 @@ async fn confirm_install(
     zip.iter().try_for_each(|(from_path, to_path)| std::fs::copy(from_path, to_path).map(|_| ()))?;
     ui.display_msg(&format!("Successfully Installed mod \"{}\"", &install_files.name));
     Ok(zip.iter().map(|(_, to_path)| to_path.to_path_buf()).collect::<Vec<_>>())
+}
+
+async fn confirm_remove_mod(
+    ui_weak: slint::Weak<App>,
+    receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
+    game_dir: &Path, files: Vec<&Path>) -> std::io::Result<()> {
+    let ui = ui_weak.unwrap();
+    let install_dir = match files.iter().min_by_key(|file| file.ancestors().count()) {
+        Some(path) => parent_or_err(path)?,
+        None => return new_io_error!(ErrorKind::Other, "Failed to create a parent_dir"),
+    };
+    ui.display_confirm("Do you want to remove mod files from the game directory?", true);
+    if receive_msg(receiver.clone()).await != Message::Confirm {
+        return new_io_error!(ErrorKind::ConnectionAborted, format!("Mod files are still installed at \"{}\"", install_dir.display()));
+    };
+    ui.display_confirm("This is a distructive action. Are you sure you want to continue?", false);
+    if receive_msg(receiver).await != Message::Confirm {
+        return new_io_error!(ErrorKind::ConnectionAborted, format!("Mod files are still installed at \"{}\"", install_dir.display()));
+    };
+    remove_mod_files(game_dir, files)
 }

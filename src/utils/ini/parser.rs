@@ -169,15 +169,12 @@ fn validate_file(path: &Path) -> std::io::Result<()> {
 
 fn validate_existance(path: &Path) -> std::io::Result<()> {
     match path.try_exists() {
-        Ok(result) => {
-            if result {
-                Ok(())
-            } else {
-                new_io_error!(
-                    ErrorKind::NotFound,
-                    format!("Path: \"{}\" can not be found on machine", path.display())
-                )
-            }
+        Ok(true) => Ok(()),
+        Ok(false) => {
+            new_io_error!(
+                ErrorKind::NotFound,
+                format!("Path: \"{}\" can not be found on machine", path.display())
+            )
         }
         Err(_) => new_io_error!(
             ErrorKind::PermissionDenied,
@@ -468,7 +465,7 @@ impl RegMod {
                 "wrong file state for \"{}\" chaning file extentions",
                 self.name
             );
-            toggle_files(game_dir, self.state, self, Some(ini_file))?
+            toggle_files(game_dir, self.state, self, Some(ini_file)).map(|_| ())?
         }
         Ok(())
     }

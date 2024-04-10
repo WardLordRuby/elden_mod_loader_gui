@@ -1,5 +1,6 @@
 use log::trace;
 use std::{
+    collections::HashSet,
     io::ErrorKind,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -55,7 +56,6 @@ fn check_dir_contains_files(path: &Path) -> std::io::Result<PathBuf> {
     new_io_error!(ErrorKind::InvalidData, "Unsuported file type")
 }
 
-#[allow(dead_code)]
 enum FileType {
     File,
     Dir,
@@ -338,4 +338,69 @@ impl InstallData {
             ),
         }
     }
+}
+
+pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<()> {
+    let remove_files = files.iter().map(|f| game_dir.join(f)).collect::<Vec<_>>();
+
+    if remove_files.iter().any(|file| match file.try_exists() {
+        Ok(true) => false,
+        Ok(false) => true,
+        Err(_) => true,
+    }) {
+        return new_io_error!(
+            ErrorKind::InvalidInput,
+            "Could not confirm existance of all files to remove"
+        );
+    };
+
+    let parent_dirs = remove_files
+        .iter()
+        .map(|path| parent_or_err(path))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    let game_dir_parent_name = match parent_or_err(game_dir)?.file_name() {
+        Some(name) => name,
+        None => {
+            return new_io_error!(
+                ErrorKind::InvalidData,
+                "Could not get the name of the game_dirs parent"
+            )
+        }
+    };
+
+    let mut parent_dirs = parent_dirs
+        .iter()
+        .filter(|&&dir| !dir.ends_with("mods") && !dir.ends_with(game_dir_parent_name))
+        .copied()
+        .collect::<HashSet<_>>();
+    let base_ancestor_count = game_dir.ancestors().count() + 1;
+    let mut skip_names = vec![std::ffi::OsStr::new("mods")];
+    for entry in parent_dirs.clone() {
+        if entry.ancestors().count() > base_ancestor_count && !entry.ends_with("mods") {
+            let parent = entry.parent().expect("verified to exist");
+            let name = parent.file_name().expect("verified to exist");
+            if skip_names.iter().any(|name| parent.ends_with(name)) {
+                continue;
+            }
+            if !parent_dirs.iter().any(|path| path.ends_with(name)) {
+                parent_dirs.insert(parent);
+                skip_names.push(name);
+            }
+        }
+    }
+    let mut parent_dirs = parent_dirs.into_iter().collect::<Vec<_>>();
+    parent_dirs.sort_by_key(|path| path.ancestors().count());
+    dbg!(&parent_dirs);
+
+    remove_files.iter().try_for_each(std::fs::remove_file)?;
+
+    parent_dirs.iter().rev().try_for_each(|dir| {
+        if items_in_directory(dir, FileType::Any)? == 0 {
+            std::fs::remove_dir(dir)
+        } else {
+            Ok(())
+        }
+    })?;
+
+    Ok(())
 }

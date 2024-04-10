@@ -126,7 +126,7 @@ pub fn toggle_files(
     new_state: bool,
     reg_mod: &RegMod,
     save_file: Option<&Path>,
-) -> Result<(), ini::Error> {
+) -> Result<Vec<PathBuf>, ini::Error> {
     /// Takes in a potential pathBuf, finds file_name name and outputs the new_state version
     fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
         file_paths
@@ -218,7 +218,7 @@ pub fn toggle_files(
             save_file.expect("is some"),
         )?;
     }
-    Ok(())
+    Ok(short_path_new)
 }
 
 pub fn get_cfg(input_file: &Path) -> Result<Ini, ini::Error> {
