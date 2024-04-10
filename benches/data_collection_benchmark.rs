@@ -18,10 +18,11 @@ fn populate_non_valid_ini(len: u32, file: &Path) {
         let key = format!("key_{}", i);
         let bool_value = rand::thread_rng().gen_bool(0.5);
         let paths = generate_test_paths();
+        let path_refs = paths.iter().map(|p| p.as_path()).collect::<Vec<_>>();
 
         save_bool(&BENCH_TEST_FILE, Some("registered-mods"), &key, bool_value).unwrap();
         if paths.len() > 1 {
-            save_path_bufs(&BENCH_TEST_FILE, &key, &paths).unwrap();
+            save_path_bufs(&BENCH_TEST_FILE, &key, &path_refs).unwrap();
         } else {
             save_path(
                 &BENCH_TEST_FILE,

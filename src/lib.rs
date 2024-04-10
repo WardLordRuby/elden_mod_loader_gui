@@ -176,13 +176,13 @@ pub fn toggle_files(
     }
     fn update_cfg(
         num_file: &usize,
-        path_to_save: &[PathBuf],
+        path_to_save: &[&Path],
         state: bool,
         key: &str,
         save_file: &Path,
     ) -> Result<(), ini::Error> {
         if *num_file == 1 {
-            save_path(save_file, Some("mod-files"), key, &path_to_save[0])?;
+            save_path(save_file, Some("mod-files"), key, path_to_save[0])?;
         } else {
             remove_array(save_file, key)?;
             save_path_bufs(save_file, key, path_to_save)?;
@@ -191,7 +191,7 @@ pub fn toggle_files(
         Ok(())
     }
     let num_rename_files = reg_mod.files.len();
-    let num_total_files = num_rename_files + reg_mod.config_files.len() + reg_mod.other_files.len();
+    let num_total_files = num_rename_files + reg_mod.other_files_len();
 
     let file_paths = std::sync::Arc::new(reg_mod.files.clone());
     let file_paths_clone = file_paths.clone();
@@ -202,18 +202,17 @@ pub fn toggle_files(
     let original_full_paths_thread =
         std::thread::spawn(move || join_paths(&game_dir_clone, &file_paths_clone));
 
-    let mut short_path_new = new_short_paths_thread.join().unwrap_or(Vec::new());
+    let short_path_new = new_short_paths_thread.join().unwrap_or(Vec::new());
+    let all_short_paths = reg_mod.add_other_files_to_files(&short_path_new);
     let full_path_new = join_paths(Path::new(game_dir), &short_path_new);
     let full_path_original = original_full_paths_thread.join().unwrap_or(Vec::new());
-    short_path_new.extend(reg_mod.config_files.iter().cloned());
-    short_path_new.extend(reg_mod.other_files.iter().cloned());
 
     rename_files(&num_rename_files, &full_path_original, &full_path_new)?;
 
     if save_file.is_some() {
         update_cfg(
             &num_total_files,
-            &short_path_new,
+            &all_short_paths,
             new_state,
             &reg_mod.name,
             save_file.expect("is some"),

@@ -79,8 +79,8 @@ mod tests {
         let mod_2_key = "Skip The Intro";
         let mod_2_state = true;
         let mod_1 = vec![
-            PathBuf::from("mods\\UnlockTheFps.dll"),
-            PathBuf::from("mods\\UnlockTheFps\\config.ini"),
+            Path::new("mods\\UnlockTheFps.dll"),
+            Path::new("mods\\UnlockTheFps\\config.ini"),
         ];
         let mod_2 = PathBuf::from("mods\\SkipTheIntro.dll");
 
@@ -90,8 +90,8 @@ mod tests {
             assert!(get_cfg(test_file).unwrap().is_setup());
 
             let invalid_format_1 = vec![
-                PathBuf::from("mods\\UnlockTheFps.dll"),
-                PathBuf::from("mods\\UnlockTheFps\\config.ini"),
+                Path::new("mods\\UnlockTheFps.dll"),
+                Path::new("mods\\UnlockTheFps\\config.ini"),
             ];
             let invalid_format_2 = PathBuf::from("mods\\SkipTheIntro.dll");
 

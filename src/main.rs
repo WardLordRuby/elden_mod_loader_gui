@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -109,13 +109,13 @@ fn main() -> Result<(), slint::PlatformError> {
         match IniProperty::<bool>::read(
             &get_cfg(&CURRENT_INI).expect("ini file is verified"),
             Some("app-settings"),
-            "dark-mode",
+            "dark_mode",
             false,
         ) {
             Some(bool) => ui.global::<SettingsLogic>().set_dark_mode(bool.value),
             None => {
                 ui.global::<SettingsLogic>().set_dark_mode(true);
-                save_bool(&CURRENT_INI, Some("app-settings"), "dark-mode", true)
+                save_bool(&CURRENT_INI, Some("app-settings"), "dark_mode", true)
                     .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
             }
         };
@@ -286,7 +286,10 @@ fn main() -> Result<(), slint::PlatformError> {
                             &format_key,
                             files[0].as_path(),
                         )),
-                        2.. => results.push(save_path_bufs(&CURRENT_INI, &format_key, &files)),
+                        2.. => {
+                            let path_refs = files.iter().map(|p| p.as_path()).collect::<Vec<_>>();
+                            results.push(save_path_bufs(&CURRENT_INI, &format_key, &path_refs))
+                        },
                     }
                     if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
                         ui.display_msg(&err.to_string());
@@ -493,10 +496,8 @@ fn main() -> Result<(), slint::PlatformError> {
                         let mut new_data = found_mod.files.clone();
                         new_data.extend(files);
                         let mut results = Vec::with_capacity(2);
-                        if !found_mod.config_files.is_empty() {
-                            new_data.extend(found_mod.config_files.iter().cloned());
-                        }
-                        if found_mod.files.len() + found_mod.config_files.len() == 1 {
+                        let new_data_refs = found_mod.add_other_files_to_files(&new_data);
+                        if found_mod.files.len() + found_mod.other_files_len() == 1 {
                             results.push(remove_entry(
                                 &CURRENT_INI,
                                 Some("mod-files"),
@@ -505,7 +506,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         } else {
                             results.push(remove_array(&CURRENT_INI, &found_mod.name));
                         }
-                        results.push(save_path_bufs(&CURRENT_INI, &found_mod.name, &new_data));
+                        results.push(save_path_bufs(&CURRENT_INI, &found_mod.name, &new_data_refs));
                         if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
                             ui.display_msg(&err.to_string());
                             let _ = remove_entry(
@@ -514,7 +515,8 @@ fn main() -> Result<(), slint::PlatformError> {
                                 &format_key_arc,
                             );
                         }
-                        let updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data.clone());
+                        let new_data_owned = new_data_refs.iter().map(PathBuf::from).collect();
+                        let updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data_owned);
                         
                         updated_mod
                             .verify_state(&game_dir_arc, &CURRENT_INI)
@@ -608,7 +610,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |state| {
             let ui = ui_handle.unwrap();
-            save_bool(&CURRENT_INI, Some("app-settings"), "dark-mode", state).unwrap_or_else(
+            save_bool(&CURRENT_INI, Some("app-settings"), "dark_mode", state).unwrap_or_else(
                 |err| ui.display_msg(&format!("Failed to save theme preference\n\n{err}")),
             );
         }

@@ -3,7 +3,7 @@ use ini::{EscapePolicy, Ini, LineSeparator, WriteOption};
 use std::{
     fs::{self, read_to_string, write, File},
     io::{ErrorKind, Write},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use crate::{get_cfg, parent_or_err};
@@ -33,7 +33,7 @@ macro_rules! new_io_error {
     };
 }
 
-pub fn save_path_bufs(file_name: &Path, key: &str, files: &[PathBuf]) -> Result<(), ini::Error> {
+pub fn save_path_bufs(file_name: &Path, key: &str, files: &[&Path]) -> Result<(), ini::Error> {
     let mut config: Ini = get_cfg(file_name)?;
     let save_paths = files
         .iter()

@@ -472,14 +472,33 @@ impl RegMod {
         }
         Ok(())
     }
+    fn file_refs(&self) -> Vec<&Path> {
+        let mut path_refs =
+            Vec::with_capacity(self.files.len() + self.config_files.len() + self.other_files.len());
+        path_refs.extend(self.files.iter().map(|f| f.as_path()));
+        path_refs.extend(self.config_files.iter().map(|f| f.as_path()));
+        path_refs.extend(self.other_files.iter().map(|f| f.as_path()));
+        path_refs
+    }
+    pub fn add_other_files_to_files<'a>(&'a self, files: &'a [PathBuf]) -> Vec<&'a Path> {
+        let mut path_refs =
+            Vec::with_capacity(files.len() + self.config_files.len() + self.other_files.len());
+        path_refs.extend(files.iter().map(|f| f.as_path()));
+        path_refs.extend(self.config_files.iter().map(|f| f.as_path()));
+        path_refs.extend(self.other_files.iter().map(|f| f.as_path()));
+        path_refs
+    }
+    pub fn other_files_len(&self) -> usize {
+        self.config_files.len() + self.other_files.len()
+    }
 }
 pub fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
     files.iter().any(|path| {
         mod_data.iter().any(|registered_mod| {
-            let mut files = registered_mod.files.clone();
-            files.extend(registered_mod.config_files.iter().cloned());
-            files.extend(registered_mod.other_files.iter().cloned());
-            files.iter().any(|mod_file| path == mod_file)
+            registered_mod
+                .file_refs()
+                .iter()
+                .any(|mod_file| path == mod_file)
         })
     })
 }
