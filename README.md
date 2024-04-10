@@ -29,6 +29,7 @@ the files to the game directory. If you move the app you will have to move the c
 
 ## Features  
 
+* Option to uninstall after de-registering a mod from within the app (v0.9.3 feat)  
 * Install mods inside the app! (v0.9.3 feat)  
 * Easily open game directory with windows explorer  
 * Edit load_delay time and show_terminal in settings 
@@ -43,7 +44,6 @@ the files to the game directory. If you move the app you will have to move the c
 
 ##### To be added:  
 
-* Confirmation to uninstall or de-register a mod from within the app (v0.9.3 feat)  
 * Auto import already installed mods on initial app open (v0.9.3 feat)  
 * Dump logs to file on app crash (v0.9.35 feat)  
 * Interface to set the load order of each mod registered with the app  (v0.9.4 feat)  
