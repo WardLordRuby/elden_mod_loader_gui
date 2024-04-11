@@ -8,7 +8,7 @@ use elden_mod_loader_gui::{
             parser::{file_registered, IniProperty, RegMod, Valitidity},
             writer::*,
         },
-        installer::{remove_mod_files, InstallData}
+        installer::{remove_mod_files, InstallData, scan_for_mods}
     },
     *,
 };
@@ -47,7 +47,10 @@ fn main() -> Result<(), slint::PlatformError> {
             window.set_enabled_buttons(
                 winit::window::WindowButtons::CLOSE | winit::window::WindowButtons::MINIMIZE,
             );
-        });
+        }
+    );
+    let (message_sender, message_receiver) = unbounded_channel::<MessageData>();
+    let receiver = Arc::new(Mutex::new(message_receiver));
     {
         let first_startup: bool;
         let ini_valid = match get_cfg(&CURRENT_INI) {
@@ -141,7 +144,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             mod_loader = ModLoader::default();
         } else {
-            let game_dir = game_dir.expect("game dir verified");
+            let game_dir = game_dir.clone().expect("game dir verified");
             mod_loader = elden_mod_loader_properties(&game_dir).unwrap_or_default();
             ui.global::<SettingsLogic>()
                 .set_loader_disabled(mod_loader.disabled);
@@ -184,12 +187,32 @@ fn main() -> Result<(), slint::PlatformError> {
             } else if game_verified && !mod_loader.installed {
                 ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
             } else if game_verified {
-                ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
+                let receiver_clone = receiver.clone();
+                let ui_handle = ui.as_weak();
+                slint::spawn_local(async move {
+                    let ui = ui_handle.unwrap();
+                    let ui_handle = ui.as_weak();
+                    match confirm_scan_mods(ui_handle, receiver_clone.clone(), &game_dir.expect("game verified"), &CURRENT_INI).await {
+                        Ok(len) => {
+                            ui.global::<MainLogic>().set_current_mods(deserialize(
+                                &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
+                                    ui.display_msg(&err.to_string());
+                                    vec![RegMod::default()]
+                                }),
+                            ));
+                            ui.display_msg(&format!("Successfully Found {len} mod(s)"));
+                            let _ = receive_msg(receiver_clone).await;
+                        }
+                        Err(err) => {
+                            ui.display_msg(&format!("Error searching for mods: {err}"));
+                            let _ = receive_msg(receiver_clone).await;
+                        }
+                    };
+                    ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
+                }).unwrap();
             }
         }
     }
-    let (message_sender, message_receiver) = unbounded_channel::<MessageData>();
-    let receiver = Arc::new(Mutex::new(message_receiver));
 
     // TODO: Error check input text for invalid symbols
     ui.global::<MainLogic>().on_select_mod_files({
@@ -198,7 +221,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move |mod_name| {
             let ui = ui_handle.unwrap();
             let format_key = mod_name.trim().replace(' ', "_");
-            let mut results: Vec<Result<(), ini::Error>> = Vec::with_capacity(2);
+            let mut results: Vec<std::io::Result<()>> = Vec::with_capacity(2);
             let registered_mods = RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
                 results.push(Err(err));
                 vec![RegMod::default()]
@@ -221,10 +244,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-            let game_dir_arc = Arc::from(game_dir.as_path());
             let receiver = receiver_clone.clone();
             slint::spawn_local(async move {
-                let file_paths = match get_user_files(&game_dir_arc) {
+                let file_paths = match get_user_files(&game_dir) {
                     Ok(files) => files,
                     Err(err) => {
                         info!("{err}");
@@ -332,9 +354,8 @@ fn main() -> Result<(), slint::PlatformError> {
         move || {
             let ui = ui_handle.unwrap();
             let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
-            let game_dir_arc = Arc::from(game_dir.as_path());
             slint::spawn_local(async move {
-                let path_result = get_user_folder(&game_dir_arc);
+                let path_result = get_user_folder(&game_dir);
                 let path = match path_result {
                     Ok(path) => path,
                     Err(err) => {
@@ -450,12 +471,12 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |key| {
             let ui = ui_handle.unwrap();
-            let format_key_arc = Arc::new(key.replace(' ', "_"));
-            let game_dir_arc = Arc::new(PathBuf::from(
+            let format_key = key.replace(' ', "_");
+            let game_dir = PathBuf::from(
                 ui.global::<SettingsLogic>().get_game_path().to_string(),
-            ));
-            let registered_mods_arc = match RegMod::collect(&CURRENT_INI, false) {
-                Ok(data) => Arc::new(data),
+            );
+            let registered_mods = match RegMod::collect(&CURRENT_INI, false) {
+                Ok(data) => data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
                     return;
@@ -463,7 +484,7 @@ fn main() -> Result<(), slint::PlatformError> {
             };
 
             slint::spawn_local(async move {
-                let file_paths = match get_user_files(&game_dir_arc) {
+                let file_paths = match get_user_files(&game_dir) {
                     Ok(paths) => paths,
                     Err(err) => {
                         error!("{err}");
@@ -471,11 +492,12 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 };
-                if let Some(found_mod) = registered_mods_arc
+                if let Some(found_mod) = registered_mods
                     .iter()
-                    .find(|reg_mod| *format_key_arc == reg_mod.name)
+                    .find(|reg_mod| format_key == reg_mod.name)
                 {
-                    let files = match shorten_paths(&file_paths, &game_dir_arc) {
+                    // we need to invoke install new files here
+                    let files = match shorten_paths(&file_paths, &game_dir) {
                         Ok(files) => files,
                         Err(err) => {
                             error!(
@@ -486,7 +508,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             return;
                         }
                     };
-                    if file_registered(&registered_mods_arc, &files) {
+                    if file_registered(&registered_mods, &files) {
                         ui.display_msg("A selected file is already registered to a mod");
                     } else {
                         let mut new_data = found_mod.files.clone();
@@ -508,17 +530,17 @@ fn main() -> Result<(), slint::PlatformError> {
                             let _ = remove_entry(
                                 &CURRENT_INI,
                                 Some("registered-mods"),
-                                &format_key_arc,
+                                &format_key,
                             );
                         }
                         let new_data_owned = new_data_refs.iter().map(PathBuf::from).collect();
                         let updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data_owned);
                         
                         updated_mod
-                            .verify_state(&game_dir_arc, &CURRENT_INI)
+                            .verify_state(&game_dir, &CURRENT_INI)
                             .unwrap_or_else(|err| {
                                 if updated_mod
-                                    .verify_state(&game_dir_arc, &CURRENT_INI)
+                                    .verify_state(&game_dir, &CURRENT_INI)
                                     .is_err()
                                 {
                                     ui.display_msg(&err.to_string());
@@ -996,4 +1018,16 @@ async fn confirm_remove_mod(
         return new_io_error!(ErrorKind::ConnectionAborted, format!("Mod files are still installed at \"{}\"", install_dir.display()));
     };
     remove_mod_files(game_dir, files)
+}
+async fn confirm_scan_mods(
+    ui_weak: slint::Weak<App>,
+    receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
+    game_dir: &Path,
+    ini_file: &Path) -> std::io::Result<usize> {
+    let ui = ui_weak.unwrap();
+    ui.display_confirm("Would you like to attempt to auto-import already installed mods to Elden Mod Loader GUI?", true);
+    if receive_msg(receiver.clone()).await != Message::Confirm {
+        return new_io_error!(ErrorKind::ConnectionAborted, "Did not select to scan for mods");
+    };
+    scan_for_mods(game_dir, ini_file) 
 }

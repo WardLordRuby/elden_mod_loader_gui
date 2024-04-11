@@ -6,7 +6,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{does_dir_contain, new_io_error, parent_or_err};
+use crate::{
+    does_dir_contain, file_name_or_err, new_io_error, parent_or_err, utils::ini::parser::RegMod,
+};
+
+use super::ini::writer::{save_bool, save_path, save_path_bufs};
 
 /// Returns the deepest occurance of a directory that contains at least 1 file
 /// use parent_or_err for a direct binding to what is one level up
@@ -197,60 +201,58 @@ impl InstallData {
             .collect::<Vec<_>>())
     }
 
+    fn format_entries(
+        &mut self,
+        output: &mut Vec<String>,
+        directory: &Path,
+        cutoff: &mut Option<(usize, usize, usize)>,
+        cutoff_reached: &mut bool,
+    ) -> std::io::Result<()> {
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !*cutoff_reached {
+                if let Some((stop_at, count, num_files)) = cutoff {
+                    if count >= stop_at {
+                        *cutoff_reached = true;
+                        let remainder: i64 = *num_files as i64 - *count as i64;
+                        match remainder {
+                            ..=-1 => {
+                                return new_io_error!(
+                                    ErrorKind::BrokenPipe,
+                                    "Unexpected behavior, remainder < 0"
+                                )
+                            }
+                            0 => (),
+                            1 => output.push(String::from("Plus 1 more file")),
+                            2.. => output.push(format!("Plus {} more files...", remainder)),
+                        };
+                    } else if path.is_file() {
+                        *count += 1;
+                        if let Ok(partial_path) = path.strip_prefix(&self.parent_dir) {
+                            if let Some(partial_path_str) = partial_path.to_str() {
+                                output.push(partial_path_str.to_string());
+                            }
+                        } else if let Some(path_str) = path.file_name().expect("is_file").to_str() {
+                            output.push(path_str.to_string());
+                        }
+                    }
+                }
+            }
+            if path.is_file() {
+                self.from_paths.push(path.to_path_buf());
+            } else if path.is_dir() {
+                self.format_entries(output, &path, cutoff, cutoff_reached)?
+            }
+        }
+        Ok(())
+    }
+
     pub async fn update_from_path_and_display_data(
         &mut self,
         new_directory: &Path,
         cutoff: Option<usize>,
     ) -> std::io::Result<()> {
-        fn format_entries(
-            outer_self: &mut InstallData,
-            output: &mut Vec<String>,
-            directory: &Path,
-            cutoff: &mut Option<(usize, usize, usize)>,
-            cutoff_reached: &mut bool,
-        ) -> std::io::Result<()> {
-            for entry in std::fs::read_dir(directory)? {
-                let entry = entry?;
-                let path = entry.path();
-                if !*cutoff_reached {
-                    if let Some((stop_at, count, num_files)) = cutoff {
-                        if count >= stop_at {
-                            *cutoff_reached = true;
-                            let remainder: i64 = *num_files as i64 - *count as i64;
-                            match remainder {
-                                ..=-1 => {
-                                    return new_io_error!(
-                                        ErrorKind::BrokenPipe,
-                                        "Unexpected behavior, remainder < 0"
-                                    )
-                                }
-                                0 => (),
-                                1 => output.push(String::from("Plus 1 more file")),
-                                2.. => output.push(format!("Plus {} more files...", remainder)),
-                            };
-                        } else if path.is_file() {
-                            *count += 1;
-                            if let Ok(partial_path) = path.strip_prefix(&outer_self.parent_dir) {
-                                if let Some(partial_path_str) = partial_path.to_str() {
-                                    output.push(partial_path_str.to_string());
-                                }
-                            } else if let Some(path_str) =
-                                path.file_name().expect("is_file").to_str()
-                            {
-                                output.push(path_str.to_string());
-                            }
-                        }
-                    }
-                }
-                if path.is_file() {
-                    outer_self.from_paths.push(path.to_path_buf());
-                } else if path.is_dir() {
-                    format_entries(outer_self, output, &path, cutoff, cutoff_reached)?
-                }
-            }
-            Ok(())
-        }
-
         let self_mutex = Arc::new(Mutex::new(self.clone()));
         let self_mutex_clone = Arc::clone(&self_mutex);
         let new_directory_arc = Arc::new(PathBuf::from(new_directory));
@@ -310,8 +312,7 @@ impl InstallData {
                 files_to_display.push(self_mutex.display_paths.clone());
             }
 
-            format_entries(
-                &mut self_mutex,
+            self_mutex.format_entries(
                 &mut files_to_display,
                 &valid_dir,
                 &mut calc_cutoff,
@@ -357,41 +358,29 @@ pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<(
     let parent_dirs = remove_files
         .iter()
         .map(|path| parent_or_err(path))
-        .collect::<std::io::Result<Vec<_>>>()?;
-    let game_dir_parent_name = match parent_or_err(game_dir)?.file_name() {
-        Some(name) => name,
-        None => {
-            return new_io_error!(
-                ErrorKind::InvalidData,
-                "Could not get the name of the game_dirs parent"
-            )
-        }
-    };
+        .collect::<std::io::Result<HashSet<_>>>()?;
 
-    let parent_dirs = parent_dirs
-        .iter()
-        .filter(|dir| !dir.ends_with("mods") && !dir.ends_with(game_dir_parent_name))
-        .copied()
+    let mut parent_dirs = parent_dirs
+        .into_iter()
+        .filter(|&dir| !dir.ends_with("mods") && dir != game_dir)
         .collect::<HashSet<_>>();
-    let base_ancestor_count = game_dir.ancestors().count() + 1;
-    let mut skip_names = vec![std::ffi::OsStr::new("mods")];
-    let mut missed_paths = Vec::new();
-    for entry in &parent_dirs {
-        if entry.ancestors().count() > base_ancestor_count && !entry.ends_with("mods") {
-            let parent = entry.parent().expect("verified to exist");
-            let name = parent.file_name().expect("verified to exist");
-            if skip_names.iter().any(|skip| parent.ends_with(skip)) {
+
+    for directory in parent_dirs.clone() {
+        for partical_path in directory.ancestors().skip(1) {
+            if partical_path == game_dir {
+                break;
+            }
+            if partical_path.ends_with("mods") {
                 continue;
             }
-            if !parent_dirs.iter().any(|path| path.ends_with(name)) {
-                missed_paths.push(parent);
-                skip_names.push(name);
+            if !parent_dirs.contains(partical_path) {
+                parent_dirs.insert(partical_path);
             }
         }
     }
+
     let mut parent_dirs = parent_dirs.into_iter().collect::<Vec<_>>();
-    parent_dirs.extend(missed_paths);
-    parent_dirs.sort_by_key(|path| path.ancestors().count());
+    parent_dirs.sort_by_key(|path| path.components().count());
 
     remove_files.iter().try_for_each(std::fs::remove_file)?;
 
@@ -404,4 +393,81 @@ pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<(
     })?;
 
     Ok(())
+}
+
+pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize> {
+    let scan_dir = game_dir.join("mods");
+    let off_state = ".disabled";
+    let mut file_sets = Vec::new();
+    let mut files = Vec::new();
+    let mut dirs = Vec::new();
+    for entry in std::fs::read_dir(scan_dir)? {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+        if metadata.is_file() {
+            files.push(entry.path())
+        } else if metadata.is_dir() {
+            dirs.push(entry.path())
+        }
+    }
+    for file in files.iter() {
+        let name = file_name_or_err(file)?.to_string_lossy();
+        let (search_name, state) = match name.ends_with(off_state) {
+            true => (
+                name.split_at(
+                    name[..name.len() - off_state.len()]
+                        .rfind('.')
+                        .expect("is file"),
+                )
+                .0,
+                false,
+            ),
+
+            false => (name.split_at(name.rfind('.').expect("is file")).0, true),
+        };
+        if let Some(dir) = dirs
+            .iter()
+            .find(|d| d.file_name().expect("is dir") == search_name)
+        {
+            let mut data = InstallData::new(search_name, vec![file.clone()], game_dir)?;
+            data.format_entries(&mut Vec::new(), dir, &mut None, &mut true)?;
+            file_sets.push(RegMod::new(
+                &data.name,
+                state,
+                data.from_paths
+                    .into_iter()
+                    .map(|p| {
+                        p.strip_prefix(game_dir)
+                            .expect("file found here")
+                            .to_path_buf()
+                    })
+                    .collect::<Vec<_>>(),
+            ));
+        } else {
+            file_sets.push(RegMod::new(
+                search_name,
+                state,
+                vec![file
+                    .strip_prefix(game_dir)
+                    .expect("file found here")
+                    .to_path_buf()],
+            ));
+        }
+    }
+    for mod_data in &file_sets {
+        save_bool(
+            ini_file,
+            Some("registered-mods"),
+            &mod_data.name,
+            mod_data.state,
+        )?;
+        let file_refs = mod_data.file_refs();
+        if file_refs.len() == 1 {
+            save_path(ini_file, Some("mod-files"), &mod_data.name, file_refs[0])?;
+        } else {
+            save_path_bufs(ini_file, &mod_data.name, &file_refs)?;
+        }
+        mod_data.verify_state(game_dir, ini_file)?;
+    }
+    Ok(file_sets.len())
 }
