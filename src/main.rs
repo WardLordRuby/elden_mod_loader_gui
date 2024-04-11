@@ -496,7 +496,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     .iter()
                     .find(|reg_mod| format_key == reg_mod.name)
                 {
-                    // we need to invoke install new files here
+                    // TODO: we need to invoke install new files here
                     let files = match shorten_paths(&file_paths, &game_dir) {
                         Ok(files) => files,
                         Err(err) => {
@@ -822,8 +822,8 @@ fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
             0 => new_io_error!(ErrorKind::InvalidInput, "No Files Selected"),
             _ => {
                 if files.iter().any(|file| {
-                    RESTRICTED_FILES.iter().any(|restricted_file| {
-                        file.file_name().expect("has valid name") == *restricted_file
+                    RESTRICTED_FILES.iter().any(|&restricted_file| {
+                        file.file_name().expect("has valid name") == restricted_file
                     })
                 }) {
                     return new_io_error!(
@@ -935,7 +935,7 @@ async fn add_dir_to_mod(
         Message::Confirm => match get_user_folder(&install_files.parent_dir) {
             Ok(path) => {
                 install_files
-                    .update_from_path_and_display_data(&path, Some(9_usize))
+                    .update_fields_with_new_dir(&path, Some(9_usize))
                     .await
                     .unwrap_or_else(|err| {
                         error!("{err}");

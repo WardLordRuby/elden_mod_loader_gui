@@ -123,6 +123,53 @@ fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
     new_io_error!(ErrorKind::InvalidData, "No dir in the selected directory")
 }
 
+struct Cutoff {
+    reached: bool,
+    has_limit: bool,
+    display_count: usize,
+    data: CutoffData,
+}
+
+impl Cutoff {
+    fn new(input: Option<usize>, file_count: usize) -> Self {
+        match input {
+            Some(0) => Cutoff {
+                reached: false,
+                has_limit: false,
+                display_count: file_count + 1,
+                data: CutoffData {
+                    limit: 1,
+                    file_count,
+                    counter: 0,
+                },
+            },
+            Some(num) => Cutoff {
+                reached: false,
+                has_limit: true,
+                display_count: num + 1,
+                data: CutoffData {
+                    limit: num,
+                    file_count,
+                    counter: 0,
+                },
+            },
+            None => Cutoff {
+                reached: true,
+                has_limit: false,
+                display_count: 1,
+                data: CutoffData::default(),
+            },
+        }
+    }
+}
+
+#[derive(Default)]
+struct CutoffData {
+    limit: usize,
+    file_count: usize,
+    counter: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct InstallData {
     pub name: String,
@@ -201,21 +248,52 @@ impl InstallData {
             .collect::<Vec<_>>())
     }
 
-    fn format_entries(
+    /// Use update_fields_with_new_dir when installing a mod from outside the game_dir
+    /// This function is for internal use only and contians no saftey checks
+    /// Setting cutoff 0 will collect all display data, cutoff None will collect none
+    fn import_files_from_dir(
         &mut self,
-        output: &mut Vec<String>,
         directory: &Path,
-        cutoff: &mut Option<(usize, usize, usize)>,
-        cutoff_reached: &mut bool,
+        cutoff: Option<usize>,
     ) -> std::io::Result<()> {
-        for entry in std::fs::read_dir(directory)? {
-            let entry = entry?;
-            let path = entry.path();
-            if !*cutoff_reached {
-                if let Some((stop_at, count, num_files)) = cutoff {
-                    if count >= stop_at {
-                        *cutoff_reached = true;
-                        let remainder: i64 = *num_files as i64 - *count as i64;
+        let file_count = files_in_directory_tree(directory)?;
+
+        let mut cut_off_data = Cutoff::new(cutoff, file_count);
+        let mut files_to_display = Vec::with_capacity(cut_off_data.display_count);
+        if !self.display_paths.is_empty() {
+            files_to_display.push(self.display_paths.clone());
+        }
+        self.from_paths.reserve(file_count);
+
+        fn format_loop(
+            outer_self: &mut InstallData,
+            display_data: &mut Vec<String>,
+            directory: &Path,
+            cutoff: &mut Cutoff,
+        ) -> std::io::Result<()> {
+            for entry in std::fs::read_dir(directory)? {
+                let entry = entry?;
+                let path = entry.path();
+                let is_valid_file = match path.is_file() {
+                    true => path.extension().is_some(),
+                    false => false,
+                };
+                if !cutoff.reached && is_valid_file {
+                    if cutoff.data.counter < cutoff.data.limit {
+                        if cutoff.has_limit {
+                            cutoff.data.counter += 1;
+                        }
+                        if let Ok(partial_path) = path.strip_prefix(&outer_self.parent_dir) {
+                            if let Some(partial_path_str) = partial_path.to_str() {
+                                display_data.push(partial_path_str.to_string());
+                            }
+                        } else if let Some(path_str) = path.file_name().expect("is_file").to_str() {
+                            display_data.push(path_str.to_string());
+                        }
+                    } else {
+                        cutoff.reached = true;
+                        let remainder: i64 =
+                            cutoff.data.file_count as i64 - cutoff.data.counter as i64;
                         match remainder {
                             ..=-1 => {
                                 return new_io_error!(
@@ -224,31 +302,31 @@ impl InstallData {
                                 )
                             }
                             0 => (),
-                            1 => output.push(String::from("Plus 1 more file")),
-                            2.. => output.push(format!("Plus {} more files...", remainder)),
+                            1 => display_data.push(String::from("Plus 1 more file")),
+                            2.. => display_data.push(format!("Plus {} more files...", remainder)),
                         };
-                    } else if path.is_file() {
-                        *count += 1;
-                        if let Ok(partial_path) = path.strip_prefix(&self.parent_dir) {
-                            if let Some(partial_path_str) = partial_path.to_str() {
-                                output.push(partial_path_str.to_string());
-                            }
-                        } else if let Some(path_str) = path.file_name().expect("is_file").to_str() {
-                            output.push(path_str.to_string());
-                        }
                     }
                 }
+                if is_valid_file {
+                    outer_self.from_paths.push(path.to_path_buf());
+                } else if path.is_dir() {
+                    format_loop(outer_self, display_data, &path, cutoff)?
+                }
             }
-            if path.is_file() {
-                self.from_paths.push(path.to_path_buf());
-            } else if path.is_dir() {
-                self.format_entries(output, &path, cutoff, cutoff_reached)?
-            }
+            Ok(())
         }
+
+        format_loop(self, &mut files_to_display, directory, &mut cut_off_data)?;
+
+        if cutoff.is_some() {
+            self.display_paths = files_to_display.join("\n");
+        }
+
         Ok(())
     }
 
-    pub async fn update_from_path_and_display_data(
+    /// Setting cutoff 0 will collect all display data, cutoff None will collect none
+    pub async fn update_fields_with_new_dir(
         &mut self,
         new_directory: &Path,
         cutoff: Option<usize>,
@@ -291,35 +369,9 @@ impl InstallData {
                 }
             }
 
-            let file_count = files_in_directory_tree(&valid_dir)?;
-            let num_files_to_display: usize;
-            let mut calc_cutoff = match *cutoff_arc {
-                Some(num) => {
-                    num_files_to_display = num + 1;
-                    Some((num, 0_usize, file_count))
-                }
-                None => {
-                    num_files_to_display = file_count + 1;
-                    None
-                }
-            };
-            let mut cutoff_reached = false;
-            let mut files_to_display = Vec::with_capacity(num_files_to_display);
-            let from_path_clone = self_mutex.from_paths.clone();
-            self_mutex.from_paths = Vec::with_capacity(file_count + from_path_clone.len());
-            self_mutex.from_paths.extend(from_path_clone);
-            if !self_mutex.display_paths.is_empty() {
-                files_to_display.push(self_mutex.display_paths.clone());
-            }
+            self_mutex.import_files_from_dir(&valid_dir, *cutoff_arc)?;
 
-            self_mutex.format_entries(
-                &mut files_to_display,
-                &valid_dir,
-                &mut calc_cutoff,
-                &mut cutoff_reached,
-            )?;
-            self_mutex.display_paths = files_to_display.join("\n");
-            if self_mutex.to_paths.is_empty() {
+            if self_mutex.to_paths.len() != self_mutex.from_paths.len() {
                 self_mutex.collect_to_paths();
             }
             Ok(())
@@ -397,10 +449,10 @@ pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<(
 
 pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize> {
     let scan_dir = game_dir.join("mods");
-    let off_state = ".disabled";
-    let mut file_sets = Vec::new();
-    let mut files = Vec::new();
-    let mut dirs = Vec::new();
+    let num_files = items_in_directory(&scan_dir, FileType::File)?;
+    let mut file_sets = Vec::with_capacity(num_files);
+    let mut files = Vec::with_capacity(num_files);
+    let mut dirs = Vec::with_capacity(items_in_directory(&scan_dir, FileType::Dir)?);
     for entry in std::fs::read_dir(scan_dir)? {
         let entry = entry?;
         let metadata = entry.metadata()?;
@@ -412,25 +464,20 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
     }
     for file in files.iter() {
         let name = file_name_or_err(file)?.to_string_lossy();
-        let (search_name, state) = match name.ends_with(off_state) {
-            true => (
-                name.split_at(
-                    name[..name.len() - off_state.len()]
-                        .rfind('.')
-                        .expect("is file"),
-                )
-                .0,
+        let (search_name, state) = match name.find(".disabled") {
+            Some(index) => (
+                name.split_at(name[..index].rfind('.').expect("is file")).0,
                 false,
             ),
 
-            false => (name.split_at(name.rfind('.').expect("is file")).0, true),
+            None => (name.split_at(name.rfind('.').expect("is file")).0, true),
         };
         if let Some(dir) = dirs
             .iter()
             .find(|d| d.file_name().expect("is dir") == search_name)
         {
             let mut data = InstallData::new(search_name, vec![file.clone()], game_dir)?;
-            data.format_entries(&mut Vec::new(), dir, &mut None, &mut true)?;
+            data.import_files_from_dir(dir, None)?;
             file_sets.push(RegMod::new(
                 &data.name,
                 state,
