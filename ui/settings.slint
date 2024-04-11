@@ -16,18 +16,26 @@ export component SettingsPage inherits Page {
         alignment: space-between;
         
         GroupBox {
-            title: @tr("Theme");
+            title: @tr("General");
             
             HorizontalLayout {
                 padding-top: 7px;
                 padding-left: 6px;
+                padding-right: 6px;
                 width: horizontal-box-width;
                 Switch {
                     text: @tr("Dark Mode");
                     checked <=> SettingsLogic.dark-mode;
-                    toggled => {
-                        SettingsLogic.toggle-theme(self.checked);
-                    }
+                    toggled => { SettingsLogic.toggle-theme(self.checked) }
+                }
+                Button {
+                    text: @tr("Scan For Mods");
+                    icon: @image-url("assets/refresh.png");
+                    enabled: MainLogic.game-path-valid;
+                    colorize-icon: true;
+                    width: 140px;
+                    height: 30px;
+                    clicked => { SettingsLogic.scan-for-mods() }
                 }
             }
         }
@@ -59,18 +67,14 @@ export component SettingsPage inherits Page {
                     icon: @image-url("assets/folder.png");
                     colorize-icon: true;
                     primary: !SettingsLogic.dark-mode;
-                    clicked => {
-                        SettingsLogic.open-game-dir();
-                    }
+                    clicked => { SettingsLogic.open-game-dir() }
                 }
                 Button { 
                     width: 115px;
                     height: 30px;
                     primary: !SettingsLogic.dark-mode;
                     text: @tr("Set Path");
-                    clicked => {
-                        SettingsLogic.select-game-dir();
-                    }
+                    clicked => { SettingsLogic.select-game-dir() }
                 }
             }
         }
@@ -118,9 +122,7 @@ export component SettingsPage inherits Page {
                         text: @tr("Disable All mods");
                         enabled: SettingsLogic.loader-installed;
                         checked <=> SettingsLogic.loader-disabled;
-                        toggled => {
-                            SettingsLogic.toggle-all(self.checked);
-                        }
+                        toggled => { SettingsLogic.toggle-all(self.checked) }
                     }
                 }
                 HorizontalBox {
@@ -129,6 +131,7 @@ export component SettingsPage inherits Page {
                     width: horizontal-box-width;
                     load-delay := LineEdit {
                         width: 128px;
+                        height: 30px;
                         horizontal-alignment: right;
                         enabled: SettingsLogic.loader-installed;
                         placeholder-text <=> SettingsLogic.load-delay;
@@ -137,6 +140,7 @@ export component SettingsPage inherits Page {
                     }
                     set-delay := Button {
                         text: @tr("Set Mod Load Delay");
+                        height: 30px;
                         enabled: SettingsLogic.loader-installed;
                         primary: !SettingsLogic.dark-mode;
                         clicked => { 

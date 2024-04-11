@@ -58,12 +58,14 @@ export component ModDetailsPage inherits Page {
 
     }
     ScrollView {
-        y: details.y + a.height + b.height + c.height + d.height + e.height + 5px;
-        height: root.height - self.y - edit-mod-box.height;
-        viewport-height: files-txt.height;
+        y: details.y + a.height + b.height + c.height + d.height + e.height + 9px;
+        height: root.height - self.y - edit-mod-box.height + 3px;
         width: box-width;
+        viewport-height: files-txt.height;
+        viewport-width: files-txt.width;
         files-txt := Text {
             x: 15px;
+            width: parent.width - self.x;
             font-size: 13pt;
             wrap: word-wrap;
             text: MainLogic.current-mods[mod-index].files;
@@ -82,7 +84,7 @@ export component ModDetailsPage inherits Page {
                 width: box-width;
                 spacing: 7px;
                 padding-right: 8px;
-                padding-bottom: 2px;
+                padding-bottom: 8px;
                 alignment: button-layout;
                 Button {
                     width: button-width;

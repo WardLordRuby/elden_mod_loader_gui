@@ -1,4 +1,4 @@
-import { CheckBox, GroupBox, ListView, LineEdit, HorizontalBox, Button } from "std-widgets.slint";
+import { CheckBox, GroupBox, ListView, LineEdit, Button } from "std-widgets.slint";
 import { SettingsPage, ModDetailsPage } from "subpages.slint";
 import { MainLogic, SettingsLogic, Page, ColorPalette } from "common.slint";
 
@@ -78,7 +78,7 @@ export component MainPage inherits Page {
             }
         }
         add-mod-box := GroupBox {
-            height: 95px;
+            height: 88px;
             title: @tr("Add Mod");
             enabled: MainLogic.game-path-valid;
             FocusScope {
@@ -96,10 +96,10 @@ export component MainPage inherits Page {
                     }
                     accept
                 }
-                HorizontalBox {
-                    padding: 2px;
+                HorizontalLayout {
+                    spacing: 7px;
                     input-mod := LineEdit {
-                        height: 36px;
+                        height: 35px;
                         preferred-width: 100px;
                         horizontal-alignment: left;
                         placeholder-text: @tr("Mod Name");
@@ -108,7 +108,7 @@ export component MainPage inherits Page {
                     }
                     add-mod := Button {
                         width: 89px;
-                        height: 36px;
+                        height: 35px;
                         text: @tr("Select Files");
                         primary: !SettingsLogic.dark-mode;
                         enabled: add-mod-box.enabled;

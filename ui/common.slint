@@ -22,15 +22,14 @@ export global MainLogic {
     in-out property <bool> game-path-valid;
     in-out property <int> current-subpage: 0;
     in-out property <[DisplayMod]> current-mods: [
-        {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true, files: "\\placeholder\\path\\data"},
-        {displayname: "Placeholder Name", name: "Placeholder Name Two", enabled: false, files: "\\placeholder\\path\\data"},
-        {displayname: "Placeholder Name", name: "Placeholder Name Three", enabled: true, files: "\\placeholder\\path\\data"},
+        {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true, files: "\\placeholder\\path\\data\\really\\long\\paths"},
     ];
 }
 
 export global SettingsLogic  {
     callback select-game-dir();
     callback open-game-dir();
+    callback scan-for-mods();
     callback toggle-theme(bool);
     callback toggle-terminal(bool);
     callback set-load-delay(string);
