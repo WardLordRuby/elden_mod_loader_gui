@@ -123,6 +123,13 @@ fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
     new_io_error!(ErrorKind::InvalidData, "No dir in the selected directory")
 }
 
+#[derive(PartialEq)]
+pub enum DisplayItems {
+    Limit(usize),
+    All,
+    None,
+}
+
 struct Cutoff {
     reached: bool,
     has_limit: bool,
@@ -131,9 +138,9 @@ struct Cutoff {
 }
 
 impl Cutoff {
-    fn new(input: Option<usize>, file_count: usize) -> Self {
+    fn new(input: &DisplayItems, file_count: usize) -> Self {
         match input {
-            Some(0) => Cutoff {
+            DisplayItems::All => Cutoff {
                 reached: false,
                 has_limit: false,
                 display_count: file_count + 1,
@@ -143,17 +150,17 @@ impl Cutoff {
                     counter: 0,
                 },
             },
-            Some(num) => Cutoff {
+            DisplayItems::Limit(num) => Cutoff {
                 reached: false,
                 has_limit: true,
-                display_count: num + 1,
+                display_count: num + 2,
                 data: CutoffData {
-                    limit: num,
+                    limit: *num,
                     file_count,
                     counter: 0,
                 },
             },
-            None => Cutoff {
+            DisplayItems::None => Cutoff {
                 reached: true,
                 has_limit: false,
                 display_count: 1,
@@ -250,11 +257,10 @@ impl InstallData {
 
     /// Use update_fields_with_new_dir when installing a mod from outside the game_dir
     /// This function is for internal use only and contians no saftey checks
-    /// Setting cutoff 0 will collect all display data, cutoff None will collect none
     fn import_files_from_dir(
         &mut self,
         directory: &Path,
-        cutoff: Option<usize>,
+        cutoff: &DisplayItems,
     ) -> std::io::Result<()> {
         let file_count = files_in_directory_tree(directory)?;
 
@@ -318,18 +324,17 @@ impl InstallData {
 
         format_loop(self, &mut files_to_display, directory, &mut cut_off_data)?;
 
-        if cutoff.is_some() {
+        if *cutoff != DisplayItems::None {
             self.display_paths = files_to_display.join("\n");
         }
 
         Ok(())
     }
 
-    /// Setting cutoff 0 will collect all display data, cutoff None will collect none
     pub async fn update_fields_with_new_dir(
         &mut self,
         new_directory: &Path,
-        cutoff: Option<usize>,
+        cutoff: DisplayItems,
     ) -> std::io::Result<()> {
         let self_mutex = Arc::new(Mutex::new(self.clone()));
         let self_mutex_clone = Arc::clone(&self_mutex);
@@ -369,7 +374,7 @@ impl InstallData {
                 }
             }
 
-            self_mutex.import_files_from_dir(&valid_dir, *cutoff_arc)?;
+            self_mutex.import_files_from_dir(&valid_dir, cutoff_arc.as_ref())?;
 
             if self_mutex.to_paths.len() != self_mutex.from_paths.len() {
                 self_mutex.collect_to_paths();
@@ -417,7 +422,8 @@ pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<(
         .filter(|&dir| !dir.ends_with("mods") && dir != game_dir)
         .collect::<HashSet<_>>();
 
-    for directory in parent_dirs.clone() {
+    let parent_dirs_clone = parent_dirs.clone();
+    for directory in parent_dirs_clone {
         for partical_path in directory.ancestors().skip(1) {
             if partical_path == game_dir {
                 break;
@@ -477,7 +483,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
             .find(|d| d.file_name().expect("is dir") == search_name)
         {
             let mut data = InstallData::new(search_name, vec![file.clone()], game_dir)?;
-            data.import_files_from_dir(dir, None)?;
+            data.import_files_from_dir(dir, &DisplayItems::None)?;
             file_sets.push(RegMod::new(
                 &data.name,
                 state,

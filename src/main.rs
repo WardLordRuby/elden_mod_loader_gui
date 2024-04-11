@@ -935,7 +935,7 @@ async fn add_dir_to_mod(
         Message::Confirm => match get_user_folder(&install_files.parent_dir) {
             Ok(path) => {
                 install_files
-                    .update_fields_with_new_dir(&path, Some(9_usize))
+                    .update_fields_with_new_dir(&path, utils::installer::DisplayItems::Limit(9))
                     .await
                     .unwrap_or_else(|err| {
                         error!("{err}");
@@ -1005,6 +1005,7 @@ async fn confirm_remove_mod(
     receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
     game_dir: &Path, files: Vec<&Path>) -> std::io::Result<()> {
     let ui = ui_weak.unwrap();
+    // TODO: fix bug on install_dir wrong
     let install_dir = match files.iter().min_by_key(|file| file.ancestors().count()) {
         Some(path) => parent_or_err(path)?,
         None => return new_io_error!(ErrorKind::Other, "Failed to create a parent_dir"),
