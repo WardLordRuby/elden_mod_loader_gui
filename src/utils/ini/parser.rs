@@ -296,9 +296,9 @@ impl RegMod {
             other_files,
         }
     }
-    pub fn collect(path: &Path, skip_validation: bool) -> Result<Vec<Self>, ini::Error> {
+    pub fn collect(path: &Path, skip_validation: bool) -> std::io::Result<Vec<Self>> {
         type ModData<'a> = Vec<(&'a str, Result<bool, ParseBoolError>, Vec<PathBuf>)>;
-        fn sync_keys<'a>(ini: &'a Ini, path: &Path) -> Result<ModData<'a>, ini::Error> {
+        fn sync_keys<'a>(ini: &'a Ini, path: &Path) -> std::io::Result<ModData<'a>> {
             fn collect_file_data(section: &Properties) -> HashMap<&str, Vec<&str>> {
                 section
                     .iter()
@@ -448,7 +448,7 @@ impl RegMod {
                 .collect())
         }
     }
-    pub fn verify_state(&self, game_dir: &Path, ini_file: &Path) -> Result<(), ini::Error> {
+    pub fn verify_state(&self, game_dir: &Path, ini_file: &Path) -> std::io::Result<()> {
         let off_state = "disabled";
         if (!self.state
             && self
@@ -469,7 +469,7 @@ impl RegMod {
         }
         Ok(())
     }
-    fn file_refs(&self) -> Vec<&Path> {
+    pub fn file_refs(&self) -> Vec<&Path> {
         let mut path_refs =
             Vec::with_capacity(self.files.len() + self.config_files.len() + self.other_files.len());
         path_refs.extend(self.files.iter().map(|f| f.as_path()));

@@ -126,7 +126,7 @@ pub fn toggle_files(
     new_state: bool,
     reg_mod: &RegMod,
     save_file: Option<&Path>,
-) -> Result<Vec<PathBuf>, ini::Error> {
+) -> std::io::Result<Vec<PathBuf>> {
     /// Takes in a potential pathBuf, finds file_name name and outputs the new_state version
     fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
         file_paths
@@ -180,7 +180,7 @@ pub fn toggle_files(
         state: bool,
         key: &str,
         save_file: &Path,
-    ) -> Result<(), ini::Error> {
+    ) -> std::io::Result<()> {
         if *num_file == 1 {
             save_path(save_file, Some("mod-files"), key, path_to_save[0])?;
         } else {
@@ -221,8 +221,9 @@ pub fn toggle_files(
     Ok(short_path_new)
 }
 
-pub fn get_cfg(input_file: &Path) -> Result<Ini, ini::Error> {
+pub fn get_cfg(input_file: &Path) -> std::io::Result<Ini> {
     Ini::load_from_file_noescape(input_file)
+        .map_err(|err| std::io::Error::new(ErrorKind::AddrNotAvailable, err))
 }
 
 pub enum Operation {
@@ -254,13 +255,20 @@ pub fn parent_or_err(path: &Path) -> std::io::Result<&Path> {
         None => new_io_error!(ErrorKind::InvalidData, "Could not get parent_dir"),
     }
 }
+/// Convience function to map Option None to an io Error
+pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
+    match path.file_name() {
+        Some(name) => Ok(name),
+        None => new_io_error!(ErrorKind::InvalidData, "Could not get file_name"),
+    }
+}
 
 pub enum PathResult {
     Full(PathBuf),
     Partial(PathBuf),
     None(PathBuf),
 }
-pub fn attempt_locate_game(file_name: &Path) -> Result<PathResult, ini::Error> {
+pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
     let config: Ini = match get_cfg(file_name) {
         Ok(ini) => {
             trace!(
