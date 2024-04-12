@@ -27,7 +27,7 @@ Make sure to have EAC disabled before launching Elden Ring with mods installed
 The app will generate its own config file and attempt to locate the install directory of Elden Ring. If it succeeds  
 and finds that *Elden Mod Loader* is installed, the app is immediately ready to use! Otherwise it will prompt you to  
 select the install directory for your copy of Elden Ring. If you move the app you will have to move the config file  
-as well. It is not recomended to edit this apps ini file manually.  
+as well. It is not recommended to edit this apps ini file manually.  
 
 ## Features  
 
