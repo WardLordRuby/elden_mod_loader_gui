@@ -32,6 +32,7 @@ export component SettingsPage inherits Page {
                     text: @tr("Scan For Mods");
                     icon: @image-url("assets/refresh.png");
                     enabled: MainLogic.game-path-valid;
+                    primary: !SettingsLogic.dark-mode;
                     colorize-icon: true;
                     width: 140px;
                     height: 30px;
@@ -70,7 +71,7 @@ export component SettingsPage inherits Page {
                     clicked => { SettingsLogic.open-game-dir() }
                 }
                 Button { 
-                    width: 115px;
+                    width: 105px;
                     height: 30px;
                     primary: !SettingsLogic.dark-mode;
                     text: @tr("Set Path");

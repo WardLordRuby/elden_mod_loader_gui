@@ -125,23 +125,34 @@ fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
     new_io_error!(ErrorKind::InvalidData, "No dir in the selected directory")
 }
 
-fn strip_extention_and_output_state(name: &str) -> ((&str, &str), bool) {
+struct FileData<'a> {
+    name: &'a str,
+    extension: &'a str,
+    enabled: bool,
+}
+
+fn strip_extention_and_output_state(name: &str) -> FileData {
     match name.find(".disabled") {
         Some(index) => {
             let first_split = name.split_at(name[..index].rfind('.').expect("is file"));
-            (
-                (
-                    first_split.0,
-                    first_split
-                        .1
-                        .split_at(first_split.1.rfind('.').expect("ends in .disabled"))
-                        .0,
-                ),
-                false,
-            )
+            FileData {
+                name: first_split.0,
+                extension: first_split
+                    .1
+                    .split_at(first_split.1.rfind('.').expect("ends in .disabled"))
+                    .0,
+                enabled: false,
+            }
         }
 
-        None => (name.split_at(name.rfind('.').expect("is file")), true),
+        None => {
+            let split = name.split_at(name.rfind('.').expect("is file"));
+            FileData {
+                name: split.0,
+                extension: split.1,
+                enabled: true,
+            }
+        }
     }
 }
 
@@ -241,8 +252,11 @@ impl InstallData {
             Vec::with_capacity(amend_to.files.len()),
             |mut acc, file| {
                 let file_name = file_name_or_err(file)?.to_string_lossy();
-                let split_name = strip_extention_and_output_state(&file_name).0;
-                acc.push((String::from(split_name.0), String::from(split_name.1)));
+                let file_data = strip_extention_and_output_state(&file_name);
+                acc.push((
+                    String::from(file_data.name),
+                    String::from(file_data.extension),
+                ));
                 Ok::<std::vec::Vec<(String, String)>, std::io::Error>(acc)
             },
         )?;
@@ -526,6 +540,18 @@ pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<(
 
 pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize> {
     let scan_dir = game_dir.join("mods");
+    match scan_dir.try_exists() {
+        Ok(true) => (),
+        _ => {
+            return new_io_error!(
+                ErrorKind::BrokenPipe,
+                format!(
+                    "\"mods\" folder does not exist in \"{}\"",
+                    game_dir.display()
+                )
+            )
+        }
+    };
     let num_files = items_in_directory(&scan_dir, FileType::File)?;
     let mut file_sets = Vec::with_capacity(num_files);
     let mut files = Vec::with_capacity(num_files);
@@ -541,16 +567,16 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
     }
     for file in files.iter() {
         let name = file_name_or_err(file)?.to_string_lossy();
-        let ((search_name, _), state) = strip_extention_and_output_state(&name);
+        let file_data = strip_extention_and_output_state(&name);
         if let Some(dir) = dirs
             .iter()
-            .find(|d| d.file_name().expect("is dir") == search_name)
+            .find(|d| d.file_name().expect("is dir") == file_data.name)
         {
-            let mut data = InstallData::new(search_name, vec![file.clone()], game_dir)?;
+            let mut data = InstallData::new(file_data.name, vec![file.clone()], game_dir)?;
             data.import_files_from_dir(dir, &DisplayItems::None)?;
             file_sets.push(RegMod::new(
                 &data.name,
-                state,
+                file_data.enabled,
                 data.from_paths
                     .into_iter()
                     .map(|p| {
@@ -562,8 +588,8 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
             ));
         } else {
             file_sets.push(RegMod::new(
-                search_name,
-                state,
+                file_data.name,
+                file_data.enabled,
                 vec![file
                     .strip_prefix(game_dir)
                     .expect("file found here")

@@ -192,7 +192,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 slint::spawn_local(async move {
                     let ui = ui_handle.unwrap();
                     let ui_handle = ui.as_weak();
-                    match confirm_scan_mods(ui_handle, receiver_clone.clone(), &game_dir.expect("game verified"), &CURRENT_INI).await {
+                    match confirm_scan_mods(ui_handle, receiver_clone.clone(), &game_dir.expect("game verified"), &CURRENT_INI, false).await {
                         Ok(len) => {
                             ui.global::<MainLogic>().set_current_mods(deserialize(
                                 &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
@@ -203,8 +203,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             ui.display_msg(&format!("Successfully Found {len} mod(s)"));
                             let _ = receive_msg(receiver_clone).await;
                         }
-                        Err(err) => {
-                            ui.display_msg(&format!("Error searching for mods: {err}"));
+                        Err(err) => if err.kind() != ErrorKind::ConnectionAborted {
+                            ui.display_msg(&format!("Error: {err}"));
                             let _ = receive_msg(receiver_clone).await;
                         }
                     };
@@ -800,6 +800,33 @@ fn main() -> Result<(), slint::PlatformError> {
                 .unwrap_or_else(|err| error!("{err}"));
         }
     });
+    ui.global::<SettingsLogic>().on_scan_for_mods({
+        let ui_handle = ui.as_weak();
+        let receiver_clone = receiver.clone();
+        move || {
+            let ui = ui_handle.unwrap();
+            let receiver_clone = receiver_clone.clone();
+            slint::spawn_local(async move {
+                let ui_handle = ui.as_weak();
+                let game_dir = PathBuf::from(ui.global::<SettingsLogic>().get_game_path().to_string());
+                match confirm_scan_mods(ui_handle, receiver_clone, &game_dir, &CURRENT_INI, true).await {
+                    Ok(len) => {
+                        ui.global::<MainLogic>().set_current_subpage(0);
+                        ui.global::<MainLogic>().set_current_mods(deserialize(
+                            &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|err| {
+                                ui.display_msg(&err.to_string());
+                                vec![RegMod::default()]
+                            }),
+                        ));
+                        ui.display_msg(&format!("Successfully Found {len} mod(s)"));
+                    }
+                    Err(err) => if err.kind() != ErrorKind::ConnectionAborted {
+                        ui.display_msg(&format!("Error: {err}"));
+                    }
+                };
+            }).unwrap();
+        }
+    });
 
     ui.invoke_focus_app();
     ui.run()
@@ -1069,11 +1096,23 @@ async fn confirm_scan_mods(
     ui_weak: slint::Weak<App>,
     receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
     game_dir: &Path,
-    ini_file: &Path) -> std::io::Result<usize> {
+    ini_file: &Path,
+    ini_exists: bool) -> std::io::Result<usize> {
     let ui = ui_weak.unwrap();
     ui.display_confirm("Would you like to attempt to auto-import already installed mods to Elden Mod Loader GUI?", true);
     if receive_msg(receiver.clone()).await != Message::Confirm {
         return new_io_error!(ErrorKind::ConnectionAborted, "Did not select to scan for mods");
     };
+    if ini_exists {
+        ui.display_confirm("Warning: This action will reset current registered mods, are you sure you want to continue?", true);
+        if receive_msg(receiver.clone()).await != Message::Confirm {
+            return new_io_error!(ErrorKind::ConnectionAborted, "Did not select to scan for mods");
+        };
+        let dark_mode = ui.global::<SettingsLogic>().get_dark_mode();
+        std::fs::remove_file(ini_file)?;
+        new_cfg(ini_file)?;
+        save_bool(ini_file, Some("app-settings"), "dark_mode", dark_mode)?;
+        save_path(ini_file, Some("paths"), "game_dir", game_dir)?;
+    }
     scan_for_mods(game_dir, ini_file) 
 }
