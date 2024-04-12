@@ -6,7 +6,7 @@
 
 # Elden Mod Loader GUI   
   
-A simple GUI for Elden Mod Loader  
+A simple Mod Manager for Elden Mod Loader  
 This is a GUI tool that wraps [Elden Mod Loader][TechieW-Loader-Link] by: TechieW  
 His loader files are required to be installed for this app to work  
 
@@ -16,21 +16,24 @@ Make sure to have EAC disabled before launching Elden Ring with mods installed
 
 ## Installation  
 
-1. Download [Elden Mod Loader][TechieW-Loader-Link] and extract files to "[your_game_directory]/ELDEN RING/Game/"  
-2. Install mods as you normally would  
-3. Download [elden_mod_loader_gui.exe][Download-Link] and run from anywhere  
+1. Download [Elden Mod Loader][TechieW-Loader-Link] and extract files to "[your_game_directory]/ELDEN RING/Game/"
+2. Download [elden_mod_loader_gui.exe][Download-Link] and run from anywhere  
+3. Install mods  
+   * As you normally would
+   * Using *elden_mod_loader_gui* to import files into your /mods/ directory  
 
 ##### Notes:  
 
 The app will generate its own config file and attempt to locate the install directory of Elden Ring. If it succeeds  
 and finds that *Elden Mod Loader* is installed, the app is immediately ready to use! Otherwise it will prompt you to  
-select the install directory for your copy of Elden Ring. Adding mod files within the app will not move or "install"  
-the files to the game directory. If you move the app you will have to move the config file as well.  
+select the install directory for your copy of Elden Ring. If you move the app you will have to move the config file  
+as well. It is not recommended to edit this apps ini file manually.  
 
 ## Features  
 
-* Option to uninstall after de-registering a mod from within the app (v0.9.3 feat)  
-* Install mods inside the app! (v0.9.3 feat)  
+* Install mods inside the app  
+* Scan /mods/ for mods already installed to auto import  
+* Option to uninstall after de-registering a mod from within the app  
 * Easily open game directory with windows explorer  
 * Edit load_delay time and show_terminal in settings 
 * App will attempt to locate game dir for you  
@@ -44,14 +47,13 @@ the files to the game directory. If you move the app you will have to move the c
 
 ##### To be added:  
 
-* Auto import already installed mods on initial app open (v0.9.3 feat)  
 * Dump logs to file on app crash (v0.9.35 feat)  
 * Interface to set the load order of each mod registered with the app  (v0.9.4 feat)  
 
 ## Screenshots  
 
 <div id="image-screenshots">
-    <img src="https://i.imgur.com/jrSOEtW.png" width="26%" height="26%">
-    <img src="https://i.imgur.com/DOWtRRg.png" width="26%" height="26%">
-    <img src="https://i.imgur.com/M7qrufF.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/doMV5HU.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/mFRwc4f.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/Vfukaby.png" width="26%" height="26%">
 </div>
