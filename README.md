@@ -6,7 +6,7 @@
 
 # Elden Mod Loader GUI   
   
-A simple GUI for Elden Mod Loader  
+A simple Mod Manager for Elden Mod Loader  
 This is a GUI tool that wraps [Elden Mod Loader][TechieW-Loader-Link] by: TechieW  
 His loader files are required to be installed for this app to work  
 
