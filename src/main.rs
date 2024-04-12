@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -1058,11 +1058,7 @@ async fn confirm_install(
         return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled");
     }
     let zip = install_files.zip_from_to_paths()?;
-    if zip.iter().any(|(_, to_path)| match to_path.try_exists() {
-            Ok(true) => true,
-            Ok(false) => false,
-            Err(_) => true,
-        }) {
+    if zip.iter().any(|(_, to_path)| !matches!(to_path.try_exists(), Ok(false))) {
         return new_io_error!(ErrorKind::InvalidInput, format!("Could not install \"{}\".\nA selected file is already installed", install_files.name));
     };
     let parents = zip.iter().map(|(_, to_path)| parent_or_err(to_path)).collect::<std::io::Result<Vec<&Path>>>()?;

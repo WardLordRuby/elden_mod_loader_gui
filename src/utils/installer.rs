@@ -257,7 +257,7 @@ impl InstallData {
                     String::from(file_data.name),
                     String::from(file_data.extension),
                 ));
-                Ok::<std::vec::Vec<(String, String)>, std::io::Error>(acc)
+                Ok::<Vec<(String, String)>, std::io::Error>(acc)
             },
         )?;
         let mut install_dir = game_dir.join("mods");
@@ -486,29 +486,23 @@ impl InstallData {
 pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<()> {
     let remove_files = files.iter().map(|f| game_dir.join(f)).collect::<Vec<_>>();
 
-    if remove_files.iter().any(|file| match file.try_exists() {
-        Ok(true) => false,
-        Ok(false) => true,
-        Err(_) => true,
-    }) {
+    if remove_files
+        .iter()
+        .any(|file| !matches!(file.try_exists(), Ok(true)))
+    {
         return new_io_error!(
             ErrorKind::InvalidInput,
             "Could not confirm existance of all files to remove"
         );
     };
 
-    let parent_dirs = remove_files
+    let mut parent_dirs = remove_files
         .iter()
-        .map(|path| parent_or_err(path))
-        .collect::<std::io::Result<HashSet<_>>>()?;
-
-    let mut parent_dirs = parent_dirs
-        .into_iter()
-        .filter(|&dir| !dir.ends_with("mods") && dir != game_dir)
+        .map(|p| p.parent().expect("has parent and verified to exist"))
+        .filter(|&parent| !parent.ends_with("mods") && parent != game_dir)
         .collect::<HashSet<_>>();
 
-    let parent_dirs_clone = parent_dirs.clone();
-    for directory in parent_dirs_clone {
+    for directory in parent_dirs.clone() {
         for partical_path in directory.ancestors().skip(1) {
             if partical_path == game_dir {
                 break;
@@ -540,16 +534,15 @@ pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<(
 
 pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize> {
     let scan_dir = game_dir.join("mods");
-    match scan_dir.try_exists() {
-        Ok(true) => (),
-        _ => {
+    if !matches!(scan_dir.try_exists(), Ok(true)) {
+        {
             return new_io_error!(
                 ErrorKind::BrokenPipe,
                 format!(
                     "\"mods\" folder does not exist in \"{}\"",
                     game_dir.display()
                 )
-            )
+            );
         }
     };
     let num_files = items_in_directory(&scan_dir, FileType::File)?;
