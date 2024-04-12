@@ -7,10 +7,12 @@ use std::{
 };
 
 use crate::{
-    does_dir_contain, file_name_or_err, new_io_error, parent_or_err, utils::ini::parser::RegMod,
+    does_dir_contain, file_name_or_err, new_io_error, parent_or_err,
+    utils::ini::{
+        parser::RegMod,
+        writer::{save_bool, save_path, save_path_bufs},
+    },
 };
-
-use super::ini::writer::{save_bool, save_path, save_path_bufs};
 
 /// Returns the deepest occurance of a directory that contains at least 1 file
 /// use parent_or_err for a direct binding to what is one level up
@@ -123,6 +125,33 @@ fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
     new_io_error!(ErrorKind::InvalidData, "No dir in the selected directory")
 }
 
+fn strip_extention_and_output_state(name: &str) -> ((&str, &str), bool) {
+    match name.find(".disabled") {
+        Some(index) => {
+            let first_split = name.split_at(name[..index].rfind('.').expect("is file"));
+            (
+                (
+                    first_split.0,
+                    first_split
+                        .1
+                        .split_at(first_split.1.rfind('.').expect("ends in .disabled"))
+                        .0,
+                ),
+                false,
+            )
+        }
+
+        None => (name.split_at(name.rfind('.').expect("is file")), true),
+    }
+}
+
+fn parent_dir_from_vec(in_files: &[PathBuf]) -> std::io::Result<PathBuf> {
+    match in_files.iter().min_by_key(|path| path.ancestors().count()) {
+        Some(path) => get_parent_dir(path),
+        None => new_io_error!(ErrorKind::Other, "Failed to create a parent_dir"),
+    }
+}
+
 #[derive(PartialEq)]
 pub enum DisplayItems {
     Limit(usize),
@@ -189,29 +218,58 @@ pub struct InstallData {
 
 impl InstallData {
     pub fn new(name: &str, file_paths: Vec<PathBuf>, game_dir: &Path) -> std::io::Result<Self> {
-        let parent_dir = match file_paths
-            .iter()
-            .min_by_key(|path| path.ancestors().count())
-        {
-            Some(path) => get_parent_dir(path)?,
-            None => return new_io_error!(ErrorKind::Other, "Failed to create a parent_dir"),
-        };
-        let display_paths = file_paths
-            .iter()
-            .map(|path| match path.strip_prefix(&parent_dir) {
-                Ok(short_path) => short_path.to_string_lossy(),
-                Err(_) => path.to_string_lossy(),
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        let parent_dir = parent_dir_from_vec(&file_paths)?;
         let mut data = InstallData {
             name: String::from(name),
             from_paths: file_paths,
             to_paths: Vec::new(),
-            display_paths,
+            display_paths: String::new(),
             parent_dir,
             install_dir: game_dir.join("mods"),
         };
+        data.init_display_paths();
+        data.collect_to_paths();
+        Ok(data)
+    }
+
+    pub fn amend(
+        amend_to: &RegMod,
+        file_paths: Vec<PathBuf>,
+        game_dir: &Path,
+    ) -> std::io::Result<Self> {
+        let amend_mod_split_file_names = amend_to.files.iter().try_fold(
+            Vec::with_capacity(amend_to.files.len()),
+            |mut acc, file| {
+                let file_name = file_name_or_err(file)?.to_string_lossy();
+                let split_name = strip_extention_and_output_state(&file_name).0;
+                acc.push((String::from(split_name.0), String::from(split_name.1)));
+                Ok::<std::vec::Vec<(String, String)>, std::io::Error>(acc)
+            },
+        )?;
+        let mut install_dir = game_dir.join("mods");
+        let dll_files = amend_mod_split_file_names
+            .iter()
+            .filter(|(_, ext)| ext == ".dll")
+            .map(|(file_name, _)| file_name)
+            .collect::<Vec<_>>();
+        if dll_files.len() == 1 {
+            install_dir = install_dir.join(dll_files[0]);
+        } else {
+            return new_io_error!(
+                ErrorKind::InvalidInput,
+                "Error:\nCould not determine the proper file structure for installing files"
+            );
+        }
+        let parent_dir = parent_dir_from_vec(&file_paths)?;
+        let mut data = InstallData {
+            name: String::from(&amend_to.name),
+            from_paths: file_paths,
+            to_paths: Vec::new(),
+            display_paths: String::new(),
+            parent_dir,
+            install_dir,
+        };
+        data.init_display_paths();
         data.collect_to_paths();
         Ok(data)
     }
@@ -230,6 +288,19 @@ impl InstallData {
             install_dir,
         })
     }
+
+    fn init_display_paths(&mut self) {
+        self.display_paths = self
+            .from_paths
+            .iter()
+            .map(|path| match path.strip_prefix(&self.parent_dir) {
+                Ok(short_path) => short_path.to_string_lossy(),
+                Err(_) => path.to_string_lossy(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
+
     pub fn collect_to_paths(&mut self) {
         self.to_paths.extend(
             self.from_paths
@@ -470,14 +541,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
     }
     for file in files.iter() {
         let name = file_name_or_err(file)?.to_string_lossy();
-        let (search_name, state) = match name.find(".disabled") {
-            Some(index) => (
-                name.split_at(name[..index].rfind('.').expect("is file")).0,
-                false,
-            ),
-
-            None => (name.split_at(name.rfind('.').expect("is file")).0, true),
-        };
+        let ((search_name, _), state) = strip_extention_and_output_state(&name);
         if let Some(dir) = dirs
             .iter()
             .find(|d| d.file_name().expect("is dir") == search_name)

@@ -259,7 +259,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     Err(err) => {
                         if file_paths.len() == err.err_paths_long.len() {
                             let ui_handle = ui.as_weak();
-                            match install_mod(&mod_name, err.err_paths_long, &game_dir, ui_handle, receiver).await {
+                            match install_new_mod(&mod_name, err.err_paths_long, &game_dir, ui_handle, receiver).await {
                                 Ok(installed_files) => {
                                     match shorten_paths(&installed_files, &game_dir) {
                                         Ok(installed_and_shortend) => installed_and_shortend,
@@ -272,7 +272,10 @@ fn main() -> Result<(), slint::PlatformError> {
                                     }
                                 },
                                 Err(err) => {
-                                    error!("{err}");
+                                    match err.kind() {
+                                        ErrorKind::ConnectionAborted => info!("{err}"),
+                                        _ => error!("{err}"),
+                                    }
                                     ui.display_msg(&err.to_string());
                                     return;
                                 }
@@ -469,6 +472,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_add_to_mod({
         let ui_handle = ui.as_weak();
+        let reciever_clone = receiver.clone();
         move |key| {
             let ui = ui_handle.unwrap();
             let format_key = key.replace(' ', "_");
@@ -482,7 +486,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
-
+            let reciever_clone = reciever_clone.clone();
             slint::spawn_local(async move {
                 let file_paths = match get_user_files(&game_dir) {
                     Ok(paths) => paths,
@@ -496,16 +500,37 @@ fn main() -> Result<(), slint::PlatformError> {
                     .iter()
                     .find(|reg_mod| format_key == reg_mod.name)
                 {
-                    // TODO: we need to invoke install new files here
                     let files = match shorten_paths(&file_paths, &game_dir) {
                         Ok(files) => files,
                         Err(err) => {
-                            error!(
-                                "Encountered {} StripPrefixError on input files",
-                                err.err_paths_long.len()
-                            );
-                            ui.display_msg("Mod files must be within the selected game directory");
-                            return;
+                            if file_paths.len() == err.err_paths_long.len() {
+                                let ui_handle = ui.as_weak();
+                                match install_new_files_to_mod(found_mod, err.err_paths_long, &game_dir, ui_handle, reciever_clone).await {
+                                    Ok(installed_files) => {
+                                        match shorten_paths(&installed_files, &game_dir) {
+                                            Ok(installed_and_shortend) => installed_and_shortend,
+                                            Err(err) => {
+                                                let err_string = format!("Files installed but ran into StripPrefixError on {:?}", err.err_paths_long);
+                                                error!("{err_string}");
+                                                ui.display_msg(&err_string);
+                                                return;
+                                            }
+                                        }
+                                    },
+                                    Err(err) => {
+                                        match err.kind() {
+                                            ErrorKind::ConnectionAborted => info!("{err}"),
+                                            _ => error!("{err}"),
+                                        }
+                                        ui.display_msg(&err.to_string());
+                                        return;
+                                    }
+                                }
+                            } else {
+                                error!("Encountered {} StripPrefixError on input files", err.err_paths_long.len());
+                                ui.display_msg(&format!("Some selected files are already installed\n\nSelected Files Installed: {}\nSelected Files not installed: {}", err.ok_paths_short.len(), err.err_paths_long.len()));
+                                return;
+                            }
                         }
                     };
                     if file_registered(&registered_mods, &files) {
@@ -616,7 +641,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     match confirm_remove_mod(ui_handle, receiver, &game_dir, file_refs).await {
                         Ok(_) => ui.display_msg(&format!("Successfully removed all files associated with the previously registered mod \"{key}\"")),
                         Err(err) => {
-                            error!("{err}");
+                            match err.kind() {
+                                ErrorKind::ConnectionAborted => info!("{err}"),
+                                _ => error!("{err}"),
+                            }
                             ui.display_msg(&err.to_string())
                         }
                     }
@@ -897,7 +925,7 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
     ModelRc::from(display_mod)
 }
 
-async fn install_mod(
+async fn install_new_mod(
     name: &str,
     files: Vec<PathBuf>,
     game_dir: &Path,
@@ -916,12 +944,30 @@ async fn install_mod(
         return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled");
     }
     match InstallData::new(mod_name, files, game_dir) {
-        Ok(data) => add_dir_to_mod(data, ui_weak, receiver).await,
+        Ok(data) => add_dir_to_install_data(data, ui_weak, receiver).await,
         Err(err) => Err(err)
     }
 }
 
-async fn add_dir_to_mod(
+async fn install_new_files_to_mod(
+    mod_data: &RegMod,
+    files: Vec<PathBuf>,
+    game_dir: &Path,
+    ui_weak: slint::Weak<App>,
+    receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
+) -> std::io::Result<Vec<PathBuf>> {
+    let ui = ui_weak.unwrap();
+    ui.display_confirm("Selected files are not installed? Would you like to try and install them?", true);
+    if receive_msg(receiver.clone()).await != Message::Confirm {
+        return new_io_error!(ErrorKind::ConnectionAborted, "Did not select to install files");
+    };
+    match InstallData::amend(mod_data, files, game_dir) {
+        Ok(data) => confirm_install(data, ui_weak, receiver).await,
+        Err(err) => Err(err)
+    }
+}
+
+async fn add_dir_to_install_data(
     mut install_files: InstallData,
     ui_weak: slint::Weak<App>,
     receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
@@ -954,7 +1000,7 @@ async fn add_dir_to_mod(
                 ui.display_msg(&format!("Error:\n\n{err}"));
                 let _ = receive_msg(receiver.clone()).await;
                 let future = async {
-                    add_dir_to_mod(install_files, ui_weak, receiver).await
+                    add_dir_to_install_data(install_files, ui_weak, receiver).await
                 };
                 let reselect_dir = Box::pin(future);
                 reselect_dir.await
@@ -967,7 +1013,7 @@ async fn add_dir_to_mod(
 }
 
 async fn confirm_install(
-    mut install_files: InstallData,
+    install_files: InstallData,
     ui_weak: slint::Weak<App>,
     receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
 ) -> std::io::Result<Vec<PathBuf>> {
@@ -981,10 +1027,9 @@ async fn confirm_install(
         ),
         false,
     );
-    if receive_msg(receiver.clone()).await != Message::Confirm {
+    if receive_msg(receiver).await != Message::Confirm {
         return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled");
     }
-    install_files.collect_to_paths();
     let zip = install_files.zip_from_to_paths()?;
     if zip.iter().any(|(_, to_path)| match to_path.try_exists() {
             Ok(true) => true,
@@ -1005,10 +1050,9 @@ async fn confirm_remove_mod(
     receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
     game_dir: &Path, files: Vec<&Path>) -> std::io::Result<()> {
     let ui = ui_weak.unwrap();
-    // TODO: fix bug on install_dir wrong
     let install_dir = match files.iter().min_by_key(|file| file.ancestors().count()) {
-        Some(path) => parent_or_err(path)?,
-        None => return new_io_error!(ErrorKind::Other, "Failed to create a parent_dir"),
+        Some(path) => game_dir.join(parent_or_err(path)?),
+        None => PathBuf::from("Error: Failed to display a parent_dir"),
     };
     ui.display_confirm("Do you want to remove mod files from the game directory?", true);
     if receive_msg(receiver.clone()).await != Message::Confirm {
@@ -1020,6 +1064,7 @@ async fn confirm_remove_mod(
     };
     remove_mod_files(game_dir, files)
 }
+
 async fn confirm_scan_mods(
     ui_weak: slint::Weak<App>,
     receiver: Arc<Mutex<UnboundedReceiver<MessageData>>>,
