@@ -17,6 +17,7 @@ export component SettingsPage inherits Page {
         
         GroupBox {
             title: @tr("General");
+            height: 70px;
             
             HorizontalLayout {
                 padding-top: 7px;
@@ -42,6 +43,7 @@ export component SettingsPage inherits Page {
         }
         GroupBox {
             title: @tr("Game Path");
+            height: 110px;
             
             HorizontalBox {
                 row: 1;
@@ -98,6 +100,7 @@ export component SettingsPage inherits Page {
             GroupBox {
                 title: @tr("Mod Loader Options");
                 enabled: SettingsLogic.loader-installed;
+                height: 150px;
 
                 HorizontalBox {
                     row: 1;
@@ -129,6 +132,7 @@ export component SettingsPage inherits Page {
                 HorizontalBox {
                     row: 3;
                     padding-left: 2px;
+                    padding-bottom: 14px;
                     width: horizontal-box-width;
                     load-delay := LineEdit {
                         width: 128px;
