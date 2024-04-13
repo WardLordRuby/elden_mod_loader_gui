@@ -14,8 +14,8 @@ use crate::{
     FileData,
 };
 
-/// Returns the deepest occurance of a directory that contains at least 1 file
-/// use parent_or_err for a direct binding to what is one level up
+/// Returns the deepest occurance of a directory that contains at least 1 file  
+/// Use parent_or_err for a direct binding to what is one level up
 fn get_parent_dir(input: &Path) -> std::io::Result<PathBuf> {
     match input.metadata() {
         Ok(data) => {
@@ -309,7 +309,7 @@ impl InstallData {
             .collect::<Vec<_>>())
     }
 
-    /// Use update_fields_with_new_dir when installing a mod from outside the game_dir
+    /// Use update_fields_with_new_dir when installing a mod from outside the game_dir  
     /// This function is for internal use only and contians no saftey checks
     fn import_files_from_dir(
         &mut self,
@@ -385,6 +385,8 @@ impl InstallData {
         Ok(())
     }
 
+    /// This function is intended to add a directory to a InstallData::new()  
+    /// Subsequent runs of this funciton is not tested and not expected to work
     pub async fn update_fields_with_new_dir(
         &mut self,
         new_directory: &Path,
@@ -394,7 +396,10 @@ impl InstallData {
         let new_directory_owned = PathBuf::from(new_directory);
         let jh = std::thread::spawn(move || -> Result<InstallData, std::io::Error> {
             let valid_dir = check_dir_contains_files(&new_directory_owned)?;
-            if does_dir_contain(&valid_dir, crate::Operation::All, &["mods"])? {
+            let game_dir = self_clone.install_dir.parent().expect("has parent");
+            if valid_dir.strip_prefix(game_dir).is_ok() {
+                return new_io_error!(ErrorKind::InvalidInput, "Files are already installed");
+            } else if does_dir_contain(&valid_dir, crate::Operation::All, &["mods"])? {
                 return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
             }
 
@@ -416,14 +421,10 @@ impl InstallData {
                 }
                 self_clone.parent_dir = parent_or_err(&valid_dir)?.to_path_buf()
             } else {
-                //MARK: TODO
-                // This branch needs further debugging | this probally needs a strip prefix game_dir check
-                // Then we can return right away instead of having the check at confirm install.
-                // No need to copy a file no matter what if it is already inside the game dir
+                // MARK: TODO
+                // This branch needs further debugging | do we ever want the false path? if so document why
                 trace!("New directory selected contains unique files, entire folder will be moved");
-                match items_in_directory(&valid_dir, FileType::Dir)? == 0
-                    && items_in_directory(&valid_dir, FileType::File)? >= 1
-                {
+                match items_in_directory(&valid_dir, FileType::Dir)? == 0 {
                     true => self_clone.parent_dir = parent_or_err(&valid_dir)?.to_path_buf(),
                     false => self_clone.parent_dir = valid_dir.clone(),
                 }
