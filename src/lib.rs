@@ -247,6 +247,43 @@ pub fn does_dir_contain(path: &Path, operation: Operation, list: &[&str]) -> std
     };
     Ok(result)
 }
+pub struct FileData<'a> {
+    pub name: &'a str,
+    pub extension: &'a str,
+    pub enabled: bool,
+}
+
+impl FileData<'_> {
+    pub fn from(name: &str) -> FileData {
+        match name.find(".disabled") {
+            Some(index) => {
+                let first_split = name.split_at(name[..index].rfind('.').expect("is file"));
+                FileData {
+                    name: first_split.0,
+                    extension: first_split
+                        .1
+                        .split_at(first_split.1.rfind('.').expect("ends in .disabled"))
+                        .0,
+                    enabled: false,
+                }
+            }
+
+            None => {
+                let split = name.split_at(name.rfind('.').expect("is file"));
+                FileData {
+                    name: split.0,
+                    extension: split.1,
+                    enabled: true,
+                }
+            }
+        }
+    }
+
+    pub fn is_enabled(path: &Path) -> std::io::Result<bool> {
+        let file_name = file_name_or_err(path)?.to_string_lossy();
+        Ok(FileData::from(&file_name).enabled)
+    }
+}
 
 /// Convience function to map Option None to an io Error
 pub fn parent_or_err(path: &Path) -> std::io::Result<&Path> {

@@ -12,6 +12,7 @@ use crate::{
         parser::RegMod,
         writer::{save_bool, save_path, save_path_bufs},
     },
+    FileData,
 };
 
 /// Returns the deepest occurance of a directory that contains at least 1 file
@@ -125,37 +126,6 @@ fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
     new_io_error!(ErrorKind::InvalidData, "No dir in the selected directory")
 }
 
-struct FileData<'a> {
-    name: &'a str,
-    extension: &'a str,
-    enabled: bool,
-}
-
-fn strip_extention_and_output_state(name: &str) -> FileData {
-    match name.find(".disabled") {
-        Some(index) => {
-            let first_split = name.split_at(name[..index].rfind('.').expect("is file"));
-            FileData {
-                name: first_split.0,
-                extension: first_split
-                    .1
-                    .split_at(first_split.1.rfind('.').expect("ends in .disabled"))
-                    .0,
-                enabled: false,
-            }
-        }
-
-        None => {
-            let split = name.split_at(name.rfind('.').expect("is file"));
-            FileData {
-                name: split.0,
-                extension: split.1,
-                enabled: true,
-            }
-        }
-    }
-}
-
 fn parent_dir_from_vec(in_files: &[PathBuf]) -> std::io::Result<PathBuf> {
     match in_files.iter().min_by_key(|path| path.ancestors().count()) {
         Some(path) => get_parent_dir(path),
@@ -252,7 +222,7 @@ impl InstallData {
             Vec::with_capacity(amend_to.files.len()),
             |mut acc, file| {
                 let file_name = file_name_or_err(file)?.to_string_lossy();
-                let file_data = strip_extention_and_output_state(&file_name);
+                let file_data = FileData::from(&file_name);
                 acc.push((
                     String::from(file_data.name),
                     String::from(file_data.extension),
@@ -560,7 +530,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
     }
     for file in files.iter() {
         let name = file_name_or_err(file)?.to_string_lossy();
-        let file_data = strip_extention_and_output_state(&name);
+        let file_data = FileData::from(&name);
         if let Some(dir) = dirs
             .iter()
             .find(|d| d.file_name().expect("is dir") == file_data.name)

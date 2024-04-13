@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -289,66 +289,66 @@ fn main() -> Result<(), slint::PlatformError> {
                 };
                 if file_registered(&registered_mods, &files) {
                     ui.display_msg("A selected file is already registered to a mod");
-                } else {
-                    let state = !files.iter().all(|file| {
-                        file.extension().expect("file has extention") == "disabled"
-                    });
-                    results.push(save_bool(
-                        &CURRENT_INI,
-                        Some("registered-mods"),
-                        &format_key,
-                        state,
-                    ));
-                    match files.len() {
-                        0 => return,
-                        1 => results.push(save_path(
-                            &CURRENT_INI,
-                            Some("mod-files"),
-                            &format_key,
-                            files[0].as_path(),
-                        )),
-                        2.. => {
-                            let path_refs = files.iter().map(|p| p.as_path()).collect::<Vec<_>>();
-                            results.push(save_path_bufs(&CURRENT_INI, &format_key, &path_refs))
-                        },
-                    }
-                    if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
-                        ui.display_msg(&err.to_string());
-                        // If something fails to save attempt to create a corrupt entry so
-                        // sync keys will take care of any invalid ini entries
-                        let _ =
-                        remove_entry(&CURRENT_INI, Some("registered-mods"), &format_key);
-                    }
-                    let new_mod = RegMod::new(&format_key, state, files);
-                    
-                    new_mod
-                    .verify_state(&game_dir, &CURRENT_INI)
-                    .unwrap_or_else(|err| {
-                        // Toggle files returned an error lets try it again
-                        if new_mod.verify_state(&game_dir, &CURRENT_INI).is_err() {
-                            ui.display_msg(&err.to_string());
-                            let _ = remove_entry(
-                                &CURRENT_INI,
-                                Some("registered-mods"),
-                                &new_mod.name,
-                            );
-                        };
-                    });
-                    ui.global::<MainLogic>()
-                    .set_line_edit_text(SharedString::new());
-                    ui.global::<MainLogic>().set_current_mods(deserialize(
-                        &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|_| {
-                            // if error lets try it again and see if we can get sync-keys to cleanup any errors
-                            match RegMod::collect(&CURRENT_INI, false) {
-                                Ok(mods) => mods,
-                                Err(err) => {
-                                    ui.display_msg(&err.to_string());
-                                    vec![RegMod::default()]
-                                }
-                            }
-                        }),
-                    ));
+                    return;
                 }
+                let state = !files.iter().all(|file| {
+                    matches!(FileData::is_enabled(file), Ok(false))
+                });
+                results.push(save_bool(
+                    &CURRENT_INI,
+                    Some("registered-mods"),
+                    &format_key,
+                    state,
+                ));
+                match files.len() {
+                    0 => return,
+                    1 => results.push(save_path(
+                        &CURRENT_INI,
+                        Some("mod-files"),
+                        &format_key,
+                        files[0].as_path(),
+                    )),
+                    2.. => {
+                        let path_refs = files.iter().map(|p| p.as_path()).collect::<Vec<_>>();
+                        results.push(save_path_bufs(&CURRENT_INI, &format_key, &path_refs))
+                    },
+                }
+                if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
+                    ui.display_msg(&err.to_string());
+                    // If something fails to save attempt to create a corrupt entry so
+                    // sync keys will take care of any invalid ini entries
+                    let _ =
+                    remove_entry(&CURRENT_INI, Some("registered-mods"), &format_key);
+                }
+                let new_mod = RegMod::new(&format_key, state, files);
+                
+                new_mod
+                .verify_state(&game_dir, &CURRENT_INI)
+                .unwrap_or_else(|err| {
+                    // Toggle files returned an error lets try it again
+                    if new_mod.verify_state(&game_dir, &CURRENT_INI).is_err() {
+                        ui.display_msg(&err.to_string());
+                        let _ = remove_entry(
+                            &CURRENT_INI,
+                            Some("registered-mods"),
+                            &new_mod.name,
+                        );
+                    };
+                });
+                ui.global::<MainLogic>()
+                .set_line_edit_text(SharedString::new());
+                ui.global::<MainLogic>().set_current_mods(deserialize(
+                    &RegMod::collect(&CURRENT_INI, false).unwrap_or_else(|_| {
+                        // if error lets try it again and see if we can get sync-keys to cleanup any errors
+                        match RegMod::collect(&CURRENT_INI, false) {
+                            Ok(mods) => mods,
+                            Err(err) => {
+                                ui.display_msg(&err.to_string());
+                                vec![RegMod::default()]
+                            }
+                        }
+                    }),
+                ));
             }).unwrap();
         }
     });
@@ -623,7 +623,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 {
                     let mut found_files = found_mod.files.clone();
                     if found_files.iter().any(|file| {
-                        file.extension().expect("file with extention") == "disabled"
+                        matches!(FileData::is_enabled(file), Ok(false))
                     }) {
                         match toggle_files(&game_dir, true, found_mod, Some(&CURRENT_INI)) {
                             Ok(files) => found_files = files,

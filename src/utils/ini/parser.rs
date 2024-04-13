@@ -10,6 +10,7 @@ use std::{
 use crate::{
     get_cfg, new_io_error, toggle_files,
     utils::ini::writer::{remove_array, remove_entry, INI_SECTIONS},
+    FileData,
 };
 
 pub trait ValueType: Sized {
@@ -278,10 +279,11 @@ impl RegMod {
             let mut config_files = Vec::with_capacity(in_files.len());
             let mut other_files = Vec::with_capacity(in_files.len());
             in_files.into_iter().for_each(|file| {
-                let string = file.to_string_lossy();
-                match string[string.len() - 3..].as_ref() {
-                    "txt" => other_files.push(file),
-                    "ini" => config_files.push(file),
+                let file_name = file.file_name().expect("is file").to_string_lossy();
+                let name_data = FileData::from(&file_name);
+                match name_data.extension {
+                    ".txt" => other_files.push(file),
+                    ".ini" => config_files.push(file),
                     _ => files.push(file),
                 }
             });
@@ -449,17 +451,16 @@ impl RegMod {
         }
     }
     pub fn verify_state(&self, game_dir: &Path, ini_file: &Path) -> std::io::Result<()> {
-        let off_state = "disabled";
         if (!self.state
             && self
                 .files
                 .iter()
-                .any(|path| path.extension().expect("file with extention") != off_state))
+                .any(|path| matches!(FileData::is_enabled(path), Ok(true))))
             || (self.state
                 && self
                     .files
                     .iter()
-                    .any(|path| path.extension().expect("file with extention") == off_state))
+                    .any(|path| matches!(FileData::is_enabled(path), Ok(false))))
         {
             warn!(
                 "wrong file state for \"{}\" chaning file extentions",
