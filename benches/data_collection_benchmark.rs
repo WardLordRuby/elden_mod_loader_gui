@@ -7,9 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-lazy_static::lazy_static! {
-    static ref BENCH_TEST_FILE: PathBuf = PathBuf::from("test_files\\benchmark_test.ini");
-}
+const BENCH_TEST_FILE: &str = "test_files\\benchmark_test.ini";
 const NUM_ENTRIES: u32 = 25;
 
 fn populate_non_valid_ini(len: u32, file: &Path) {
@@ -20,17 +18,11 @@ fn populate_non_valid_ini(len: u32, file: &Path) {
         let paths = generate_test_paths();
         let path_refs = paths.iter().map(|p| p.as_path()).collect::<Vec<_>>();
 
-        save_bool(&BENCH_TEST_FILE, Some("registered-mods"), &key, bool_value).unwrap();
+        save_bool(file, Some("registered-mods"), &key, bool_value).unwrap();
         if paths.len() > 1 {
-            save_path_bufs(&BENCH_TEST_FILE, &key, &path_refs).unwrap();
+            save_path_bufs(file, &key, &path_refs).unwrap();
         } else {
-            save_path(
-                &BENCH_TEST_FILE,
-                Some("mod-files"),
-                &key,
-                paths[0].as_path(),
-            )
-            .unwrap();
+            save_path(file, Some("mod-files"), &key, paths[0].as_path()).unwrap();
         }
     }
 }
@@ -52,12 +44,13 @@ fn generate_test_paths() -> Vec<PathBuf> {
 }
 
 fn data_collection_benchmark(c: &mut Criterion) {
-    populate_non_valid_ini(NUM_ENTRIES, &BENCH_TEST_FILE);
+    let test_file = Path::new(BENCH_TEST_FILE);
+    populate_non_valid_ini(NUM_ENTRIES, test_file);
 
     c.bench_function("data_collection", |b| {
-        b.iter(|| black_box(RegMod::collect(&BENCH_TEST_FILE, true)));
+        b.iter(|| black_box(RegMod::collect(test_file, true)));
     });
-    remove_file(&*BENCH_TEST_FILE).unwrap();
+    remove_file(test_file).unwrap();
 }
 
 criterion_group!(benches, data_collection_benchmark);

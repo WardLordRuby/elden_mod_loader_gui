@@ -3,7 +3,6 @@ use std::{
     collections::HashSet,
     io::ErrorKind,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
 };
 
 use crate::{
@@ -391,56 +390,57 @@ impl InstallData {
         new_directory: &Path,
         cutoff: DisplayItems,
     ) -> std::io::Result<()> {
-        let self_mutex = Arc::new(Mutex::new(self.clone()));
-        let self_mutex_clone = Arc::clone(&self_mutex);
-        let new_directory_arc = Arc::new(PathBuf::from(new_directory));
-        let cutoff_arc = Arc::new(cutoff);
-        let jh = std::thread::spawn(move || -> Result<(), std::io::Error> {
-            let valid_dir = check_dir_contains_files(&new_directory_arc)?;
+        let mut self_clone = self.clone();
+        let new_directory_owned = PathBuf::from(new_directory);
+        let jh = std::thread::spawn(move || -> Result<InstallData, std::io::Error> {
+            let valid_dir = check_dir_contains_files(&new_directory_owned)?;
             if does_dir_contain(&valid_dir, crate::Operation::All, &["mods"])? {
                 return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
             }
-            let mut self_mutex = self_mutex_clone.lock().unwrap();
 
-            if self_mutex.parent_dir.strip_prefix(&valid_dir).is_ok() {
-                if valid_dir.ancestors().count() <= self_mutex.parent_dir.ancestors().count() {
+            if self_clone.parent_dir.strip_prefix(&valid_dir).is_ok() {
+                if valid_dir.ancestors().count() <= self_clone.parent_dir.ancestors().count() {
                     trace!("Selected directory contains the original files, reconstructing data");
-                    *self_mutex = InstallData::reconstruct(
-                        &self_mutex.name,
-                        self_mutex.install_dir.clone(),
+                    self_clone = InstallData::reconstruct(
+                        &self_clone.name,
+                        self_clone.install_dir.clone(),
                         &valid_dir,
                     )?;
                 }
-            } else if valid_dir.strip_prefix(&self_mutex.parent_dir).is_ok() {
+            } else if valid_dir.strip_prefix(&self_clone.parent_dir).is_ok() {
                 trace!("New directory selected contains unique files, and is inside the original_parent, entire folder will be moved");
                 if valid_dir.ends_with("mods")
                     && items_in_directory(parent_or_err(&valid_dir)?, FileType::File)? > 0
                 {
                     return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
                 }
-                self_mutex.parent_dir = parent_or_err(&valid_dir)?.to_path_buf()
+                self_clone.parent_dir = parent_or_err(&valid_dir)?.to_path_buf()
             } else {
+                //MARK: TODO
+                // This branch needs further debugging | this probally needs a strip prefix game_dir check
+                // Then we can return right away instead of having the check at confirm install.
+                // No need to copy a file no matter what if it is already inside the game dir
                 trace!("New directory selected contains unique files, entire folder will be moved");
                 match items_in_directory(&valid_dir, FileType::Dir)? == 0
-                    && items_in_directory(&valid_dir, FileType::File)? > 1
+                    && items_in_directory(&valid_dir, FileType::File)? >= 1
                 {
-                    true => self_mutex.parent_dir = parent_or_err(&valid_dir)?.to_path_buf(),
-                    false => self_mutex.parent_dir = valid_dir.clone(),
+                    true => self_clone.parent_dir = parent_or_err(&valid_dir)?.to_path_buf(),
+                    false => self_clone.parent_dir = valid_dir.clone(),
                 }
             }
 
-            self_mutex.import_files_from_dir(&valid_dir, cutoff_arc.as_ref())?;
+            self_clone.import_files_from_dir(&valid_dir, &cutoff)?;
 
-            if self_mutex.to_paths.len() != self_mutex.from_paths.len() {
-                self_mutex.collect_to_paths();
+            if self_clone.to_paths.len() != self_clone.from_paths.len() {
+                self_clone.collect_to_paths();
             }
-            Ok(())
+            Ok(self_clone)
         });
         match jh.join() {
             Ok(result) => match result {
-                Ok(_) => {
-                    let mut new_self = self_mutex.lock().unwrap();
-                    std::mem::swap(&mut *new_self, self);
+                Ok(data) => {
+                    let mut new_self = data;
+                    std::mem::swap(&mut new_self, self);
                     Ok(())
                 }
                 Err(err) => Err(err),

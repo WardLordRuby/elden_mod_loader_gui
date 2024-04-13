@@ -362,20 +362,19 @@ pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
 }
 
 fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
-    let drive: String = match get_current_drive() {
-        Some(drive) => drive,
-        None => {
-            warn!("Failed to find find current Drive. Using 'C:\\'");
-            "C:\\".to_string()
-        }
-    };
-    let drive_ref: std::rc::Rc<str> = std::rc::Rc::from(drive.clone());
-    info!("Drive Found: {drive_ref}");
+    //MARK: TODO
+    // switch 2 branch match statements to something like this where possible
+    let drive = get_current_drive().unwrap_or_else(|| {
+        warn!("Failed to find find current Drive. Using 'C:\\'");
+        "C:\\".to_string()
+    });
 
-    match test_path_buf(PathBuf::from(drive), target_path) {
+    info!("Drive Found: {}", &drive);
+
+    match test_path_buf(PathBuf::from(&drive), target_path) {
         Some(path) => Some(path),
         None => {
-            if &*drive_ref == "C:\\" {
+            if &drive == "C:\\" {
                 None
             } else {
                 test_path_buf(PathBuf::from("C:\\"), target_path)

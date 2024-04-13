@@ -1411,7 +1411,6 @@ dependencies = [
  "criterion",
  "env_logger",
  "i-slint-backend-winit",
- "lazy_static",
  "log",
  "rand",
  "rfd",
