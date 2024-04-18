@@ -87,15 +87,11 @@ impl ValueType for PathBuf {
                         Some(ini_property) => ini_property.value,
                         None => return new_io_error!(ErrorKind::NotFound, "game_dir is not valid"),
                     };
-                match validate_file(&game_dir.join(&self)) {
-                    Ok(()) => Ok(self),
-                    Err(err) => Err(err),
-                }
+                validate_file(&game_dir.join(&self))?;
+                Ok(self)
             } else {
-                match validate_existance(&self) {
-                    Ok(()) => Ok(self),
-                    Err(err) => Err(err),
-                }
+                validate_existance(&self)?;
+                Ok(self)
             }
         } else {
             Ok(self)
@@ -234,10 +230,9 @@ impl<T: ValueType> IniProperty<T> {
     ) -> Result<T, String> {
         match &ini.section(section) {
             Some(s) => match s.contains_key(key) {
-                true => match T::parse_str(ini, section, key, skip_validation) {
-                    Ok(t) => Ok(t),
-                    Err(err) => Err(format!("Error: {err}")),
-                },
+                true => {
+                    T::parse_str(ini, section, key, skip_validation).map_err(|err| err.to_string())
+                }
                 false => Err(format!("Key: \"{key}\" not found in {ini:?}")),
             },
             None => Err(format!(
@@ -471,8 +466,7 @@ impl RegMod {
         Ok(())
     }
     pub fn file_refs(&self) -> Vec<&Path> {
-        let mut path_refs =
-            Vec::with_capacity(self.files.len() + self.config_files.len() + self.other_files.len());
+        let mut path_refs = Vec::with_capacity(self.all_files_len());
         path_refs.extend(self.files.iter().map(|f| f.as_path()));
         path_refs.extend(self.config_files.iter().map(|f| f.as_path()));
         path_refs.extend(self.other_files.iter().map(|f| f.as_path()));
@@ -485,6 +479,9 @@ impl RegMod {
         path_refs.extend(self.config_files.iter().map(|f| f.as_path()));
         path_refs.extend(self.other_files.iter().map(|f| f.as_path()));
         path_refs
+    }
+    pub fn all_files_len(&self) -> usize {
+        self.files.len() + self.config_files.len() + self.other_files.len()
     }
     pub fn other_files_len(&self) -> usize {
         self.config_files.len() + self.other_files.len()

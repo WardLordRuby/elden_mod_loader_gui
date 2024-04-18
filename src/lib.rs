@@ -361,21 +361,16 @@ pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
     Ok(PathResult::None(try_locate))
 }
 
-fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
-    //MARK: TODO
-    // switch 2 branch match statements to something like this where possible
-    let drive = get_current_drive().unwrap_or_else(|| {
-        warn!("Failed to find find current Drive. Using 'C:\\'");
-        "C:\\".to_string()
-    });
+fn attempt_locate_dir(target_path: &[&str]) -> std::io::Result<PathBuf> {
+    let drive = get_current_drive()?;
 
-    info!("Drive Found: {}", &drive);
+    trace!("Drive Found: {:?}", &drive);
 
     match test_path_buf(PathBuf::from(&drive), target_path) {
-        Some(path) => Some(path),
-        None => {
+        Ok(path) => Ok(path),
+        Err(err) => {
             if &drive == "C:\\" {
-                None
+                Err(err)
             } else {
                 test_path_buf(PathBuf::from("C:\\"), target_path)
             }
@@ -383,7 +378,7 @@ fn attempt_locate_dir(target_path: &[&str]) -> Option<PathBuf> {
     }
 }
 
-fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> Option<PathBuf> {
+fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> std::io::Result<PathBuf> {
     for (index, dir) in target_path.iter().enumerate() {
         path.push(dir);
         trace!("Testing Path: {}", &path.display());
@@ -391,27 +386,27 @@ fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> Option<PathBuf> {
             path.pop();
             break;
         } else if !path.exists() {
-            return None;
+            return new_io_error!(
+                ErrorKind::NotFound,
+                format!("Could not locate {target_path:?}")
+            );
         }
     }
-    Some(path)
+    Ok(path)
 }
 
-fn get_current_drive() -> Option<String> {
-    let current_path = match std::env::current_dir() {
-        Ok(path) => Some(path),
-        Err(err) => {
-            error!("{:?}", err);
-            None
-        }
-    };
+fn get_current_drive() -> std::io::Result<std::ffi::OsString> {
+    let current_path = std::env::current_dir()?;
     current_path
-        .and_then(|path| {
-            path.components().next().map(|root| {
-                let mut drive = root.as_os_str().to_os_string();
-                drive.push("\\");
-                drive
-            })
+        .components()
+        .next()
+        .map(|root| {
+            let mut drive = root.as_os_str().to_os_string().to_ascii_uppercase();
+            drive.push("\\");
+            drive
         })
-        .and_then(|os_string| os_string.to_str().map(|drive| drive.to_uppercase()))
+        .ok_or(std::io::Error::new(
+            ErrorKind::InvalidData,
+            "Could not get root component",
+        ))
 }

@@ -937,7 +937,7 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
             enabled: mod_data.state,
             files: SharedString::from({
                 let files: Vec<String> = {
-                    let mut files = Vec::with_capacity(mod_data.files.len() + mod_data.config_files.len() + mod_data.other_files.len());
+                    let mut files = Vec::with_capacity(mod_data.all_files_len());
                     files.extend(mod_data.files.iter().map(|f| f.to_string_lossy().replace(".disabled", "")));
                     files.extend(mod_data.config_files.iter().map(|f| f.to_string_lossy().to_string()));
                     files.extend(mod_data.other_files.iter().map(|f| f.to_string_lossy().to_string()));
