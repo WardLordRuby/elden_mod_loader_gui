@@ -1,0 +1,130 @@
+import { ColorPalette } from "common.slint";
+
+component TabItem inherits Rectangle {
+    in property <bool> selected;
+    in property <bool> has-focus;
+    in-out property <string> text <=> label.text;
+
+    callback clicked <=> touch.clicked;
+
+    min-height: l.preferred-height;
+
+    states [
+        pressed when touch.pressed : {
+            state.opacity: 0.8;
+        }
+        hover when touch.has-hover : {
+            state.opacity: 0.6;
+        }
+        selected when root.selected : {
+            state.opacity: 1;
+        }
+        focused when root.has-focus : {
+            state.opacity: 0.8;
+        }
+    ]
+
+    state := Rectangle {
+        opacity: 0;
+        background: ColorPalette.page-background-color;
+
+        animate opacity { duration: 150ms; }
+    }
+
+    l := HorizontalLayout {
+        y: (parent.height - self.height) / 2;
+        padding: 3px;
+        spacing: 0px;
+
+        label := Text {
+            color: ColorPalette.text-base;
+            vertical-alignment: center;
+         }
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+}
+
+export component TabBar inherits Rectangle {
+    in property <[string]> model: [];
+    out property <int> current-item: 0;
+    out property <int> current-focused: fs.has-focus ? fs.focused-tab : -1; // The currently focused tab
+
+    width: 315px;
+    height: 30px;
+    forward-focus: fs;
+    accessible-role: tab;
+    accessible-delegate-focus: root.current-focused >= 0 ? root.current-focused : root.current-item;
+
+    Rectangle {
+        background: ColorPalette.page-background-color.darker(0.2);
+
+        fs := FocusScope {
+            key-pressed(event) => {
+                if (event.text == "\n") {
+                     root.current-item = root.current-focused;
+                     return accept;
+                }
+                if (event.text == Key.UpArrow) {
+                     self.focused-tab = Math.max(self.focused-tab - 1,  0);
+                     return accept;
+                }
+                if (event.text == Key.DownArrow) {
+                     self.focused-tab = Math.min(self.focused-tab + 1, root.model.length - 1);
+                     return accept;
+                }
+                return reject;
+            }
+
+            key-released(event) => {
+                if (event.text == " ") {
+                     root.current-item = root.current-focused;
+                     return accept;
+                }
+                return reject;
+            }
+
+            property <int> focused-tab: 0;
+
+            x: 0;
+            width: 0; // Do not react on clicks
+        }
+    }
+
+    HorizontalLayout {
+        // consider making padding and spacing elements defined in common.slint
+        padding-top: 3px;
+        padding-bottom: 3px;
+        spacing: 3px;
+        alignment: start;
+
+        label := Text {
+            font-size: 16px;
+            horizontal-alignment: center;
+        }
+
+        navigation := HorizontalLayout {
+            alignment: start;
+            vertical-stretch: 0;
+            for item[index] in root.model : TabItem {
+                clicked => { root.current-item = index; }
+
+                has-focus: index == root.current-focused;
+                text: item;
+                selected: index == root.current-item;
+            }
+        }
+
+        HorizontalLayout {
+            bottom := HorizontalLayout {
+                padding-left: 3px;
+                padding-right: 3px;
+
+                @children
+             }
+        }
+    }
+}

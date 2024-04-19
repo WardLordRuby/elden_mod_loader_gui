@@ -76,7 +76,7 @@ export component Page inherits Rectangle {
     in property<string> title: "title";
     in property<string> description: "description";
     in property <bool> has-back-button;
-    width: 310px;
+    width: 315px;
     background: ColorPalette.page-background-color;
 
     callback back;
@@ -171,5 +171,14 @@ export component Page inherits Rectangle {
             }
         }
     }
+    @children
+}
+
+export component Tab inherits Rectangle {
+    background: ColorPalette.page-background-color;
+    width: 315px;
+
+    TouchArea {} // Protect underneath controls
+
     @children
 }

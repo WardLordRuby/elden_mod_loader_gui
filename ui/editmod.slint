@@ -1,5 +1,6 @@
 import { GroupBox, Button, ScrollView } from "std-widgets.slint";
 import { MainLogic, SettingsLogic, Page } from "common.slint";
+import { TabBar } from "tab_bar.slint";
 
 export component ModDetailsPage inherits Page {
     has-back-button: true;
@@ -26,6 +27,11 @@ export component ModDetailsPage inherits Page {
             font-size: 10pt;
             text: @tr("Enabled:");
         }
+
+        side-bar := TabBar {
+            model: [@tr("Menu" => "Details"), @tr("Menu" => "Edit")];
+        }
+
         b := HorizontalLayout {
             padding-left: 8px;
             padding-top: 3px;

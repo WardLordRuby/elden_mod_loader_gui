@@ -14,6 +14,7 @@ export component MainPage inherits Page {
     callback edit-mod(int);
     focus-line-edit => { input-mod.focus() }
     edit-mod(i) => {
+        // mod-settings.tab = 0;
         mod-settings.mod-index = i;
         MainLogic.current-subpage = 2
     }
