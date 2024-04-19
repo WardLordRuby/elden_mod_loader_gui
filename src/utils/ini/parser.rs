@@ -473,8 +473,7 @@ impl RegMod {
         path_refs
     }
     pub fn add_other_files_to_files<'a>(&'a self, files: &'a [PathBuf]) -> Vec<&'a Path> {
-        let mut path_refs =
-            Vec::with_capacity(files.len() + self.config_files.len() + self.other_files.len());
+        let mut path_refs = Vec::with_capacity(files.len() + self.other_files_len());
         path_refs.extend(files.iter().map(|f| f.as_path()));
         path_refs.extend(self.config_files.iter().map(|f| f.as_path()));
         path_refs.extend(self.other_files.iter().map(|f| f.as_path()));

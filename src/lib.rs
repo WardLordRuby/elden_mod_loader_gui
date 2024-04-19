@@ -287,17 +287,17 @@ impl FileData<'_> {
 
 /// Convience function to map Option None to an io Error
 pub fn parent_or_err(path: &Path) -> std::io::Result<&Path> {
-    match path.parent() {
-        Some(parent) => Ok(parent),
-        None => new_io_error!(ErrorKind::InvalidData, "Could not get parent_dir"),
-    }
+    path.parent().ok_or(std::io::Error::new(
+        ErrorKind::InvalidData,
+        "Could not get parent_dir",
+    ))
 }
 /// Convience function to map Option None to an io Error
 pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
-    match path.file_name() {
-        Some(name) => Ok(name),
-        None => new_io_error!(ErrorKind::InvalidData, "Could not get file_name"),
-    }
+    path.file_name().ok_or(std::io::Error::new(
+        ErrorKind::InvalidData,
+        "Could not get file_name",
+    ))
 }
 
 pub enum PathResult {
@@ -396,8 +396,7 @@ fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> std::io::Result<Pat
 }
 
 fn get_current_drive() -> std::io::Result<std::ffi::OsString> {
-    let current_path = std::env::current_dir()?;
-    current_path
+    std::env::current_dir()?
         .components()
         .next()
         .map(|root| {

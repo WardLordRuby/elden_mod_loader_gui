@@ -394,7 +394,7 @@ impl InstallData {
     ) -> std::io::Result<()> {
         let mut self_clone = self.clone();
         let new_directory_owned = PathBuf::from(new_directory);
-        let jh = std::thread::spawn(move || -> Result<InstallData, std::io::Error> {
+        let jh = std::thread::spawn(move || -> std::io::Result<InstallData> {
             let valid_dir = check_dir_contains_files(&new_directory_owned)?;
             let game_dir = self_clone.install_dir.parent().expect("has parent");
             if valid_dir.strip_prefix(game_dir).is_ok() {
@@ -506,15 +506,13 @@ pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<(
 pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize> {
     let scan_dir = game_dir.join("mods");
     if !matches!(scan_dir.try_exists(), Ok(true)) {
-        {
-            return new_io_error!(
-                ErrorKind::BrokenPipe,
-                format!(
-                    "\"mods\" folder does not exist in \"{}\"",
-                    game_dir.display()
-                )
-            );
-        }
+        return new_io_error!(
+            ErrorKind::BrokenPipe,
+            format!(
+                "\"mods\" folder does not exist in \"{}\"",
+                game_dir.display()
+            )
+        );
     };
     let num_files = items_in_directory(&scan_dir, FileType::File)?;
     let mut file_sets = Vec::with_capacity(num_files);
