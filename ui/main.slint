@@ -1,6 +1,6 @@
 import { CheckBox, GroupBox, ListView, LineEdit, Button } from "std-widgets.slint";
-import { SettingsPage, ModDetailsPage } from "subpages.slint";
-import { MainLogic, SettingsLogic, Page, ColorPalette } from "common.slint";
+import { SettingsPage, ModDetailsPage } from "sub-pages.slint";
+import { MainLogic, SettingsLogic, Page, ColorPalette, Formating } from "common.slint";
 
 export component MainPage inherits Page {
     has-back-button: false;
@@ -14,7 +14,7 @@ export component MainPage inherits Page {
     callback edit-mod(int);
     focus-line-edit => { input-mod.focus() }
     edit-mod(i) => {
-        // mod-settings.tab = 0;
+        mod-settings.current-tab = 0;
         mod-settings.mod-index = i;
         MainLogic.current-subpage = 2
     }
@@ -22,7 +22,7 @@ export component MainPage inherits Page {
     VerticalLayout {
         y: 27px;
         height: parent.height - self.y;
-        preferred-width: 460px;
+        preferred-width: Formating.app-width;
         padding: 8px;
 
         reg-mod-box := GroupBox {

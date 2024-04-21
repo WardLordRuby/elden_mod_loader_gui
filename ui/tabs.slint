@@ -1,0 +1,91 @@
+import { ScrollView, GroupBox, Button } from "std-widgets.slint";
+import { Tab, SettingsLogic, MainLogic, Formating } from "common.slint";
+
+export component ModDetails inherits Tab {
+    in property <int> mod-index;
+    details := VerticalLayout {
+        y: 0px;
+        padding-top: Formating.default-padding;
+        padding-left: 12px;
+        padding-right: 12px;
+        alignment: start;
+    
+        a := Text {
+            font-size: 10pt;
+            text: @tr("Name:");
+        }
+        b := HorizontalLayout {
+            padding-left: 8px;
+            padding-top: Formating.default-padding;
+            padding-bottom: Formating.default-padding;
+            Text {
+                font-size: 13pt;
+                wrap: word-wrap;
+                text: MainLogic.current-mods[mod-index].name;
+            }
+        }
+        c := Text {
+            font-size: 10pt;
+            text: @tr("Files:");
+        }
+    }
+    ScrollView {
+        y: details.y + a.height + b.height + c.height + 9px;
+        height: root.height - 75px;
+        width: Formating.layout-width;
+        viewport-height: files-txt.height;
+        viewport-width: files-txt.width;
+        files-txt := Text {
+            x: 15px;
+            width: parent.width - self.x;
+            font-size: 13pt;
+            wrap: word-wrap;
+            text: MainLogic.current-mods[mod-index].files;
+        }
+    }
+}
+
+export component ModEdit inherits Tab {
+    in property <int> mod-index;
+    property <length> button-width: MainLogic.current-mods[mod-index].has-config ? 93px : 105px;
+    property <LayoutAlignment> button-layout: MainLogic.current-mods[mod-index].has-config ? center : end;
+    VerticalLayout {
+        y: root.height - edit-mod-box.height;
+        height: root.height - self.y;
+        padding-left: 8px;
+        alignment: end;
+    
+        edit-mod-box := GroupBox {
+            title: @tr("Edit Mod");
+            height: 95px;
+            HorizontalLayout {
+                width: Formating.layout-width;
+                spacing: 7px;
+                padding-right: 8px;
+                padding-bottom: 8px;
+                alignment: button-layout;
+                Button {
+                    width: button-width;
+                    height: 35px;
+                    primary: !SettingsLogic.dark-mode;
+                    text: @tr("Add Files");
+                    clicked => { MainLogic.add-to-mod(MainLogic.current-mods[mod-index].name) }
+                }
+                if (MainLogic.current-mods[mod-index].has-config) : Button {
+                    width: button-width;
+                    height: 35px;
+                    primary: !SettingsLogic.dark-mode;
+                    text: @tr("Edit config");
+                    clicked => { MainLogic.edit-config(MainLogic.current-mods[mod-index].config-files) }
+                }
+                Button {
+                    width: button-width;
+                    height: 35px;
+                    primary: !SettingsLogic.dark-mode;
+                    text: @tr("De-register");
+                    clicked => { MainLogic.remove-mod(MainLogic.current-mods[mod-index].name) }
+                }
+            }
+        }
+    }
+}

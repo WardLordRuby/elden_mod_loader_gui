@@ -1,119 +1,48 @@
 import { GroupBox, Button, ScrollView } from "std-widgets.slint";
-import { MainLogic, SettingsLogic, Page } from "common.slint";
-import { TabBar } from "tab_bar.slint";
+import { MainLogic, SettingsLogic, Page, Formating, Tab } from "common.slint";
+import { TabBar } from "tab-bar.slint";
+import { ModDetails, ModEdit } from "tabs.slint";
 
 export component ModDetailsPage inherits Page {
     has-back-button: true;
     title: MainLogic.current-mods[mod-index].name;
     description: @tr("Edit registered mods here");
+    // height: 400px;
     
     in property <int> mod-index;
-    property <length> box-width: root.width - 10px;
+    in-out property <int> current-tab;
     property <color> state-color: SettingsLogic.loader-disabled ? #d01616 : 
-        MainLogic.current-mods[mod-index].enabled ? #206816 : #d01616;
+    MainLogic.current-mods[mod-index].enabled ? #206816 : #d01616;
     property <string> state: SettingsLogic.loader-disabled ? @tr("Mod Loader Disabled") : 
-        MainLogic.current-mods[mod-index].enabled ? @tr("Yes") : @tr("No");
-    property <length> button-width: MainLogic.current-mods[mod-index].has-config ? 93px : 105px;
-    property <LayoutAlignment> button-layout: MainLogic.current-mods[mod-index].has-config ? center : end;
+    MainLogic.current-mods[mod-index].enabled ? @tr("Mod Enabled") : @tr("Mod Disabled");
 
-    details := VerticalLayout {
-        y: 45px;
-        height: root.height - edit-mod-box.height - 55px;
-        padding-top: 4px;
-        padding-left: 12px;
-        padding-right: 12px;
-        alignment: start;
-        a := Text {
-            font-size: 10pt;
-            text: @tr("Enabled:");
-        }
-
-        side-bar := TabBar {
-            model: [@tr("Menu" => "Details"), @tr("Menu" => "Edit")];
-        }
-
-        b := HorizontalLayout {
-            padding-left: 8px;
-            padding-top: 3px;
-            padding-bottom: 3px;
-            Text {
-                font-size: 16pt;
-                color: state-color;
-                text: state;
-            }
-        }
-        c := Text {
-            font-size: 10pt;
-            text: @tr("Name:");
-        }
-        d := HorizontalLayout {
-            padding-left: 8px;
-            padding-top: 3px;
-            padding-bottom: 3px;
-            Text {
-                font-size: 13pt;
-                wrap: word-wrap;
-                text: MainLogic.current-mods[mod-index].name;
-            }
-        }
-        e := Text {
-            font-size: 10pt;
-            text: @tr("Files:");
-        }
-
-
-    }
-    ScrollView {
-        y: details.y + a.height + b.height + c.height + d.height + e.height + 9px;
-        height: root.height - self.y - edit-mod-box.height + 3px;
-        width: box-width;
-        viewport-height: files-txt.height;
-        viewport-width: files-txt.width;
-        files-txt := Text {
-            x: 15px;
-            width: parent.width - self.x;
-            font-size: 13pt;
-            wrap: word-wrap;
-            text: MainLogic.current-mods[mod-index].files;
+    info-text := HorizontalLayout {
+        y: Formating.header-height - 10px;
+        height: 25px;
+        padding-right: 10px;
+        Text {
+            font-size: 16pt;
+            color: state-color;
+            text: state;
+            horizontal-alignment: right;
         }
     }
-    VerticalLayout {
-        y: root.height - edit-mod-box.height;
-        height: root.height - self.y;
-        padding-left: 8px;
-        alignment: end;
-
-        edit-mod-box := GroupBox {
-            title: @tr("Edit Mod");
-            height: 95px;
-            HorizontalLayout {
-                width: box-width;
-                spacing: 7px;
-                padding-right: 8px;
-                padding-bottom: 8px;
-                alignment: button-layout;
-                Button {
-                    width: button-width;
-                    height: 35px;
-                    primary: !SettingsLogic.dark-mode;
-                    text: @tr("Add Files");
-                    clicked => { MainLogic.add-to-mod(MainLogic.current-mods[mod-index].name) }
-                }
-                if (MainLogic.current-mods[mod-index].has-config) : Button {
-                    width: button-width;
-                    height: 35px;
-                    primary: !SettingsLogic.dark-mode;
-                    text: @tr("Edit config");
-                    clicked => { MainLogic.edit-config(MainLogic.current-mods[mod-index].config-files) }
-                }
-                Button {
-                    width: button-width;
-                    height: 35px;
-                    primary: !SettingsLogic.dark-mode;
-                    text: @tr("De-register");
-                    clicked => { MainLogic.remove-mod(MainLogic.current-mods[mod-index].name) }
-                }
-            }
-        }
+    
+    tab-bar := TabBar {
+        y: Formating.header-height + 20px;
+        model: [@tr("Tab" => "Details"), @tr("Tab" => "Edit")];
+        current-item <=> current-tab;
     }
+    
+    if(tab-bar.current-item == 0) : ModDetails { 
+        mod-index: mod-index; 
+        height: root.height - Formating.header-height - info-text.height - tab-bar.height; 
+        y: Formating.header-height + tab-bar.height + info-text.height; 
+    }
+    if(tab-bar.current-item == 1) : ModEdit {
+        mod-index: mod-index; 
+        height: root.height - Formating.header-height - info-text.height - tab-bar.height; 
+        y: Formating.header-height + tab-bar.height + info-text.height; 
+    }
+    
 }

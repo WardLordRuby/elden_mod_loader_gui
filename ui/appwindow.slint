@@ -1,5 +1,5 @@
 import { MainPage } from "main.slint";
-import { MainLogic, SettingsLogic, DisplayMod, ColorPalette, Message } from "common.slint";
+import { MainLogic, SettingsLogic, DisplayMod, ColorPalette, Message, Formating } from "common.slint";
 import { StandardButton } from "std-widgets.slint";
 
 export { MainLogic, SettingsLogic, DisplayMod }
@@ -13,7 +13,7 @@ export component App inherits Window {
     // popup-window-width = text-width + dialog boarder
     property <length> popup-window-width: msg-size.width + 13px;
     // window-height = main-page-height -? page-title-height
-    property <length> window-height: mp.height - 48px;
+    property <length> window-height: mp.height - Formating.header-height;
     property <length> popup-window-x-pos: {
         if ((mp.width - popup-window-width) / 2) < 10px {
             10px
@@ -35,8 +35,8 @@ export component App inherits Window {
     icon: @image-url("assets/EML-icon.png");
     // preferred-height: 381px;
     min-height: 381px;
-    min-width: 315px;
-    max-width: 315px;
+    min-width: Formating.app-width;
+    max-width: Formating.app-width;
     
     mp := MainPage {}
 
