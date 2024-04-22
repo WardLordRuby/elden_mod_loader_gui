@@ -132,7 +132,6 @@ fn parent_dir_from_vec(in_files: &[PathBuf]) -> std::io::Result<PathBuf> {
     }
 }
 
-#[derive(PartialEq)]
 pub enum DisplayItems {
     Limit(usize),
     All,
@@ -378,7 +377,7 @@ impl InstallData {
 
         format_loop(self, &mut files_to_display, directory, &mut cut_off_data)?;
 
-        if *cutoff != DisplayItems::None {
+        if let DisplayItems::All | DisplayItems::Limit(_) = *cutoff {
             self.display_paths = files_to_display.join("\n");
         }
 
@@ -439,9 +438,8 @@ impl InstallData {
         });
         match jh.join() {
             Ok(result) => match result {
-                Ok(data) => {
-                    let mut new_self = data;
-                    std::mem::swap(&mut new_self, self);
+                Ok(mut data) => {
+                    std::mem::swap(&mut data, self);
                     Ok(())
                 }
                 Err(err) => Err(err),
@@ -530,6 +528,9 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
     for file in files.iter() {
         let name = file_name_or_err(file)?.to_string_lossy();
         let file_data = FileData::from(&name);
+        if file_data.extension != ".dll" {
+            continue;
+        };
         if let Some(dir) = dirs
             .iter()
             .find(|d| d.file_name().expect("is dir") == file_data.name)
