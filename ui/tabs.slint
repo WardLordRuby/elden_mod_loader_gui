@@ -6,39 +6,39 @@ export component ModDetails inherits Tab {
     details := VerticalLayout {
         y: 0px;
         padding-top: Formatting.default-padding;
-        padding-left: 12px;
-        padding-right: 12px;
+        padding-left: Formatting.side-padding;
+        padding-right: Formatting.side-padding;
         alignment: start;
     
         a := Text {
-            font-size: 10pt;
+            font-size: Formatting.font-size-h3;
             text: @tr("Name:");
         }
         b := HorizontalLayout {
-            padding-left: 8px;
+            padding-left: Formatting.side-padding;
             padding-top: Formatting.default-padding;
             padding-bottom: Formatting.default-padding;
             Text {
-                font-size: 13pt;
+                font-size: Formatting.font-size-h2;
                 wrap: word-wrap;
                 text: MainLogic.current-mods[mod-index].name;
             }
         }
         c := Text {
-            font-size: 10pt;
+            font-size: Formatting.font-size-h3;
             text: @tr("Files:");
         }
     }
     ScrollView {
         y: details.y + a.height + b.height + c.height + 9px;
         height: root.height - 75px;
-        width: Formatting.layout-width;
+        width: Formatting.group-box-width;
         viewport-height: files-txt.height;
         viewport-width: files-txt.width;
         files-txt := Text {
             x: 15px;
             width: parent.width - self.x;
-            font-size: 13pt;
+            font-size: Formatting.font-size-h2;
             wrap: word-wrap;
             text: MainLogic.current-mods[mod-index].files;
         }
@@ -51,7 +51,7 @@ export component ModEdit inherits Tab {
     property <LayoutAlignment> button-layout: MainLogic.current-mods[mod-index].has-config ? space-between : end;
     VerticalLayout {
         y: 0px;
-        padding-left: Formatting.side-spacing;
+        padding-left: Formatting.side-padding;
         alignment: end;
     
         edit-mod-box := GroupBox {
@@ -59,9 +59,9 @@ export component ModEdit inherits Tab {
             width: Formatting.group-box-width;
             height: 90px;
             HorizontalLayout {
-                width: Formatting.layout-width;
-                padding-right: Formatting.side-spacing;
-                padding-bottom: Formatting.side-spacing / 2;
+                width: Formatting.group-box-width;
+                padding-right: Formatting.side-padding;
+                padding-bottom: Formatting.side-padding / 2;
                 alignment: button-layout;
                 spacing: Formatting.button-spacing;
                 Button {

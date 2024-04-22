@@ -77,13 +77,15 @@ export global Formatting {
     out property <length> app-preferred-height: 381px;
     out property <length> header-height: 48px;
     out property <length> tab-bar-height: 30px;
-    out property <length> layout-width: app-width - 10px;
     out property <length> default-padding: 3px;
     out property <length> default-spacing: 3px;
-    out property <length> side-spacing: 8px;
+    out property <length> side-padding: 8px;
     out property <length> button-spacing: 5px;
     out property <length> rectangle-radius: 10px;
-    out property <length> group-box-width: app-width - Formatting.side-spacing;
+    out property <length> group-box-width: app-width - Formatting.side-padding;
+    out property <length> font-size-h1: 18pt;
+    out property <length> font-size-h2: 14pt;
+    out property <length> font-size-h3: 10pt;
 }
 
 export component Page inherits Rectangle {
@@ -114,7 +116,7 @@ export component Page inherits Rectangle {
                 source: @image-url("assets/back-arrow.png");
                 image-fit: contain;
                 colorize: ColorPalette.text-foreground-color;
-                source-clip-y: -50;
+                source-clip-y: - 50;
                 width: 30px;
                 height: 24px;
                 
@@ -126,7 +128,7 @@ export component Page inherits Rectangle {
                 }
             }
             title := Text {
-                font-size: 24px;
+                font-size: Formatting.font-size-h1;
                 max-width: root.width - 10px;
                 text: root.title;
                 color: ColorPalette.text-foreground-color;
@@ -149,7 +151,7 @@ export component Page inherits Rectangle {
         
         if (!root.has-back-button) : HorizontalLayout {
             Text {
-                font-size: 24px;
+                font-size: Formatting.font-size-h1;
                 max-width: root.width * 0.8;
                 text: root.title;
                 color: ColorPalette.text-foreground-color;

@@ -32,14 +32,12 @@ component TabItem inherits Rectangle {
 
     HorizontalLayout {
         y: (parent.height - self.height) / 2;
-        height: parent.height;
         padding: Formatting.default-padding;
         padding-right: 8px;
-        spacing: 0px;
 
         label := Text {
             color: ColorPalette.text-foreground-color;
-            font-size: 14px;
+            font-size: Formatting.font-size-h3;
             vertical-alignment: center;
             horizontal-alignment: right;
          }

@@ -23,8 +23,8 @@ export component MainPage inherits Page {
         y: 27px;
         height: parent.height - self.y;
         preferred-width: Formatting.app-width;
-        padding: Formatting.side-spacing;
-        padding-bottom: Formatting.side-spacing / 2;
+        padding: Formatting.side-padding;
+        padding-bottom: Formatting.side-padding / 2;
 
         reg-mod-box := GroupBox {
             title: @tr("Registered-Mods:");
@@ -80,7 +80,7 @@ export component MainPage inherits Page {
             }
         }
         add-mod-box := GroupBox {
-            height: 88px;
+            height: 85px;
             title: @tr("Add Mod");
             enabled: MainLogic.game-path-valid;
             FocusScope {
@@ -102,15 +102,13 @@ export component MainPage inherits Page {
                     spacing: Formatting.button-spacing;
                     input-mod := LineEdit {
                         height: 35px;
-                        preferred-width: 100px;
-                        horizontal-alignment: left;
                         placeholder-text: @tr("Mod Name");
                         enabled: add-mod-box.enabled;
                         text <=> MainLogic.line-edit-text;
                     }
                     add-mod := Button {
-                        width: 89px;
                         height: 35px;
+                        width: 95px;
                         text: @tr("Select Files");
                         primary: !SettingsLogic.dark-mode;
                         enabled: add-mod-box.enabled;
