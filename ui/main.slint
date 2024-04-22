@@ -11,8 +11,10 @@ export component MainPage inherits Page {
     // height: 400px;
 
     callback focus-line-edit;
+    callback focus-settings;
     callback edit-mod(int);
     focus-line-edit => { input-mod.focus() }
+    focus-settings => { app-settings.focus-settings-scope() }
     edit-mod(i) => {
         mod-settings.current-tab = 0;
         mod-settings.mod-index = i;
@@ -125,7 +127,7 @@ export component MainPage inherits Page {
             }
         }
     }
-    SettingsPage {
+    app-settings := SettingsPage {
         x: MainLogic.current-subpage == 1 ? 0 : parent.width + parent.x + 2px;
         animate x { duration: 150ms; easing: ease; }
     }

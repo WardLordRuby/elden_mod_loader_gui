@@ -6,6 +6,9 @@ export component SettingsPage inherits Page {
     title: @tr("Settings");
     description: @tr("Set path to eldenring.exe and app settings here");
 
+    callback focus-settings-scope;
+    focus-settings-scope => { load-delay.focus() }
+
     VerticalLayout {
         y: 34px;
         height: parent.height - self.y;

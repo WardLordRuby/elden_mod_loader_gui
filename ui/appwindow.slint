@@ -189,7 +189,11 @@ export component App inherits Window {
             }
             if (event.text == Key.Tab) {
                 if (!popup-visible) {
-                    mp.focus-line-edit()
+                    if (MainLogic.current-subpage == 0) {
+                        mp.focus-line-edit()
+                    } else if (MainLogic.current-subpage == 1) {
+                        mp.focus-settings()
+                    }
                 }
             }
             accept
