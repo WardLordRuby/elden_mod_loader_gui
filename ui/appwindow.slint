@@ -1,5 +1,5 @@
 import { MainPage } from "main.slint";
-import { MainLogic, SettingsLogic, DisplayMod, ColorPalette, Message, Formating } from "common.slint";
+import { MainLogic, SettingsLogic, DisplayMod, ColorPalette, Message, Formatting } from "common.slint";
 import { StandardButton } from "std-widgets.slint";
 
 export { MainLogic, SettingsLogic, DisplayMod }
@@ -13,7 +13,7 @@ export component App inherits Window {
     // popup-window-width = text-width + dialog boarder
     property <length> popup-window-width: msg-size.width + 13px;
     // window-height = main-page-height -? page-title-height
-    property <length> window-height: mp.height - Formating.header-height;
+    property <length> window-height: mp.height - Formatting.header-height;
     property <length> popup-window-x-pos: {
         if ((mp.width - popup-window-width) / 2) < 10px {
             10px
@@ -33,10 +33,10 @@ export component App inherits Window {
     // property <string> debug-msg: "height calc: " + popup-window-y-pos / 1px + "\nPage Height: " + debug-mp-height / 1px + "\nDialog Height: " + popup-window-height / 1px;
     title: @tr("Elden Mod Loader");
     icon: @image-url("assets/EML-icon.png");
-    // preferred-height: 381px;
-    min-height: 381px;
-    min-width: Formating.app-width;
-    max-width: Formating.app-width;
+    preferred-height: Formatting.app-preferred-height;
+    min-height: Formatting.app-preferred-height;
+    min-width: Formatting.app-width;
+    max-width: Formatting.app-width;
     
     mp := MainPage {}
 

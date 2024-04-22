@@ -1,11 +1,11 @@
 import { ScrollView, GroupBox, Button } from "std-widgets.slint";
-import { Tab, SettingsLogic, MainLogic, Formating } from "common.slint";
+import { Tab, SettingsLogic, MainLogic, Formatting } from "common.slint";
 
 export component ModDetails inherits Tab {
     in property <int> mod-index;
     details := VerticalLayout {
         y: 0px;
-        padding-top: Formating.default-padding;
+        padding-top: Formatting.default-padding;
         padding-left: 12px;
         padding-right: 12px;
         alignment: start;
@@ -16,8 +16,8 @@ export component ModDetails inherits Tab {
         }
         b := HorizontalLayout {
             padding-left: 8px;
-            padding-top: Formating.default-padding;
-            padding-bottom: Formating.default-padding;
+            padding-top: Formatting.default-padding;
+            padding-bottom: Formatting.default-padding;
             Text {
                 font-size: 13pt;
                 wrap: word-wrap;
@@ -32,7 +32,7 @@ export component ModDetails inherits Tab {
     ScrollView {
         y: details.y + a.height + b.height + c.height + 9px;
         height: root.height - 75px;
-        width: Formating.layout-width;
+        width: Formatting.layout-width;
         viewport-height: files-txt.height;
         viewport-width: files-txt.width;
         files-txt := Text {
@@ -47,23 +47,23 @@ export component ModDetails inherits Tab {
 
 export component ModEdit inherits Tab {
     in property <int> mod-index;
-    property <length> button-width: MainLogic.current-mods[mod-index].has-config ? 93px : 105px;
-    property <LayoutAlignment> button-layout: MainLogic.current-mods[mod-index].has-config ? center : end;
+    property <length> button-width: MainLogic.current-mods[mod-index].has-config ? 96px : 105px;
+    property <LayoutAlignment> button-layout: MainLogic.current-mods[mod-index].has-config ? space-between : end;
     VerticalLayout {
-        y: root.height - edit-mod-box.height;
-        height: root.height - self.y;
-        padding-left: 8px;
+        y: 0px;
+        padding-left: Formatting.side-spacing;
         alignment: end;
     
         edit-mod-box := GroupBox {
             title: @tr("Edit Mod");
-            height: 95px;
+            width: Formatting.group-box-width;
+            height: 90px;
             HorizontalLayout {
-                width: Formating.layout-width;
-                spacing: 7px;
-                padding-right: 8px;
-                padding-bottom: 8px;
+                width: Formatting.layout-width;
+                padding-right: Formatting.side-spacing;
+                padding-bottom: Formatting.side-spacing / 2;
                 alignment: button-layout;
+                spacing: Formatting.button-spacing;
                 Button {
                     width: button-width;
                     height: 35px;

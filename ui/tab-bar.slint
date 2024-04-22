@@ -1,4 +1,4 @@
-import { ColorPalette, Formating } from "common.slint";
+import { ColorPalette, Formatting } from "common.slint";
 
 component TabItem inherits Rectangle {
     in property <bool> selected;
@@ -6,8 +6,8 @@ component TabItem inherits Rectangle {
 
     callback clicked <=> touch.clicked;
 
-    height: Formating.tab-bar-height;
-    width: Formating.app-width / 2;
+    height: Formatting.tab-bar-height;
+    width: Formatting.app-width / 2;
     
     states [
         pressed when touch.pressed : {
@@ -33,12 +33,12 @@ component TabItem inherits Rectangle {
     HorizontalLayout {
         y: (parent.height - self.height) / 2;
         height: parent.height;
-        padding: Formating.default-padding;
+        padding: Formatting.default-padding;
         padding-right: 8px;
         spacing: 0px;
 
         label := Text {
-            color: ColorPalette.text-base;
+            color: ColorPalette.text-foreground-color;
             font-size: 14px;
             vertical-alignment: center;
             horizontal-alignment: right;
@@ -55,15 +55,15 @@ export component TabBar inherits Rectangle {
     in property <[string]> model: [];
     in-out property <int> current-item: 0;
     
-    background: ColorPalette.page-background-color.darker(0.2);
-    border-top-left-radius: 10px;
-    border-top-right-radius: 10px;
-    width: Formating.app-width;
-    height: Formating.tab-bar-height;
+    background: ColorPalette.page-background-color.darker(0.16);
+    border-top-left-radius: Formatting.rectangle-radius;
+    border-top-right-radius: Formatting.rectangle-radius;
+    width: Formatting.app-width;
+    height: Formatting.tab-bar-height;
 
     HorizontalLayout {
-        padding-top: Formating.default-padding;
-        spacing: Formating.default-spacing;
+        padding-top: Formatting.default-padding;
+        spacing: Formatting.default-spacing;
         alignment: start;
 
         navigation := HorizontalLayout {

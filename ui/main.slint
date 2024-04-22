@@ -1,6 +1,6 @@
 import { CheckBox, GroupBox, ListView, LineEdit, Button } from "std-widgets.slint";
 import { SettingsPage, ModDetailsPage } from "sub-pages.slint";
-import { MainLogic, SettingsLogic, Page, ColorPalette, Formating } from "common.slint";
+import { MainLogic, SettingsLogic, Page, ColorPalette, Formatting } from "common.slint";
 
 export component MainPage inherits Page {
     has-back-button: false;
@@ -22,8 +22,9 @@ export component MainPage inherits Page {
     VerticalLayout {
         y: 27px;
         height: parent.height - self.y;
-        preferred-width: Formating.app-width;
-        padding: 8px;
+        preferred-width: Formatting.app-width;
+        padding: Formatting.side-spacing;
+        padding-bottom: Formatting.side-spacing / 2;
 
         reg-mod-box := GroupBox {
             title: @tr("Registered-Mods:");
@@ -32,7 +33,7 @@ export component MainPage inherits Page {
             list-view := ListView {
                 for mod[idx] in MainLogic.current-mods:  re := Rectangle {
                     height: 31px;
-                    border-radius: 10px;
+                    border-radius: Formatting.rectangle-radius;
                     // ----- ------mod-boxes need to have a max text length-------------
                     // implmented a static way to elide text adding displayname property
                     mod-box := CheckBox {
@@ -98,7 +99,7 @@ export component MainPage inherits Page {
                     accept
                 }
                 HorizontalLayout {
-                    spacing: 7px;
+                    spacing: Formatting.button-spacing;
                     input-mod := LineEdit {
                         height: 35px;
                         preferred-width: 100px;

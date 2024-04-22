@@ -72,21 +72,27 @@ export global ColorPalette  {
     };
 }
 
-export global Formating {
+export global Formatting {
     out property <length> app-width: 315px;
+    out property <length> app-preferred-height: 381px;
     out property <length> header-height: 48px;
     out property <length> tab-bar-height: 30px;
     out property <length> layout-width: app-width - 10px;
     out property <length> default-padding: 3px;
     out property <length> default-spacing: 3px;
+    out property <length> side-spacing: 8px;
+    out property <length> button-spacing: 5px;
+    out property <length> rectangle-radius: 10px;
+    out property <length> group-box-width: app-width - Formatting.side-spacing;
 }
 
 export component Page inherits Rectangle {
     in property<string> title: "title";
     in property<string> description: "description";
     in property <bool> has-back-button;
-    width: Formating.app-width;
-    background: ColorPalette.page-background-color;
+    in property <bool> dark-header;
+    width: Formatting.app-width;
+    background: dark-header ? ColorPalette.page-background-color.darker(0.16) : ColorPalette.page-background-color;
 
     callback back;
     callback settings;
@@ -98,7 +104,7 @@ export component Page inherits Rectangle {
     HorizontalLayout {
         x: 0;
         y: 0;
-        height: Formating.header-height;
+        height: Formatting.header-height;
         padding-left: 5px;
         padding-right: 8px;
         padding-top: 8px;
@@ -185,8 +191,7 @@ export component Page inherits Rectangle {
 
 export component Tab inherits Rectangle {
     background: ColorPalette.page-background-color;
-    y: Formating.header-height + Formating.tab-bar-height;
-    width: 315px;
+    width: Formatting.app-width;
 
     TouchArea {} // Protect underneath controls
 
