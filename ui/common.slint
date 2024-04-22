@@ -98,7 +98,7 @@ export component Page inherits Rectangle {
 
     callback back;
     callback settings;
-    back => { MainLogic.current-subpage = 0 }
+    back => { MainLogic.current-subpage = 0; MainLogic.force-app-focus() }
     settings => { MainLogic.current-subpage = 1 }
 
     TouchArea {} // Protect underneath controls

@@ -12,9 +12,11 @@ export component MainPage inherits Page {
 
     callback focus-line-edit;
     callback focus-settings;
+    callback swap-tab;
     callback edit-mod(int);
     focus-line-edit => { input-mod.focus() }
     focus-settings => { app-settings.focus-settings-scope() }
+    swap-tab => { mod-settings.current-tab = mod-settings.current-tab == 0 ? 1 : 0 }
     edit-mod(i) => {
         mod-settings.current-tab = 0;
         mod-settings.mod-index = i;
@@ -81,22 +83,18 @@ export component MainPage inherits Page {
                 }
             }
         }
-        add-mod-box := GroupBox {
+        GroupBox {
             height: 85px;
             title: @tr("Add Mod");
             enabled: MainLogic.game-path-valid;
             FocusScope {
+                enabled: parent.enabled;
                 key-pressed(event) => {
                     if (event.text == Key.Escape) {
                         MainLogic.force-app-focus()
                     }
-                    // && doesn't work in slint conditonal statements
                     if (event.text == Key.Tab) {
-                        if (input-mod.has-focus) {
-                            add-mod.focus()
-                        } else {
-                            input-mod.focus()
-                        }
+                        input-mod.has-focus ? add-mod.focus() : input-mod.focus()
                     }
                     accept
                 }
@@ -105,7 +103,7 @@ export component MainPage inherits Page {
                     input-mod := LineEdit {
                         height: 35px;
                         placeholder-text: @tr("Mod Name");
-                        enabled: add-mod-box.enabled;
+                        enabled: MainLogic.game-path-valid;
                         text <=> MainLogic.line-edit-text;
                     }
                     add-mod := Button {
@@ -113,7 +111,7 @@ export component MainPage inherits Page {
                         width: 95px;
                         text: @tr("Select Files");
                         primary: !SettingsLogic.dark-mode;
-                        enabled: add-mod-box.enabled;
+                        enabled: MainLogic.game-path-valid;
                         clicked => {
                             if(input-mod.text != "") {
                                 MainLogic.force-app-focus();

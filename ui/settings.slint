@@ -84,15 +84,10 @@ export component SettingsPage inherits Page {
         FocusScope {
             key-pressed(event) => {
                 if (event.text == Key.Escape) {
-                    MainLogic.force-app-focus()
+                    root.back()
                 }
-                // && doesn't work in slint conditonal statements
                 if (event.text == Key.Tab) {
-                    if (load-delay.has-focus) {
-                        set-delay.focus()
-                    } else {
-                        load-delay.focus()
-                    }
+                    load-delay.has-focus ? set-delay.focus() : load-delay.focus()
                 }
                 accept
             }

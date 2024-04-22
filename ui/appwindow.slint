@@ -187,12 +187,19 @@ export component App inherits Window {
                     MainLogic.current-subpage = 0
                 }
             }
+            // && doesn't work in slint conditonal statements
             if (event.text == Key.Tab) {
                 if (!popup-visible) {
                     if (MainLogic.current-subpage == 0) {
-                        mp.focus-line-edit()
+                        if (MainLogic.game-path-valid) {
+                            mp.focus-line-edit()
+                        }
                     } else if (MainLogic.current-subpage == 1) {
-                        mp.focus-settings()
+                        if (SettingsLogic.loader-installed) {
+                            mp.focus-settings()
+                        }
+                    } else if (MainLogic.current-subpage == 2) {
+                        mp.swap-tab()
                     }
                 }
             }
