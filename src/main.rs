@@ -677,6 +677,19 @@ fn main() -> Result<(), slint::PlatformError> {
             );
         }
     });
+    ui.global::<MainLogic>().on_edit_config_item({
+        let ui_handle = ui.as_weak();
+        move |config_item| {
+            let ui = ui_handle.unwrap();
+            let game_dir = ui.global::<SettingsLogic>().get_game_path();
+            let item = config_item.text.to_string();
+            if !matches!(FileData::from(&item).extension, ".txt" | ".ini") {
+                return;
+            };
+            let os_file = vec![std::ffi::OsString::from(format!("{game_dir}\\{item}"))];
+            open_text_files(ui.as_weak(), os_file);
+        }
+    });
     ui.global::<MainLogic>().on_edit_config({
         let ui_handle = ui.as_weak();
         move |config_file| {
@@ -686,33 +699,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 .as_any()
                 .downcast_ref::<VecModel<SharedString>>()
                 .expect("We know we set a VecModel earlier");
-            let string_file = downcast_config_file
+            let os_files = downcast_config_file
                 .iter()
                 .map(|path| std::ffi::OsString::from(format!("{game_dir}\\{path}")))
                 .collect::<Vec<_>>();
-            for file in string_file {
-                let file_clone = file.clone();
-                let jh = std::thread::spawn(move || {
-                    std::process::Command::new("notepad")
-                        .arg(&file)
-                        .spawn()
-                });
-                match jh.join() {
-                    Ok(result) => match result {
-                        Ok(_) => (),
-                        Err(err) => {
-                            error!("{err}");
-                            ui.display_msg(&format!(
-                                "Failed to open config file {file_clone:?}\n\nError: {err}"
-                            ));
-                        }
-                    },
-                    Err(err) => {
-                        error!("Thread panicked! {err:?}");
-                        ui.display_msg(&format!("{err:?}"));
-                    }
-                }
-            }
+            open_text_files(ui.as_weak(), os_files);
         }
     });
     ui.global::<SettingsLogic>().on_toggle_terminal({
@@ -914,11 +905,42 @@ fn populate_restricted_files() -> [&'static OsStr; 6] {
     restricted_files
 }
 
+fn open_text_files(ui_handle: slint::Weak<App>, files: Vec<std::ffi::OsString>) {
+    let ui = ui_handle.unwrap();
+    for file in files {
+        let file_clone = file.clone();
+        let jh = std::thread::spawn(move || {
+            std::process::Command::new("notepad")
+                .arg(&file)
+                .spawn()
+        });
+        match jh.join() {
+            Ok(result) => match result {
+                Ok(_) => (),
+                Err(err) => {
+                    error!("{err}");
+                    ui.display_msg(&format!(
+                        "Failed to open config file {file_clone:?}\n\nError: {err}"
+                    ));
+                }
+            },
+            Err(err) => {
+                error!("Thread panicked! {err:?}");
+                ui.display_msg(&format!("{err:?}"));
+            }
+        }
+    }
+}
+
 fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
     let display_mod: Rc<VecModel<DisplayMod>> = Default::default();
     for mod_data in data.iter() {
         let has_config = !mod_data.config_files.is_empty();
         let config_files: Rc<VecModel<SharedString>> = Default::default();
+        let files: Rc<VecModel<slint::StandardListViewItem>> = Default::default();
+        files.extend(mod_data.files.iter().map(|f| SharedString::from(f.to_string_lossy().replace(".disabled", "")).into()));
+        files.extend(mod_data.config_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
+        files.extend(mod_data.other_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
         if has_config {
             mod_data.config_files.iter().for_each(|file| {
                 config_files.push(SharedString::from(file.to_string_lossy().to_string()))
@@ -935,16 +957,7 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
             }),
             name: SharedString::from(name.clone()),
             enabled: mod_data.state,
-            files: SharedString::from({
-                let files: Vec<String> = {
-                    let mut files = Vec::with_capacity(mod_data.all_files_len());
-                    files.extend(mod_data.files.iter().map(|f| f.to_string_lossy().replace(".disabled", "")));
-                    files.extend(mod_data.config_files.iter().map(|f| f.to_string_lossy().to_string()));
-                    files.extend(mod_data.other_files.iter().map(|f| f.to_string_lossy().to_string()));
-                    files
-                };
-                files.join("\n")
-            }),
+            files: ModelRc::from(files),
             has_config,
             config_files: ModelRc::from(config_files),
         })
