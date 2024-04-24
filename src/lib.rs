@@ -255,33 +255,34 @@ pub struct FileData<'a> {
 
 impl FileData<'_> {
     pub fn from(name: &str) -> FileData {
-        match name.find(".disabled") {
-            Some(index) => {
+        let off_state = ".disabled";
+        if let Some(index) = name.find(off_state) {
+            if index == name.len() - off_state.len() {
                 let first_split = name.split_at(name[..index].rfind('.').expect("is file"));
-                FileData {
+                return FileData {
                     name: first_split.0,
                     extension: first_split
                         .1
                         .split_at(first_split.1.rfind('.').expect("ends in .disabled"))
                         .0,
                     enabled: false,
-                }
+                };
             }
-
-            None => {
-                let split = name.split_at(name.rfind('.').expect("is file"));
-                FileData {
-                    name: split.0,
-                    extension: split.1,
-                    enabled: true,
-                }
-            }
+        }
+        let split = name.split_at(name.rfind('.').expect("is file"));
+        FileData {
+            name: split.0,
+            extension: split.1,
+            enabled: true,
         }
     }
 
-    pub fn is_enabled(path: &Path) -> std::io::Result<bool> {
-        let file_name = file_name_or_err(path)?.to_string_lossy();
-        Ok(FileData::from(&file_name).enabled)
+    pub fn is_enabled<T: AsRef<Path>>(path: &T) -> bool {
+        FileData::from(&path.as_ref().to_string_lossy()).enabled
+    }
+
+    pub fn is_disabled<T: AsRef<Path>>(path: &T) -> bool {
+        !FileData::from(&path.as_ref().to_string_lossy()).enabled
     }
 }
 

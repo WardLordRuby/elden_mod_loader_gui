@@ -444,16 +444,8 @@ impl RegMod {
         }
     }
     pub fn verify_state(&self, game_dir: &Path, ini_file: &Path) -> std::io::Result<()> {
-        if (!self.state
-            && self
-                .mod_files
-                .iter()
-                .any(|path| matches!(FileData::is_enabled(path), Ok(true))))
-            || (self.state
-                && self
-                    .mod_files
-                    .iter()
-                    .any(|path| matches!(FileData::is_enabled(path), Ok(false))))
+        if (!self.state && self.mod_files.iter().any(FileData::is_enabled))
+            || (self.state && self.mod_files.iter().any(FileData::is_disabled))
         {
             warn!(
                 "wrong file state for \"{}\" chaning file extentions",

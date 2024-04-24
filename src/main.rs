@@ -289,9 +289,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg("A selected file is already registered to a mod");
                     return;
                 }
-                let state = !files.iter().all(|file| {
-                    matches!(FileData::is_enabled(file), Ok(false))
-                });
+                let state = !files.iter().all(FileData::is_disabled);
                 results.push(save_bool(
                     current_ini,
                     Some("registered-mods"),
@@ -535,9 +533,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     if file_registered(&registered_mods, &files) {
                         ui.display_msg("A selected file is already registered to a mod");
                     } else {
+                        let num_files = files.len();
                         let mut new_data = found_mod.mod_files.clone();
                         new_data.extend(files);
-                        let mut results = Vec::with_capacity(2);
+                        let mut results = Vec::with_capacity(3);
                         let new_data_refs = found_mod.add_other_files_to_files(&new_data);
                         if found_mod.all_files_len() == 1 {
                             results.push(remove_entry(
@@ -574,7 +573,11 @@ fn main() -> Result<(), slint::PlatformError> {
                                         &updated_mod.name,
                                     );
                                 };
+                                results.push(Err(err));
                             });
+                        if !results.iter().any(|r| r.is_err()) {
+                            ui.display_msg(&format!("Sucessfully added {} file(s) to {}", num_files, format_key));
+                        }
                         ui.global::<MainLogic>().set_current_mods(deserialize(
                             &RegMod::collect(current_ini, false).unwrap_or_else(|_| {
                                 match RegMod::collect(current_ini, false) {
@@ -620,9 +623,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
                 {
                     let mut found_files = found_mod.mod_files.clone();
-                    if found_files.iter().any(|file| {
-                        matches!(FileData::is_enabled(file), Ok(false))
-                    }) {
+                    if found_files.iter().any(FileData::is_disabled) {
                         match toggle_files(&game_dir, true, found_mod, Some(current_ini)) {
                             Ok(files) => found_files = files,
                             Err(err) => {
