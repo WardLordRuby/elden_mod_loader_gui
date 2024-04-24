@@ -1,13 +1,15 @@
-import { ScrollView, GroupBox, Button } from "std-widgets.slint";
+import { GroupBox, Button, StandardListView } from "std-widgets.slint";
 import { Tab, SettingsLogic, MainLogic, Formatting } from "common.slint";
 
 export component ModDetails inherits Tab {
     in property <int> mod-index;
-    details := VerticalLayout {
+    property <length> details-height: a.height + b.height + c.height + (3*Formatting.default-spacing);
+    VerticalLayout {
         y: 0px;
         padding-top: Formatting.default-padding;
-        padding-left: Formatting.side-padding;
-        padding-right: Formatting.side-padding;
+        padding-bottom: Formatting.side-padding / 2;
+        padding: Formatting.side-padding;
+        spacing: Formatting.default-spacing;
         alignment: start;
     
         a := Text {
@@ -16,8 +18,6 @@ export component ModDetails inherits Tab {
         }
         b := HorizontalLayout {
             padding-left: Formatting.side-padding;
-            padding-top: Formatting.default-padding;
-            padding-bottom: Formatting.default-padding;
             Text {
                 font-size: Formatting.font-size-h2;
                 wrap: word-wrap;
@@ -29,18 +29,15 @@ export component ModDetails inherits Tab {
             text: @tr("Files:");
         }
     }
-    ScrollView {
-        y: details.y + a.height + b.height + c.height + 9px;
-        height: root.height - 75px;
-        width: Formatting.group-box-width;
-        viewport-height: files-txt.height;
-        viewport-width: files-txt.width;
-        files-txt := Text {
-            x: 15px;
-            width: parent.width - self.x;
-            font-size: Formatting.font-size-h2;
-            wrap: word-wrap;
-            text: MainLogic.current-mods[mod-index].files;
+    StandardListView {
+        y: details-height;
+        height: root.height - details-height - Formatting.side-padding;
+        width: Formatting.group-box-width - Formatting.side-padding;
+        model: MainLogic.current-mods[mod-index].files;
+        item-pointer-event(i, event) => {
+            if event.kind == PointerEventKind.up {
+                MainLogic.edit-config-item(MainLogic.current-mods[mod-index].files[i])
+            }
         }
     }
 }

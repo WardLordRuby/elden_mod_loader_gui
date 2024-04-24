@@ -50,11 +50,7 @@ export component App inherits Window {
     }
     show-confirm-popup => {
         popup-visible = true;
-        if (!alt-std-buttons) {
-            confirm-popup.show()
-        } else {
-            confirm-popup-2.show()
-        }
+        alt-std-buttons ? confirm-popup-2.show() : confirm-popup.show()
     }
 
     msg-size := Text {
