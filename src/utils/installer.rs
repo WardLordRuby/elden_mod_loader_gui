@@ -216,8 +216,8 @@ impl InstallData {
         file_paths: Vec<PathBuf>,
         game_dir: &Path,
     ) -> std::io::Result<Self> {
-        let amend_mod_split_file_names = amend_to.files.iter().try_fold(
-            Vec::with_capacity(amend_to.files.len()),
+        let amend_mod_split_file_names = amend_to.mod_files.iter().try_fold(
+            Vec::with_capacity(amend_to.mod_files.len()),
             |mut acc, file| {
                 let file_name = file_name_or_err(file)?.to_string_lossy();
                 let file_data = FileData::from(&file_name);

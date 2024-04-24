@@ -260,7 +260,7 @@ impl Valitidity for Ini {
 pub struct RegMod {
     pub name: String,
     pub state: bool,
-    pub files: Vec<PathBuf>,
+    pub mod_files: Vec<PathBuf>,
     pub config_files: Vec<PathBuf>,
     pub other_files: Vec<PathBuf>,
 }
@@ -270,25 +270,23 @@ impl RegMod {
         fn split_out_config_files(
             in_files: Vec<PathBuf>,
         ) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<PathBuf>) {
-            let mut files = Vec::with_capacity(in_files.len());
+            let mut mod_files = Vec::with_capacity(in_files.len());
             let mut config_files = Vec::with_capacity(in_files.len());
             let mut other_files = Vec::with_capacity(in_files.len());
             in_files.into_iter().for_each(|file| {
-                let file_name = file.file_name().expect("is file").to_string_lossy();
-                let name_data = FileData::from(&file_name);
-                match name_data.extension {
-                    ".txt" => other_files.push(file),
+                match FileData::from(&file.to_string_lossy()).extension {
+                    ".dll" => mod_files.push(file),
                     ".ini" => config_files.push(file),
-                    _ => files.push(file),
+                    _ => other_files.push(file),
                 }
             });
-            (files, config_files, other_files)
+            (mod_files, config_files, other_files)
         }
-        let (files, config_files, other_files) = split_out_config_files(in_files);
+        let (mod_files, config_files, other_files) = split_out_config_files(in_files);
         RegMod {
             name: String::from(name),
             state,
-            files,
+            mod_files,
             config_files,
             other_files,
         }
@@ -448,12 +446,12 @@ impl RegMod {
     pub fn verify_state(&self, game_dir: &Path, ini_file: &Path) -> std::io::Result<()> {
         if (!self.state
             && self
-                .files
+                .mod_files
                 .iter()
                 .any(|path| matches!(FileData::is_enabled(path), Ok(true))))
             || (self.state
                 && self
-                    .files
+                    .mod_files
                     .iter()
                     .any(|path| matches!(FileData::is_enabled(path), Ok(false))))
         {
@@ -467,7 +465,7 @@ impl RegMod {
     }
     pub fn file_refs(&self) -> Vec<&Path> {
         let mut path_refs = Vec::with_capacity(self.all_files_len());
-        path_refs.extend(self.files.iter().map(|f| f.as_path()));
+        path_refs.extend(self.mod_files.iter().map(|f| f.as_path()));
         path_refs.extend(self.config_files.iter().map(|f| f.as_path()));
         path_refs.extend(self.other_files.iter().map(|f| f.as_path()));
         path_refs
@@ -480,7 +478,7 @@ impl RegMod {
         path_refs
     }
     pub fn all_files_len(&self) -> usize {
-        self.files.len() + self.config_files.len() + self.other_files.len()
+        self.mod_files.len() + self.config_files.len() + self.other_files.len()
     }
     pub fn other_files_len(&self) -> usize {
         self.config_files.len() + self.other_files.len()

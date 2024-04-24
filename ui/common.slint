@@ -3,8 +3,8 @@ export struct DisplayMod  {
     name: string,
     enabled: bool,
     files: [StandardListViewItem],
-    has-config: bool,
     config-files: [string],
+    dll-files: [string],
 }
 
 export enum Message { confirm, deny, esc }

@@ -35,14 +35,14 @@ mod tests {
 
         let test_mod = RegMod::new("Test", true, test_files.clone());
         let test_files_disabled = test_mod
-            .files
+            .mod_files
             .iter()
             .map(|file| PathBuf::from(format!("{}.disabled", file.display())))
             .collect::<Vec<_>>();
 
-        assert_eq!(test_mod.files.len(), 4);
+        assert_eq!(test_mod.mod_files.len(), 1);
         assert_eq!(test_mod.config_files.len(), 1);
-        assert_eq!(test_mod.other_files.len(), 1);
+        assert_eq!(test_mod.other_files.len(), 4);
 
         for test_file in test_files.iter() {
             File::create(test_file.to_string_lossy().to_string()).unwrap();
@@ -63,7 +63,7 @@ mod tests {
         let test_mod = RegMod {
             name: test_mod.name,
             state: false,
-            files: test_files_disabled,
+            mod_files: test_files_disabled,
             config_files: test_mod.config_files,
             other_files: test_mod.other_files,
         };

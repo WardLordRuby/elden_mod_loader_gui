@@ -190,10 +190,10 @@ pub fn toggle_files(
         save_bool(save_file, Some("registered-mods"), key, state)?;
         Ok(())
     }
-    let num_rename_files = reg_mod.files.len();
+    let num_rename_files = reg_mod.mod_files.len();
     let num_total_files = num_rename_files + reg_mod.other_files_len();
 
-    let file_paths = std::sync::Arc::new(reg_mod.files.clone());
+    let file_paths = std::sync::Arc::new(reg_mod.mod_files.clone());
     let file_paths_clone = file_paths.clone();
     let game_dir_clone = game_dir.to_path_buf();
 

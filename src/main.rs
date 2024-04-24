@@ -486,7 +486,6 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
-            // let reciever_clone = reciever_clone.clone();
             slint::spawn_local(async move {
                 let file_paths = match get_user_files(&game_dir) {
                     Ok(paths) => paths,
@@ -536,11 +535,11 @@ fn main() -> Result<(), slint::PlatformError> {
                     if file_registered(&registered_mods, &files) {
                         ui.display_msg("A selected file is already registered to a mod");
                     } else {
-                        let mut new_data = found_mod.files.clone();
+                        let mut new_data = found_mod.mod_files.clone();
                         new_data.extend(files);
                         let mut results = Vec::with_capacity(2);
                         let new_data_refs = found_mod.add_other_files_to_files(&new_data);
-                        if found_mod.files.len() + found_mod.other_files_len() == 1 {
+                        if found_mod.all_files_len() == 1 {
                             results.push(remove_entry(
                                 current_ini,
                                 Some("mod-files"),
@@ -620,7 +619,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 if let Some(found_mod) =
                     reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
                 {
-                    let mut found_files = found_mod.files.clone();
+                    let mut found_files = found_mod.mod_files.clone();
                     if found_files.iter().any(|file| {
                         matches!(FileData::is_enabled(file), Ok(false))
                     }) {
@@ -933,36 +932,37 @@ fn open_text_files(ui_handle: slint::Weak<App>, files: Vec<std::ffi::OsString>) 
 }
 
 fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
-    let display_mod: Rc<VecModel<DisplayMod>> = Default::default();
+    let display_mods: Rc<VecModel<DisplayMod>> = Default::default();
     for mod_data in data.iter() {
-        let has_config = !mod_data.config_files.is_empty();
-        let config_files: Rc<VecModel<SharedString>> = Default::default();
         let files: Rc<VecModel<slint::StandardListViewItem>> = Default::default();
-        files.extend(mod_data.files.iter().map(|f| SharedString::from(f.to_string_lossy().replace(".disabled", "")).into()));
-        files.extend(mod_data.config_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
-        files.extend(mod_data.other_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
-        if has_config {
-            mod_data.config_files.iter().for_each(|file| {
-                config_files.push(SharedString::from(file.to_string_lossy().to_string()))
-            })
-        } else {
-            config_files.push(SharedString::new())
+        let dll_files: Rc<VecModel<SharedString>> = Default::default();
+        let config_files: Rc<VecModel<SharedString>> = Default::default();
+        if !mod_data.mod_files.is_empty() {
+            files.extend(mod_data.mod_files.iter().map(|f| SharedString::from(f.to_string_lossy().replace(".disabled", "")).into()));
+            dll_files.extend(mod_data.mod_files.iter().map(|file|SharedString::from(file.to_string_lossy().to_string())));
+        };
+        if !mod_data.config_files.is_empty() {
+            files.extend(mod_data.config_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
+            config_files.extend(mod_data.config_files.iter().map(|file| SharedString::from(file.to_string_lossy().to_string())));
+        };
+        if !mod_data.other_files.is_empty() {
+            files.extend(mod_data.other_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
         };
         let name = mod_data.name.replace('_', " ");
-        display_mod.push(DisplayMod {
+        display_mods.push(DisplayMod {
             displayname: SharedString::from(if mod_data.name.chars().count() > 20 {
                 format!("{}...", &name[..17])
             } else {
                 name.clone()
             }),
-            name: SharedString::from(name.clone()),
+            name: SharedString::from(name),
             enabled: mod_data.state,
             files: ModelRc::from(files),
-            has_config,
             config_files: ModelRc::from(config_files),
+            dll_files: ModelRc::from(dll_files)
         })
     }
-    ModelRc::from(display_mod)
+    ModelRc::from(display_mods)
 }
 
 async fn install_new_mod(

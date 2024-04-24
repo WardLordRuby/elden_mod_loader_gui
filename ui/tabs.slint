@@ -44,8 +44,9 @@ export component ModDetails inherits Tab {
 
 export component ModEdit inherits Tab {
     in property <int> mod-index;
-    property <length> button-width: MainLogic.current-mods[mod-index].has-config ? 96px : 105px;
-    property <LayoutAlignment> button-layout: MainLogic.current-mods[mod-index].has-config ? space-between : end;
+    property <bool> has-config: MainLogic.current-mods[mod-index].config-files.length > 0;
+    property <length> button-width: has-config ? 96px : 105px;
+    property <LayoutAlignment> button-layout: has-config ? space-between : end;
     VerticalLayout {
         y: 0px;
         padding-left: Formatting.side-padding;
@@ -68,7 +69,7 @@ export component ModEdit inherits Tab {
                     text: @tr("Add Files");
                     clicked => { MainLogic.add-to-mod(MainLogic.current-mods[mod-index].name) }
                 }
-                if (MainLogic.current-mods[mod-index].has-config) : Button {
+                if (has-config) : Button {
                     width: button-width;
                     height: 35px;
                     primary: !SettingsLogic.dark-mode;
