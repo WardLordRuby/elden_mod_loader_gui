@@ -35,7 +35,7 @@ export component ModDetails inherits Tab {
         width: Formatting.group-box-width - Formatting.side-padding;
         model: MainLogic.current-mods[mod-index].files;
         item-pointer-event(i, event) => {
-            if event.kind == PointerEventKind.up {
+            if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
                 MainLogic.edit-config-item(MainLogic.current-mods[mod-index].files[i])
             }
         }

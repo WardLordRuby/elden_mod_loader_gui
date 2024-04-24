@@ -15,8 +15,8 @@ export component App inherits Window {
     // window-height = main-page-height -? page-title-height
     property <length> window-height: mp.height - Formatting.header-height;
     property <length> popup-window-x-pos: {
-        if ((mp.width - popup-window-width) / 2) < 10px {
-            10px
+        if ((mp.width - popup-window-width) / 2) < Formatting.side-padding - 1px {
+            Formatting.side-padding - 1px
         } else {
             (mp.width - popup-window-width) / 2
         }
