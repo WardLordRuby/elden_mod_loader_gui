@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -178,7 +178,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
             if !first_startup && !mod_loader.installed {
-                ui.display_msg("This tool requires Elden Mod Loader by TechieW to be installed!");
+                ui.display_msg(&format!("This tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease install files to \"{}\"\nand relaunch Elden Mod Loader GUI", &game_dir.display()));
             }
         }
         if first_startup {
@@ -245,7 +245,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
             slint::spawn_local(async move {
-                let game_dir = GAME_DIR.get().unwrap().read().await;
+                let game_dir = GAME_DIR.get().unwrap().blocking_read();
                 let file_paths = match get_user_files(&game_dir) {
                     Ok(files) => files,
                     Err(err) => {
@@ -356,7 +356,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = ui_handle.unwrap();
             let current_ini = get_ini_dir();
             slint::spawn_local(async move {
-                let game_dir = GAME_DIR.get().unwrap().read().await;
+                let game_dir = GAME_DIR.get().unwrap().blocking_read();
                 let path_result = get_user_folder(&game_dir);
                 drop(game_dir);
                 let path = match path_result {
@@ -485,7 +485,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             slint::spawn_local(async move {
-                let game_dir = GAME_DIR.get().unwrap().read().await;
+                let game_dir = GAME_DIR.get().unwrap().blocking_read();
                 let format_key = key.replace(' ', "_");
                 let file_paths = match get_user_files(&game_dir) {
                     Ok(paths) => paths,
@@ -619,7 +619,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                         
                 };
-                let game_dir = GAME_DIR.get().unwrap().read().await;
+                let game_dir = GAME_DIR.get().unwrap().blocking_read();
                 if let Some(found_mod) =
                     reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
                 {
@@ -795,7 +795,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let current_ini = get_ini_dir();
             slint::spawn_local(async move {
                 let ui_handle = ui.as_weak();
-                let game_dir = GAME_DIR.get().unwrap().read().await;
+                let game_dir = GAME_DIR.get().unwrap().blocking_read();
                 match confirm_scan_mods(ui_handle, &game_dir, current_ini, true).await {
                     Ok(len) => {
                         ui.global::<MainLogic>().set_current_subpage(0);
