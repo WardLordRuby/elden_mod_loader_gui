@@ -1,8 +1,9 @@
 #[cfg(test)]
 mod tests {
     use elden_mod_loader_gui::{
+        toggle_files,
         utils::ini::{parser::RegMod, writer::new_cfg},
-        *,
+        OFF_STATE,
     };
     use std::{
         fs::{metadata, remove_file, File},
@@ -37,7 +38,7 @@ mod tests {
         let test_files_disabled = test_mod
             .mod_files
             .iter()
-            .map(|file| PathBuf::from(format!("{}.disabled", file.display())))
+            .map(|file| PathBuf::from(format!("{}{OFF_STATE}", file.display())))
             .collect::<Vec<_>>();
 
         assert_eq!(test_mod.mod_files.len(), 1);

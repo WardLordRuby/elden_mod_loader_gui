@@ -32,6 +32,7 @@ pub const REQUIRED_GAME_FILES: [&str; 3] = [
     "eossdk-win64-shipping.dll",
 ];
 
+pub const OFF_STATE: &str = ".disabled";
 pub const LOADER_FILES: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll"];
 pub const LOADER_FILES_DISABLED: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll.disabled"];
 pub const LOADER_SECTIONS: [Option<&str>; 2] = [Some("modloader"), Some("loadorder")];
@@ -132,18 +133,17 @@ pub fn toggle_files(
         file_paths
             .iter()
             .map(|path| {
-                let off_state = ".disabled";
                 let file_name = match path.file_name() {
                     Some(name) => name,
                     None => path.as_os_str(),
                 };
                 let mut new_name = file_name.to_string_lossy().to_string();
-                if let Some(index) = new_name.to_lowercase().find(off_state) {
+                if let Some(index) = new_name.to_lowercase().find(OFF_STATE) {
                     if new_state {
-                        new_name.replace_range(index..index + off_state.len(), "");
+                        new_name.replace_range(index..index + OFF_STATE.len(), "");
                     }
                 } else if !new_state {
-                    new_name.push_str(off_state);
+                    new_name.push_str(OFF_STATE);
                 }
                 let mut new_path = path.clone();
                 new_path.set_file_name(new_name);
@@ -255,9 +255,8 @@ pub struct FileData<'a> {
 
 impl FileData<'_> {
     pub fn from(name: &str) -> FileData {
-        let off_state = ".disabled";
-        if let Some(index) = name.find(off_state) {
-            if index == name.len() - off_state.len() {
+        if let Some(index) = name.find(OFF_STATE) {
+            if index == name.len() - OFF_STATE.len() {
                 let first_split = name.split_at(name[..index].rfind('.').expect("is file"));
                 return FileData {
                     name: first_split.0,

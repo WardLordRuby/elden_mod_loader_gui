@@ -944,7 +944,7 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
         let dll_files: Rc<VecModel<SharedString>> = Default::default();
         let config_files: Rc<VecModel<SharedString>> = Default::default();
         if !mod_data.mod_files.is_empty() {
-            files.extend(mod_data.mod_files.iter().map(|f| SharedString::from(f.to_string_lossy().replace(".disabled", "")).into()));
+            files.extend(mod_data.mod_files.iter().map(|f| SharedString::from(f.to_string_lossy().replace(OFF_STATE, "")).into()));
             dll_files.extend(mod_data.mod_files.iter().map(|file|SharedString::from(file.to_string_lossy().to_string())));
         };
         if !mod_data.config_files.is_empty() {
