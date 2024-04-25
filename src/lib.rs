@@ -254,6 +254,8 @@ pub struct FileData<'a> {
 }
 
 impl FileData<'_> {
+    /// To get an accurate FileData.name function input needs .file_name() called before hand  
+    /// FileData.extension && FileData.enabled are accurate with any &Path str as input
     pub fn from(name: &str) -> FileData {
         if let Some(index) = name.find(OFF_STATE) {
             if index == name.len() - OFF_STATE.len() {

@@ -32,7 +32,6 @@ const CONFIG_NAME: &str = "EML_gui_config.ini";
 static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
 static RESTRICTED_FILES: OnceLock<[&'static OsStr; 6]> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
-static GAME_DIR: OnceLock<RwLock<PathBuf>> = OnceLock::new();
 
 fn main() -> Result<(), slint::PlatformError> {
     env_logger::init();
@@ -129,7 +128,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 .to_string()
                 .into(),
         );
-        GAME_DIR.set(RwLock::new(game_dir.clone().unwrap_or_default())).unwrap();
+        let _ = get_or_update_game_dir(Some(game_dir.clone().unwrap_or_default()));
         ui.global::<MainLogic>().set_current_mods(deserialize(
             &RegMod::collect(current_ini, !game_verified).unwrap_or_else(|err| {
                 ui.display_msg(&err.to_string());
@@ -245,7 +244,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
             slint::spawn_local(async move {
-                let game_dir = GAME_DIR.get().unwrap().blocking_read();
+                let game_dir = get_or_update_game_dir(None);
                 let file_paths = match get_user_files(&game_dir) {
                     Ok(files) => files,
                     Err(err) => {
@@ -356,7 +355,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = ui_handle.unwrap();
             let current_ini = get_ini_dir();
             slint::spawn_local(async move {
-                let game_dir = GAME_DIR.get().unwrap().blocking_read();
+                let game_dir = get_or_update_game_dir(None);
                 let path_result = get_user_folder(&game_dir);
                 drop(game_dir);
                 let path = match path_result {
@@ -398,7 +397,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         };
                         ui.global::<SettingsLogic>()
                             .set_game_path(try_path.to_string_lossy().to_string().into());
-                        update_game_dir(try_path).await;
+                        let _ = get_or_update_game_dir(Some(try_path));
                         ui.global::<MainLogic>().set_game_path_valid(true);
                         ui.global::<MainLogic>().set_current_subpage(0);
                         ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed);
@@ -430,7 +429,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move |key, state| {
             let ui = ui_handle.unwrap();
             let current_ini = get_ini_dir();
-            let game_dir = GAME_DIR.get().unwrap().blocking_read();
+            let game_dir = get_or_update_game_dir(None);
             let format_key = key.replace(' ', "_");
             match RegMod::collect(current_ini, false) {
                 Ok(reg_mods) => {
@@ -485,7 +484,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             slint::spawn_local(async move {
-                let game_dir = GAME_DIR.get().unwrap().blocking_read();
+                let game_dir = get_or_update_game_dir(None);
                 let format_key = key.replace(' ', "_");
                 let file_paths = match get_user_files(&game_dir) {
                     Ok(paths) => paths,
@@ -619,7 +618,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                         
                 };
-                let game_dir = GAME_DIR.get().unwrap().blocking_read();
+                let game_dir = get_or_update_game_dir(None);
                 if let Some(found_mod) =
                     reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
                 {
@@ -682,7 +681,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |config_item| {
             let ui = ui_handle.unwrap();
-            let game_dir = GAME_DIR.get().unwrap().blocking_read();
+            let game_dir = get_or_update_game_dir(None);
             let item = config_item.text.to_string();
             if !matches!(FileData::from(&item).extension, ".txt" | ".ini") {
                 return;
@@ -695,7 +694,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |config_file| {
             let ui = ui_handle.unwrap();
-            let game_dir = GAME_DIR.get().unwrap().blocking_read();
+            let game_dir = get_or_update_game_dir(None);
             let downcast_config_file = config_file
                 .as_any()
                 .downcast_ref::<VecModel<SharedString>>()
@@ -712,7 +711,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move |state| {
             let ui = ui_handle.unwrap();
             let value = if state { "1" } else { "0" };
-            let ext_ini = GAME_DIR.get().unwrap().blocking_read().join(LOADER_FILES[0]);
+            let ext_ini = get_or_update_game_dir(None).join(LOADER_FILES[0]);
             save_value_ext(&ext_ini, LOADER_SECTIONS[0], LOADER_KEYS[1], value).unwrap_or_else(
                 |err| {
                     ui.display_msg(&err.to_string());
@@ -725,7 +724,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |time| {
             let ui = ui_handle.unwrap();
-            let ext_ini = GAME_DIR.get().unwrap().blocking_read().join(LOADER_FILES[0]);
+            let ext_ini = get_or_update_game_dir(None).join(LOADER_FILES[0]);
             ui.global::<MainLogic>().invoke_force_app_focus();
             if let Err(err) = save_value_ext(&ext_ini, LOADER_SECTIONS[0], LOADER_KEYS[0], &time) {
                 ui.display_msg(&format!("Failed to set load delay\n\n{err}"));
@@ -741,7 +740,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |state| {
             let ui = ui_handle.unwrap();
-            let game_dir = GAME_DIR.get().unwrap().blocking_read();
+            let game_dir = get_or_update_game_dir(None);
             let files = if state {
                 vec![PathBuf::from(LOADER_FILES[1])]
             } else {
@@ -762,7 +761,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move || {
             let ui = ui_handle.unwrap();
             let jh = std::thread::spawn(move || {
-                let game_dir = GAME_DIR.get().unwrap().blocking_read();
+                let game_dir = get_or_update_game_dir(None);
                 std::process::Command::new("explorer").arg(game_dir.as_path()).spawn()
             });
             match jh.join() {
@@ -795,7 +794,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let current_ini = get_ini_dir();
             slint::spawn_local(async move {
                 let ui_handle = ui.as_weak();
-                let game_dir = GAME_DIR.get().unwrap().blocking_read();
+                let game_dir = get_or_update_game_dir(None);
                 match confirm_scan_mods(ui_handle, &game_dir, current_ini, true).await {
                     Ok(len) => {
                         ui.global::<MainLogic>().set_current_subpage(0);
@@ -890,10 +889,18 @@ fn get_ini_dir() -> &'static PathBuf {
     })
 }
 
-async fn update_game_dir(path: PathBuf) {
-    let gd = GAME_DIR.get().unwrap();
-    let mut gd_lock = gd.write().await;
-    *gd_lock = path;
+fn get_or_update_game_dir(update: Option<PathBuf>) -> tokio::sync::RwLockReadGuard<'static, std::path::PathBuf> {
+    static GAME_DIR: OnceLock<RwLock<PathBuf>> = OnceLock::new();
+
+    if let Some(path) = update {
+        let gd = GAME_DIR.get_or_init(|| {
+            RwLock::new(path.clone())
+        });
+        let mut gd_lock = gd.blocking_write();
+        *gd_lock = path;
+    }
+
+    GAME_DIR.get().unwrap().blocking_read()
 }
 
 fn populate_restricted_files() -> [&'static OsStr; 6] {
