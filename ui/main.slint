@@ -32,7 +32,7 @@ export component MainPage inherits Page {
 
         reg-mod-box := GroupBox {
             title: @tr("Registered-Mods:");
-            enabled: MainLogic.game-path-valid && !SettingsLogic.loader-disabled;
+            enabled: SettingsLogic.loader-installed && !SettingsLogic.loader-disabled;
 
             list-view := ListView {
                 for mod[idx] in MainLogic.current-mods:  re := Rectangle {
@@ -83,12 +83,12 @@ export component MainPage inherits Page {
                 }
             }
         }
-        GroupBox {
+        add-mod-box := GroupBox {
             height: 85px;
             title: @tr("Add Mod");
-            enabled: MainLogic.game-path-valid;
+            enabled: SettingsLogic.loader-installed;
             FocusScope {
-                enabled: parent.enabled;
+                enabled: add-mod-box.enabled;
                 key-pressed(event) => {
                     if (event.text == Key.Escape) {
                         MainLogic.force-app-focus()
@@ -103,7 +103,7 @@ export component MainPage inherits Page {
                     input-mod := LineEdit {
                         height: 35px;
                         placeholder-text: @tr("Mod Name");
-                        enabled: MainLogic.game-path-valid;
+                        enabled: add-mod-box.enabled;
                         text <=> MainLogic.line-edit-text;
                     }
                     add-mod := Button {
@@ -111,7 +111,7 @@ export component MainPage inherits Page {
                         width: 95px;
                         text: @tr("Select Files");
                         primary: !SettingsLogic.dark-mode;
-                        enabled: MainLogic.game-path-valid;
+                        enabled: add-mod-box.enabled;
                         clicked => {
                             if(input-mod.text != "") {
                                 MainLogic.force-app-focus();

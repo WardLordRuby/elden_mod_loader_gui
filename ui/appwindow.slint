@@ -21,6 +21,7 @@ export component App inherits Window {
             (mp.width - popup-window-width) / 2
         }
     };
+    // Still possible to run into the - px range
     property <length> popup-window-y-pos: {
         if ((window-height - popup-window-height) / 2) < 0px {
             60px
