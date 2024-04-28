@@ -1,6 +1,7 @@
 pub mod utils {
     pub mod installer;
     pub mod ini {
+        pub mod mod_loader;
         pub mod parser;
         pub mod writer;
     }
@@ -76,50 +77,6 @@ pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>
     } else {
         Err(results)
     }
-}
-
-#[derive(Default)]
-pub struct ModLoader {
-    pub installed: bool,
-    pub disabled: bool,
-    pub cfg: PathBuf,
-}
-
-pub fn elden_mod_loader_properties(game_dir: &Path) -> std::io::Result<ModLoader> {
-    let disabled: bool;
-    let cfg: PathBuf;
-    let installed = match does_dir_contain(game_dir, Operation::All, &LOADER_FILES) {
-        Ok(true) => {
-            info!("Found mod loader files");
-            cfg = game_dir.join(LOADER_FILES[0]);
-            disabled = false;
-            true
-        }
-        Ok(false) => {
-            warn!("Checking if mod loader is disabled");
-            match does_dir_contain(game_dir, Operation::All, &LOADER_FILES_DISABLED) {
-                Ok(true) => {
-                    info!("Found mod loader files in the disabled state");
-                    cfg = game_dir.join(LOADER_FILES[0]);
-                    disabled = true;
-                    true
-                }
-                Ok(false) => {
-                    error!("Mod Loader Files not found in selected path");
-                    cfg = PathBuf::new();
-                    disabled = false;
-                    false
-                }
-                Err(err) => return Err(err),
-            }
-        }
-        Err(err) => return Err(err),
-    };
-    Ok(ModLoader {
-        installed,
-        disabled,
-        cfg,
-    })
 }
 
 pub fn toggle_files(
@@ -257,33 +214,46 @@ impl FileData<'_> {
     /// To get an accurate FileData.name function input needs .file_name() called before hand  
     /// FileData.extension && FileData.enabled are accurate with any &Path str as input
     pub fn from(name: &str) -> FileData {
-        if let Some(index) = name.find(OFF_STATE) {
-            if index == name.len() - OFF_STATE.len() {
+        match FileData::state_data(name) {
+            (false, index) => {
                 let first_split = name.split_at(name[..index].rfind('.').expect("is file"));
-                return FileData {
+                FileData {
                     name: first_split.0,
                     extension: first_split
                         .1
                         .split_at(first_split.1.rfind('.').expect("ends in .disabled"))
                         .0,
                     enabled: false,
-                };
+                }
+            }
+            (true, _) => {
+                let split = name.split_at(name.rfind('.').expect("is file"));
+                FileData {
+                    name: split.0,
+                    extension: split.1,
+                    enabled: true,
+                }
             }
         }
-        let split = name.split_at(name.rfind('.').expect("is file"));
-        FileData {
-            name: split.0,
-            extension: split.1,
-            enabled: true,
+    }
+
+    #[inline]
+    fn state_data(path: &str) -> (bool, usize) {
+        if let Some(index) = path.find(OFF_STATE) {
+            (index != path.len() - OFF_STATE.len(), index)
+        } else {
+            (true, 0)
         }
     }
 
+    #[inline]
     pub fn is_enabled<T: AsRef<Path>>(path: &T) -> bool {
-        FileData::from(&path.as_ref().to_string_lossy()).enabled
+        FileData::state_data(&path.as_ref().to_string_lossy()).0
     }
 
+    #[inline]
     pub fn is_disabled<T: AsRef<Path>>(path: &T) -> bool {
-        !FileData::from(&path.as_ref().to_string_lossy()).enabled
+        !FileData::state_data(&path.as_ref().to_string_lossy()).0
     }
 }
 
