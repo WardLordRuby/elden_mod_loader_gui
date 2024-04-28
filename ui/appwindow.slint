@@ -22,6 +22,7 @@ export component App inherits Window {
         }
     };
     // Still possible to run into the - px range
+    // only noticed on startup popups
     property <length> popup-window-y-pos: {
         if ((window-height - popup-window-height) / 2) < 0px {
             60px
@@ -184,7 +185,6 @@ export component App inherits Window {
                     MainLogic.current-subpage = 0
                 }
             }
-            // && doesn't work in slint conditonal statements
             if (event.text == Key.Tab) {
                 if (!popup-visible) {
                     if (MainLogic.current-subpage == 0) {

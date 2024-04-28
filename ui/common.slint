@@ -1,3 +1,9 @@
+struct LoadOrder {
+    set: bool,
+    dll: string,
+    at: int,
+}
+
 export struct DisplayMod  {
     displayname: string,
     name: string,
@@ -5,17 +11,21 @@ export struct DisplayMod  {
     files: [StandardListViewItem],
     config-files: [string],
     dll-files: [string],
+    order: LoadOrder,
 }
 
 export enum Message { confirm, deny, esc }
 
 export global MainLogic {
-    callback toggleMod(string, bool);
+    callback toggle-mod(string, bool);
     callback select-mod-files(string);
     callback add-to-mod(string);
     callback remove-mod(string);
     callback edit-config([string]);
     callback edit-config-item(StandardListViewItem);
+    // consider using a string instead of an int for value
+    callback add-remove-order(bool, string, int);
+    callback modify-order(string, string, int);
     callback force-app-focus();
     callback send-message(Message);
     in property <string> line-edit-text;
@@ -23,7 +33,7 @@ export global MainLogic {
     in-out property <bool> game-path-valid;
     in-out property <int> current-subpage: 0;
     in-out property <[DisplayMod]> current-mods: [
-        {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true},
+        {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true, order: {set: false}},
     ];
 }
 
@@ -83,8 +93,10 @@ export global Formatting {
     out property <length> default-spacing: 3px;
     out property <length> side-padding: 8px;
     out property <length> button-spacing: 5px;
+    out property <length> default-element-height: 35px;
     out property <length> rectangle-radius: 10px;
     out property <length> group-box-width: app-width - Formatting.side-padding;
+    out property <length> group-box-r1-height: 85px;
     out property <length> font-size-h1: 18pt;
     out property <length> font-size-h2: 14pt;
     out property <length> font-size-h3: 10pt;

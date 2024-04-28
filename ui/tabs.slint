@@ -1,4 +1,4 @@
-import { GroupBox, Button, StandardListView } from "std-widgets.slint";
+import { GroupBox, Button, StandardListView, Switch, ComboBox, SpinBox } from "std-widgets.slint";
 import { Tab, SettingsLogic, MainLogic, Formatting } from "common.slint";
 
 export component ModDetails inherits Tab {
@@ -42,43 +42,125 @@ export component ModDetails inherits Tab {
     }
 }
 
+// component ChangeObserver {
+//     in property <int> i;
+//     in property <bool> value: MainLogic.current-mods[i].order.set;
+//     // first argument is new value; must return second argument
+//     pure callback changed(bool, float) -> float;
+
+//     width: 0; height: 0; visible: false;
+
+//     opacity: changed(value, 1);
+// }
+
+// Text {
+//     property <string> debug: MainLogic.current-mods[mod-index].order.set ? "true" : "false";
+//     text: debug;
+// }
+
+// Button {
+//     text: "test";
+//     clicked => {MainLogic.current-mods[mod-index].order.set = !MainLogic.current-mods[mod-index].order.set}
+// }
+
 export component ModEdit inherits Tab {
     in property <int> mod-index;
     property <bool> has-config: MainLogic.current-mods[mod-index].config-files.length > 0;
+    property <int> selected-order: MainLogic.current-mods[mod-index].order.at;
+    property <string> selected-dll: MainLogic.current-mods[mod-index].order.dll;
     property <length> button-width: has-config ? 96px : 105px;
     property <LayoutAlignment> button-layout: has-config ? space-between : end;
     VerticalLayout {
         y: 0px;
-        padding-left: Formatting.side-padding;
-        alignment: end;
+        padding: Formatting.side-padding;
+        padding-bottom: Formatting.side-padding / 2;
+        alignment: space-between;
+
+        GroupBox {
+            title: @tr("Load Order");
+            HorizontalLayout {
+                row: 1;
+                padding-top: Formatting.default-padding;
+                load-order := Switch {
+                    text: @tr("Set Load Order");
+                    enabled: MainLogic.current-mods[mod-index].dll-files.length > 0;
+                    // A two way binding on checked would be nice, this would clean up the code and ? keep state in sync ?
+                    checked: MainLogic.current-mods[mod-index].order.set;
+                    toggled => {
+                        if MainLogic.current-mods[mod-index].dll-files.length == 1 && selected-dll == "" {
+                            MainLogic.current-mods[mod-index].order.dll = MainLogic.current-mods[mod-index].dll-files[dll-selection.current-index];
+                        }
+                        if MainLogic.current-mods[mod-index].order.dll != "" && selected-order > 0 {
+                            // Front end is 1 based and back end is 0 based
+                            MainLogic.add-remove-order(self.checked, selected-dll, selected-order - 1)
+                        }
+                        MainLogic.current-mods[mod-index].order.set = self.checked
+                    }
+                }
+            }
+            HorizontalLayout {
+                row: 2;
+                padding-top: Formatting.side-padding;
+                spacing: Formatting.default-spacing;
+                dll-selection := ComboBox {
+                    enabled: load-order.checked;
+                    // MARK: TODO
+                    // need to find a way to have current value selected if already enabled
+                    // combo-box is weird if you use current value with a string outside of the model
+                    // sort dll files by name and then store index? 
+                    // current-value: selected-dll;
+                    current-index: MainLogic.current-mods[mod-index].dll-files.length == 1 ? 0 : -1;
+                    model: MainLogic.current-mods[mod-index].dll-files;
+                    selected(file) => {
+                        if file != selected-dll {
+                            if selected-order > 0 {
+                                MainLogic.modify-order(self.current-value, selected-dll, selected-order - 1)
+                            }
+                            MainLogic.current-mods[mod-index].order.dll = file
+                        }
+                    }
+                }
+                SpinBox {
+                    width: 106px;
+                    enabled: load-order.checked;
+                    minimum: 1;
+                    // MARK: TODO
+                    // max needs to be num of current-mods.order.set
+                    maximum: MainLogic.current-mods.length;
+                    value: selected-order;
+                    edited(int) => {
+                        if selected-dll != "" && int > 0 {
+                            MainLogic.modify-order(selected-dll, selected-dll, int - 1)
+                        }
+                        MainLogic.current-mods[mod-index].order.at = int
+                    }
+                }
+            }
+        }
     
         edit-mod-box := GroupBox {
-            title: @tr("Edit Mod");
-            width: Formatting.group-box-width;
-            height: 90px;
+            title: @tr("Mod Actions");
+            height: Formatting.group-box-r1-height;
             HorizontalLayout {
-                width: Formatting.group-box-width;
-                padding-right: Formatting.side-padding;
-                padding-bottom: Formatting.side-padding / 2;
-                alignment: button-layout;
                 spacing: Formatting.button-spacing;
+                alignment: button-layout;
                 Button {
                     width: button-width;
-                    height: 35px;
+                    height: Formatting.default-element-height;
                     primary: !SettingsLogic.dark-mode;
                     text: @tr("Add Files");
                     clicked => { MainLogic.add-to-mod(MainLogic.current-mods[mod-index].name) }
                 }
-                if (has-config) : Button {
+                if has-config : Button {
                     width: button-width;
-                    height: 35px;
+                    height: Formatting.default-element-height;
                     primary: !SettingsLogic.dark-mode;
                     text: @tr("Edit config");
                     clicked => { MainLogic.edit-config(MainLogic.current-mods[mod-index].config-files) }
                 }
                 Button {
                     width: button-width;
-                    height: 35px;
+                    height: Formatting.default-element-height;
                     primary: !SettingsLogic.dark-mode;
                     text: @tr("De-register");
                     clicked => { MainLogic.remove-mod(MainLogic.current-mods[mod-index].name) }

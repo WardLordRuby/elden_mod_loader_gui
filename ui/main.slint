@@ -26,7 +26,6 @@ export component MainPage inherits Page {
     VerticalLayout {
         y: 27px;
         height: parent.height - self.y;
-        preferred-width: Formatting.app-width;
         padding: Formatting.side-padding;
         padding-bottom: Formatting.side-padding / 2;
 
@@ -48,7 +47,7 @@ export component MainPage inherits Page {
                         toggled => {
                             MainLogic.if-err-bool = self.checked;
                             MainLogic.current-mods[idx].enabled = self.checked;
-                            MainLogic.toggleMod(mod.name, self.checked);
+                            MainLogic.toggle-mod(mod.name, self.checked);
                             if (MainLogic.if-err-bool != self.checked) {
                                 self.checked = MainLogic.if-err-bool;
                                 MainLogic.current-mods[idx].enabled = MainLogic.if-err-bool;
@@ -84,7 +83,7 @@ export component MainPage inherits Page {
             }
         }
         add-mod-box := GroupBox {
-            height: 85px;
+            height: Formatting.group-box-r1-height;
             title: @tr("Add Mod");
             enabled: SettingsLogic.loader-installed;
             FocusScope {
@@ -101,13 +100,13 @@ export component MainPage inherits Page {
                 HorizontalLayout {
                     spacing: Formatting.button-spacing;
                     input-mod := LineEdit {
-                        height: 35px;
+                        height: Formatting.default-element-height;
                         placeholder-text: @tr("Mod Name");
                         enabled: add-mod-box.enabled;
                         text <=> MainLogic.line-edit-text;
                     }
                     add-mod := Button {
-                        height: 35px;
+                        height: Formatting.default-element-height;
                         width: 95px;
                         text: @tr("Select Files");
                         primary: !SettingsLogic.dark-mode;
