@@ -1,10 +1,11 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
         ini::{
+            mod_loader::{ModLoader, ModLoaderCfg, update_order_entries},
             parser::{file_registered, IniProperty, RegMod, Valitidity},
             writer::*,
         },
@@ -145,8 +146,8 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             mod_loader = ModLoader::default();
         } else {
-            let game_dir = game_dir.clone().expect("game dir verified");
-            mod_loader = elden_mod_loader_properties(&game_dir).unwrap_or_default();
+            let game_dir = game_dir.expect("game dir verified");
+            mod_loader = ModLoader::properties(&game_dir).unwrap_or_default();
             ui.global::<SettingsLogic>()
                 .set_loader_disabled(mod_loader.disabled);
             if mod_loader.installed {
@@ -191,8 +192,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 let ui_handle = ui.as_weak();
                 slint::spawn_local(async move {
                     let ui = ui_handle.unwrap();
-                    let ui_handle = ui.as_weak();
-                    match confirm_scan_mods(ui_handle, &game_dir.expect("game verified"), current_ini, false).await {
+                    match confirm_scan_mods(ui.as_weak(), &get_or_update_game_dir(None), current_ini, false).await {
                         Ok(len) => {
                             ui.global::<MainLogic>().set_current_mods(deserialize(
                                 &RegMod::collect(current_ini, false).unwrap_or_else(|err| {
@@ -387,7 +387,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             return;
                         };
                         info!("Success: Files found, saved diretory");
-                        let mod_loader = match elden_mod_loader_properties(&try_path) {
+                        let mod_loader = match ModLoader::properties(&try_path) {
                             Ok(loader) => loader,
                             Err(err) => {
                                 error!("{err}");
@@ -424,7 +424,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }).unwrap();
         }
     });
-    ui.global::<MainLogic>().on_toggleMod({
+    ui.global::<MainLogic>().on_toggle_mod({
         let ui_handle = ui.as_weak();
         move |key, state| {
             let ui = ui_handle.unwrap();
@@ -813,6 +813,82 @@ fn main() -> Result<(), slint::PlatformError> {
             }).unwrap();
         }
     });
+    ui.global::<MainLogic>().on_add_remove_order({
+        let ui_handle = ui.as_weak();
+        move |state, key, value| {
+            let ui = ui_handle.unwrap();
+            let game_dir = get_or_update_game_dir(None);
+            let mut load_order = match ModLoaderCfg::load(&game_dir, LOADER_SECTIONS[1]) {
+                Ok(data) => data,
+                Err(err) => {
+                    ui.display_msg(&err);
+                    return;
+                }
+            };
+            let load_orders = load_order.mut_section();
+            let stable_k = match state {
+                true => {
+                    load_orders.insert(&key, &value.to_string());
+                    Some(key.as_str())
+                }
+                false => {
+                    if !load_orders.contains_key(&key) {
+                        return;
+                    }
+                    load_orders.remove(&key);
+                    None
+                }
+            };
+            update_order_entries(stable_k, load_orders).unwrap_or_else(|err| {
+                ui.display_msg(&format!("Failed to parse value to an unsigned int\nError: {err}\n\nResetting load orders"));
+                std::mem::swap(load_orders, &mut ini::Properties::new());
+            });
+            // ui.global::<MainLogic>().set_current_mods(deserialize(
+            //     &RegMod::collect(&get_ini_dir(), false).unwrap_or_else(|err| {
+            //         ui.display_msg(&err.to_string());
+            //         vec![RegMod::default()]
+            //     }),
+            // ));
+            load_order.write_to_file().unwrap_or_else(|err| {
+                ui.display_msg(&format!("Failed to write to \"mod_loader_config.ini\"\n{err}"));
+            });
+        }   
+    });
+    ui.global::<MainLogic>().on_modify_order({
+        let ui_handle = ui.as_weak();
+        move |to_k, from_k, value| {
+            let ui = ui_handle.unwrap();
+            let game_dir = get_or_update_game_dir(None);
+            let mut load_order = match ModLoaderCfg::load(&game_dir, LOADER_SECTIONS[1]) {
+                Ok(data) => data,
+                Err(err) => {
+                    ui.display_msg(&err);
+                    return;
+                }
+            };
+            let load_orders = load_order.mut_section();
+            if to_k != from_k {
+                load_orders.remove(from_k);
+                load_orders.append(&to_k, value.to_string());
+            } else {
+                load_orders.insert(&to_k, value.to_string())
+            };
+            
+            update_order_entries(Some(&to_k), load_orders).unwrap_or_else(|err| {
+                ui.display_msg(&format!("Failed to parse value to an unsigned int\nError: {err}\n\nResetting load orders"));
+                std::mem::swap(load_orders, &mut ini::Properties::new());
+            });
+            // ui.global::<MainLogic>().set_current_mods(deserialize(
+            //     &RegMod::collect(&get_ini_dir(), false).unwrap_or_else(|err| {
+            //         ui.display_msg(&err.to_string());
+            //         vec![RegMod::default()]
+            //     }),
+            // ));
+            load_order.write_to_file().unwrap_or_else(|err| {
+                ui.display_msg(&format!("Failed to write to \"mod_loader_config.ini\"\n{err}"));
+            });
+        }
+    });
 
     ui.invoke_focus_app();
     ui.run()
@@ -894,7 +970,7 @@ fn get_or_update_game_dir(update: Option<PathBuf>) -> tokio::sync::RwLockReadGua
 
     if let Some(path) = update {
         let gd = GAME_DIR.get_or_init(|| {
-            RwLock::new(path.clone())
+            RwLock::new(PathBuf::new())
         });
         let mut gd_lock = gd.blocking_write();
         *gd_lock = path;
@@ -952,11 +1028,11 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
         let config_files: Rc<VecModel<SharedString>> = Default::default();
         if !mod_data.mod_files.is_empty() {
             files.extend(mod_data.mod_files.iter().map(|f| SharedString::from(f.to_string_lossy().replace(OFF_STATE, "")).into()));
-            dll_files.extend(mod_data.mod_files.iter().map(|file|SharedString::from(file.to_string_lossy().to_string())));
+            dll_files.extend(mod_data.mod_files.iter().map(|f|SharedString::from(f.file_name().unwrap().to_string_lossy().to_string())));
         };
         if !mod_data.config_files.is_empty() {
             files.extend(mod_data.config_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
-            config_files.extend(mod_data.config_files.iter().map(|file| SharedString::from(file.to_string_lossy().to_string())));
+            config_files.extend(mod_data.config_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string())));
         };
         if !mod_data.other_files.is_empty() {
             files.extend(mod_data.other_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
@@ -972,7 +1048,13 @@ fn deserialize(data: &[RegMod]) -> ModelRc<DisplayMod> {
             enabled: mod_data.state,
             files: ModelRc::from(files),
             config_files: ModelRc::from(config_files),
-            dll_files: ModelRc::from(dll_files)
+            dll_files: ModelRc::from(dll_files),
+            // MARK: TODO
+            // parse out LoadOrder properties
+            // need to be able to sort RegMods by load-order then albethabetical
+            // need a counter for entries in Load-order or order.set == true
+            // at - front end is 1 index | if set false LoadOrder::default()
+            order: LoadOrder::default(),
         })
     }
     ModelRc::from(display_mods)
