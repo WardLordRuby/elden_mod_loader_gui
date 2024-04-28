@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const BENCH_TEST_FILE: &str = "test_files\\benchmark_test.ini";
+const BENCH_TEST_FILE: &str = "temp\\benchmark_test.ini";
 const NUM_ENTRIES: u32 = 25;
 
 fn populate_non_valid_ini(len: u32, file: &Path) {

@@ -22,16 +22,16 @@ mod tests {
 
         let dir_to_test_files =
             Path::new("C:\\Users\\cal_b\\Documents\\School\\code\\elden_mod_loader_gui");
-        let save_file = Path::new("test_files\\file_toggle_test.ini");
+        let save_file = Path::new("temp\\file_toggle_test.ini");
         new_cfg(save_file).unwrap();
 
         let test_files = vec![
-            PathBuf::from("test_files\\test1.txt"),
-            PathBuf::from("test_files\\test2.bhd"),
-            PathBuf::from("test_files\\test3.dll"),
-            PathBuf::from("test_files\\test4.exe"),
-            PathBuf::from("test_files\\test5.bin"),
-            PathBuf::from("test_files\\config.ini"),
+            PathBuf::from("temp\\test1.txt"),
+            PathBuf::from("temp\\test2.bhd"),
+            PathBuf::from("temp\\test3.dll"),
+            PathBuf::from("temp\\test4.exe"),
+            PathBuf::from("temp\\test5.bin"),
+            PathBuf::from("temp\\config.ini"),
         ];
 
         let test_mod = RegMod::new("Test", true, test_files.clone());

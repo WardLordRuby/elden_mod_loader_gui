@@ -16,7 +16,7 @@ mod tests {
     #[test]
     fn does_u32_parse() {
         let test_nums: [u32; 3] = [2342652342, 2343523423, 69420];
-        let test_file = Path::new("test_files\\test_nums.ini");
+        let test_file = Path::new("temp\\test_nums.ini");
 
         new_cfg(test_file).unwrap();
         for (i, num) in test_nums.iter().enumerate() {
@@ -48,7 +48,7 @@ mod tests {
         let test_path_1 =
             Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
         let test_path_2 = Path::new("C:\\Windows\\System32");
-        let test_file = Path::new("test_files\\test_path.ini");
+        let test_file = Path::new("temp\\test_path.ini");
 
         {
             new_cfg(test_file).unwrap();
@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn read_write_delete_from_ini() {
-        let test_file = Path::new("test_files\\test_collect_mod_data.ini");
+        let test_file = Path::new("temp\\test_collect_mod_data.ini");
         let mod_1_key = "Unlock The Fps  ";
         let mod_1_state = false;
         let mod_2_key = "Skip The Intro";
