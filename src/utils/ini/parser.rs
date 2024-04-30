@@ -40,10 +40,14 @@ impl ValueType for bool {
         key: &str,
         _skip_validation: bool,
     ) -> Result<Self, Self::ParseError> {
-        ini.get_from(section, key)
+        match ini
+            .get_from(section, key)
             .expect("Validated by IniProperty::is_valid")
-            .to_lowercase()
-            .parse::<bool>()
+        {
+            "0" => Ok(false),
+            "1" => Ok(true),
+            c => c.to_lowercase().parse::<bool>(),
+        }
     }
 }
 
