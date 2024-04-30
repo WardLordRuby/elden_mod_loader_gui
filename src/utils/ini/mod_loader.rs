@@ -3,7 +3,7 @@ use log::{error, info, warn};
 use std::path::{Path, PathBuf};
 
 use crate::{
-    utils::ini::parser::IniProperty,
+    utils::ini::parser::{IniProperty, RegMod},
     utils::ini::writer::EXT_OPTIONS,
     LOADER_KEYS, LOADER_SECTIONS,
     {does_dir_contain, get_cfg, Operation, LOADER_FILES, LOADER_FILES_DISABLED},
@@ -184,4 +184,14 @@ pub fn update_order_entries(
         }
     }
     Ok(())
+}
+
+pub trait Countable {
+    fn order_count(&self) -> usize;
+}
+
+impl<'a> Countable for &'a [RegMod] {
+    fn order_count(&self) -> usize {
+        self.iter().filter(|m| m.order.set).count()
+    }
 }

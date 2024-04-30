@@ -23,9 +23,8 @@ export global MainLogic {
     callback remove-mod(string);
     callback edit-config([string]);
     callback edit-config-item(StandardListViewItem);
-    // consider using a string instead of an int for value
-    callback add-remove-order(bool, string, int) -> int;
-    callback modify-order(string, string, int) -> int;
+    callback add-remove-order(bool, string, string) -> int;
+    callback modify-order(string, string, string) -> int;
     callback force-app-focus();
     callback force-deserialize();
     callback send-message(Message);

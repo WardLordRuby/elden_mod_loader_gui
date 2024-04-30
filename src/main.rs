@@ -5,7 +5,7 @@
 use elden_mod_loader_gui::{
     utils::{
         ini::{
-            mod_loader::{ModLoader, ModLoaderCfg, update_order_entries},
+            mod_loader::{ModLoader, ModLoaderCfg, update_order_entries, Countable},
             parser::{file_registered, IniProperty, RegMod, Valitidity},
             writer::*,
         },
@@ -231,18 +231,16 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.display_msg(&results[0].as_ref().unwrap_err().to_string());
                 return;
             }
+            if registered_mods
+                .iter()
+                .any(|mod_data| format_key.to_lowercase() == mod_data.name.to_lowercase())
             {
-                if registered_mods
-                    .iter()
-                    .any(|mod_data| format_key.to_lowercase() == mod_data.name.to_lowercase())
-                {
-                    ui.display_msg(&format!(
-                        "There is already a registered mod with the name\n\"{mod_name}\""
-                    ));
-                    ui.global::<MainLogic>()
-                        .set_line_edit_text(SharedString::new());
-                    return;
-                }
+                ui.display_msg(&format!(
+                    "There is already a registered mod with the name\n\"{mod_name}\""
+                ));
+                ui.global::<MainLogic>()
+                    .set_line_edit_text(SharedString::new());
+                return;
             }
             slint::spawn_local(async move {
                 let game_dir = get_or_update_game_dir(None);
@@ -831,7 +829,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let load_orders = load_order.mut_section();
             let stable_k = match state {
                 true => {
-                    load_orders.insert(&key, &value.to_string());
+                    load_orders.insert(&key, &value);
                     Some(key.as_str())
                 }
                 false => {
@@ -870,19 +868,16 @@ fn main() -> Result<(), slint::PlatformError> {
             let load_orders = load_order.mut_section();
             if to_k != from_k && load_orders.contains_key(&from_k) {
                 load_orders.remove(from_k);
-                load_orders.append(&to_k, value.to_string())
+                load_orders.append(&to_k, value)
             } else if load_orders.contains_key(&to_k) {
-                load_orders.insert(&to_k, value.to_string())
+                load_orders.insert(&to_k, value)
             } else {
-                load_orders.append(&to_k, value.to_string());
+                load_orders.append(&to_k, value);
                 result = 1
             };
             
-            // MARK: TODO
-            // we need to call for a full deserialize if one of these functions error
             update_order_entries(Some(&to_k), load_orders).unwrap_or_else(|err| {
                 ui.display_msg(&format!("Failed to parse value to an unsigned int\nError: {err}\n\nResetting load orders"));
-                // reseting the load order count here is not enough
                 result = -1;
                 std::mem::swap(load_orders, &mut ini::Properties::new());
             });
@@ -1035,54 +1030,16 @@ fn open_text_files(ui_handle: slint::Weak<App>, files: Vec<std::ffi::OsString>) 
     }
 }
 
-// fn save_and_update_order_data(new: &mut ModLoaderCfg, ui_handle: slint::Weak<App>) {
-//     let ui = ui_handle.unwrap();
-//     new.write_to_file().unwrap_or_else(|err| {
-//         ui.display_msg(&format!("Failed to write to \"mod_loader_config.ini\"\n{err}"));
-//         std::mem::take(new);
-//     });
-//     // if this case change bounds to grab cached data instead of read
-//     let reg_mods = match new.is_empty() {
-//         true => 
-//         RegMod::collect(get_ini_dir(), false).unwrap_or_else(|err| {
-//             ui.display_msg(&err.to_string());
-//             vec![RegMod::default()]
-//         }),
-//         false => vec![RegMod::default()],
-//     };
-//     deserialize_current_mods(
-//         &reg_mods,Some(new), ui.as_weak()
-//     );
-// }
-
 fn deserialize_current_mods(mods: &[RegMod], ui_handle: slint::Weak<App>) {
     let ui = ui_handle.unwrap();
-    let mut load_order_parsed = ModLoaderCfg::load(&get_or_update_game_dir(None), LOADER_SECTIONS[1])
-        .unwrap_or_default()
-        .parse()
-        .unwrap_or_default();
-
-    let mut has_order_count = 0;
     let display_mods: Rc<VecModel<DisplayMod>> = Default::default();
     for mod_data in mods.iter() {
         let files: Rc<VecModel<slint::StandardListViewItem>> = Default::default();
         let dll_files: Rc<VecModel<SharedString>> = Default::default();
         let config_files: Rc<VecModel<SharedString>> = Default::default();
-        let mut order_set = false;
-        let mut order_v = 0_usize;
-        let mut order_i = 0_usize;
         if !mod_data.mod_files.is_empty() {
             files.extend(mod_data.mod_files.iter().map(|f| SharedString::from(f.to_string_lossy().replace(OFF_STATE, "")).into()));
             dll_files.extend(mod_data.mod_files.iter().map(|f| SharedString::from(f.file_name().unwrap().to_string_lossy().replace(OFF_STATE, ""))));
-            for (i, dll) in dll_files.iter().enumerate() {
-                if let Some(remove_i) = load_order_parsed.iter().position(|(k, _)| *k == *dll) {
-                    order_set = true;
-                    order_i = i;
-                    order_v = load_order_parsed.swap_remove(remove_i).1;
-                    has_order_count += 1;
-                    break;
-                }
-            };
         };
         if !mod_data.config_files.is_empty() {
             files.extend(mod_data.config_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
@@ -1105,17 +1062,11 @@ fn deserialize_current_mods(mods: &[RegMod], ui_handle: slint::Weak<App>) {
             dll_files: ModelRc::from(dll_files),
             // MARK: TODO
             // need to be able to sort RegMods by load-order then albethabetical
-            // need a counter for entries in Load-order or order.set == true
-            // `order.at` in the front end is 1 index | back end is 0 index
-            order: if order_set { LoadOrder {
-                set: order_set,
-                i: order_i as i32,
-                at: order_v as i32 + 1,
-            }} else { LoadOrder::default() },
+            order: LoadOrder { at: mod_data.order.at as i32 + 1, i: mod_data.order.i as i32, set: mod_data.order.set },
         })
     }
     ui.global::<MainLogic>().set_current_mods(ModelRc::from(display_mods));
-    ui.global::<MainLogic>().set_orders_set(has_order_count);
+    ui.global::<MainLogic>().set_orders_set(mods.order_count() as i32);
 }
 // MARK: TODO
 // need to use ModelNotify::row_changed to handle updating page info on change

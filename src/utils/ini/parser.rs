@@ -9,8 +9,11 @@ use std::{
 
 use crate::{
     get_cfg, new_io_error, toggle_files,
-    utils::ini::writer::{remove_array, remove_entry, INI_SECTIONS},
-    FileData,
+    utils::ini::{
+        mod_loader::ModLoaderCfg,
+        writer::{remove_array, remove_entry, INI_SECTIONS},
+    },
+    FileData, LOADER_SECTIONS, OFF_STATE,
 };
 
 pub trait ValueType: Sized {
@@ -262,42 +265,107 @@ impl Valitidity for Ini {
 
 #[derive(Default)]
 pub struct RegMod {
+    /// Key in snake_case
     pub name: String,
+
+    /// true = enabled | false = disabled
     pub state: bool,
+
+    /// files with extension `.dll` | also possible they end in `.dll.disabled`  
+    /// saved as short paths with `game_dir` truncated
     pub mod_files: Vec<PathBuf>,
+
+    /// files with extension `.ini`  
+    /// saved as short paths with `game_dir` truncated
     pub config_files: Vec<PathBuf>,
+
+    /// files with any extension other than `.dll` or `.ini`  
+    /// saved as short paths with `game_dir` truncated
     pub other_files: Vec<PathBuf>,
+
+    /// contains properties related to if a mod has a set load order
+    pub order: LoadOrder,
+}
+
+#[derive(Default)]
+pub struct LoadOrder {
+    /// if one of `self.mod_files` has a set load_order
+    pub set: bool,
+
+    /// the index of the selected `.dll` within `self.mod_files`
+    pub i: usize,
+
+    /// current set value of `load_order`  
+    /// `self.order.at` is stored as 0 index | front end uses 1 index
+    pub at: usize,
 }
 
 impl RegMod {
+    fn split_out_config_files(
+        in_files: Vec<PathBuf>,
+    ) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<PathBuf>) {
+        let len = in_files.len();
+        let mut mod_files = Vec::with_capacity(len);
+        let mut config_files = Vec::with_capacity(len);
+        let mut other_files = Vec::with_capacity(len);
+        in_files.into_iter().for_each(|file| {
+            match FileData::from(&file.to_string_lossy()).extension {
+                ".dll" => mod_files.push(file),
+                ".ini" => config_files.push(file),
+                _ => other_files.push(file),
+            }
+        });
+        (mod_files, config_files, other_files)
+    }
+    /// This function omits the population of the `order` field
     pub fn new(name: &str, state: bool, in_files: Vec<PathBuf>) -> Self {
-        fn split_out_config_files(
-            in_files: Vec<PathBuf>,
-        ) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<PathBuf>) {
-            let mut mod_files = Vec::with_capacity(in_files.len());
-            let mut config_files = Vec::with_capacity(in_files.len());
-            let mut other_files = Vec::with_capacity(in_files.len());
-            in_files.into_iter().for_each(|file| {
-                match FileData::from(&file.to_string_lossy()).extension {
-                    ".dll" => mod_files.push(file),
-                    ".ini" => config_files.push(file),
-                    _ => other_files.push(file),
-                }
-            });
-            (mod_files, config_files, other_files)
-        }
-        let (mod_files, config_files, other_files) = split_out_config_files(in_files);
+        let (mod_files, config_files, other_files) = RegMod::split_out_config_files(in_files);
         RegMod {
             name: String::from(name),
             state,
             mod_files,
             config_files,
             other_files,
+            order: LoadOrder::default(),
         }
     }
-    pub fn collect(path: &Path, skip_validation: bool) -> std::io::Result<Vec<Self>> {
+    /// This function populates all fields
+    fn new_full(
+        name: &str,
+        state: bool,
+        in_files: Vec<PathBuf>,
+        parsed_order_val: &mut Vec<(String, usize)>,
+    ) -> std::io::Result<Self> {
+        let (mod_files, config_files, other_files) = RegMod::split_out_config_files(in_files);
+        let mut order = LoadOrder::default();
+        let dll_files = mod_files
+            .iter()
+            .map(|f| {
+                let file_name = f.file_name().ok_or(String::from("Bad file name"));
+                Ok(file_name?.to_string_lossy().replace(OFF_STATE, ""))
+            })
+            .collect::<Result<Vec<_>, String>>()
+            .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?;
+        for (i, dll) in dll_files.iter().enumerate() {
+            if let Some(remove_i) = parsed_order_val.iter().position(|(k, _)| k == dll) {
+                order.set = true;
+                order.i = i;
+                order.at = parsed_order_val.swap_remove(remove_i).1;
+                break;
+            }
+        }
+        Ok(RegMod {
+            name: String::from(name),
+            state,
+            mod_files,
+            config_files,
+            other_files,
+            order,
+        })
+    }
+    pub fn collect(ini_path: &Path, skip_validation: bool) -> std::io::Result<Vec<Self>> {
         type ModData<'a> = Vec<(&'a str, Result<bool, ParseBoolError>, Vec<PathBuf>)>;
-        fn sync_keys<'a>(ini: &'a Ini, path: &Path) -> std::io::Result<ModData<'a>> {
+        fn sync_keys<'a>(ini: &'a Ini, ini_path: &Path) -> std::io::Result<ModData<'a>> {
             fn collect_file_data(section: &Properties) -> HashMap<&str, Vec<&str>> {
                 section
                     .iter()
@@ -348,7 +416,7 @@ impl RegMod {
                 .collect::<Vec<_>>();
             for key in invalid_state {
                 state_data.remove(key);
-                remove_entry(path, Some("registered-mods"), key)?;
+                remove_entry(ini_path, Some("registered-mods"), key)?;
                 warn!("\"{key}\" has no matching files");
             }
             let invalid_files = file_data
@@ -358,9 +426,9 @@ impl RegMod {
                 .collect::<Vec<_>>();
             for key in invalid_files {
                 if file_data.get(key).expect("key exists").len() > 1 {
-                    remove_array(path, key)?;
+                    remove_array(ini_path, key)?;
                 } else {
-                    remove_entry(path, Some("mod-files"), key)?;
+                    remove_entry(ini_path, Some("mod-files"), key)?;
                 }
                 file_data.remove(key);
                 warn!("\"{key}\" has no matching state");
@@ -390,7 +458,7 @@ impl RegMod {
                 })
                 .collect()
         }
-        let ini = get_cfg(path).expect("Validated by Ini::is_setup on startup");
+        let ini = get_cfg(ini_path)?;
 
         if skip_validation {
             let parsed_data = collect_data_unsafe(&ini);
@@ -405,7 +473,17 @@ impl RegMod {
                 })
                 .collect())
         } else {
-            let parsed_data = sync_keys(&ini, path)?;
+            let parsed_data = sync_keys(&ini, ini_path)?;
+            let game_dir = IniProperty::<PathBuf>::read(&ini, Some("paths"), "game_dir", false)
+                .ok_or(std::io::Error::new(
+                    ErrorKind::InvalidData,
+                    "Could not read \"game_dir\" from file",
+                ))?
+                .value;
+            let mut load_order_parsed = ModLoaderCfg::load(&game_dir, LOADER_SECTIONS[1])
+                .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?
+                .parse()
+                .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?;
             Ok(parsed_data
                 .iter()
                 .filter_map(|(k, s, f)| match &s {
@@ -416,10 +494,13 @@ impl RegMod {
                                 .to_owned()
                                 .validate(&ini, Some("mod-files"), skip_validation)
                             {
-                                Ok(path) => Some(RegMod::new(k, *bool, vec![path])),
+                                Ok(path) => {
+                                    RegMod::new_full(k, *bool, vec![path], &mut load_order_parsed)
+                                        .ok()
+                                }
                                 Err(err) => {
                                     error!("Error: {err}");
-                                    remove_entry(path, Some("registered-mods"), k)
+                                    remove_entry(ini_path, Some("registered-mods"), k)
                                         .expect("Key is valid");
                                     None
                                 }
@@ -429,10 +510,12 @@ impl RegMod {
                             .to_owned()
                             .validate(&ini, Some("mod-files"), skip_validation)
                         {
-                            Ok(paths) => Some(RegMod::new(k, *bool, paths)),
+                            Ok(paths) => {
+                                RegMod::new_full(k, *bool, paths, &mut load_order_parsed).ok()
+                            }
                             Err(err) => {
                                 error!("Error: {err}");
-                                remove_entry(path, Some("registered-mods"), k)
+                                remove_entry(ini_path, Some("registered-mods"), k)
                                     .expect("Key is valid");
                                 None
                             }
@@ -440,14 +523,15 @@ impl RegMod {
                     },
                     Err(err) => {
                         error!("Error: {err}");
-                        remove_entry(path, Some("registered-mods"), k).expect("Key is valid");
+                        remove_entry(ini_path, Some("registered-mods"), k).expect("Key is valid");
                         None
                     }
                 })
                 .collect())
         }
     }
-    pub fn verify_state(&self, game_dir: &Path, ini_file: &Path) -> std::io::Result<()> {
+
+    pub fn verify_state(&self, game_dir: &Path, ini_path: &Path) -> std::io::Result<()> {
         if (!self.state && self.mod_files.iter().any(FileData::is_enabled))
             || (self.state && self.mod_files.iter().any(FileData::is_disabled))
         {
@@ -455,7 +539,7 @@ impl RegMod {
                 "wrong file state for \"{}\" chaning file extentions",
                 self.name
             );
-            toggle_files(game_dir, self.state, self, Some(ini_file)).map(|_| ())?
+            toggle_files(game_dir, self.state, self, Some(ini_path)).map(|_| ())?
         }
         Ok(())
     }

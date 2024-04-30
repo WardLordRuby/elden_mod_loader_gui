@@ -35,7 +35,7 @@ mod tests {
         ];
 
         let test_mod = RegMod::new("Test", true, test_files.clone());
-        let test_files_disabled = test_mod
+        let mut test_files_disabled = test_mod
             .mod_files
             .iter()
             .map(|file| PathBuf::from(format!("{}{OFF_STATE}", file.display())))
@@ -61,13 +61,9 @@ mod tests {
             assert!(file_exists(path_to_test.as_path()));
         }
 
-        let test_mod = RegMod {
-            name: test_mod.name,
-            state: false,
-            mod_files: test_files_disabled,
-            config_files: test_mod.config_files,
-            other_files: test_mod.other_files,
-        };
+        test_files_disabled.extend(test_mod.config_files);
+        test_files_disabled.extend(test_mod.other_files);
+        let test_mod = RegMod::new(&test_mod.name, false, test_files_disabled);
 
         toggle_files(
             dir_to_test_files,

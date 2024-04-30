@@ -62,7 +62,7 @@ export component ModEdit inherits Tab {
         load-order-box := GroupBox {
             property <int> temp;
             title: @tr("Load Order");
-            enabled: MainLogic.current-mods[mod-index].dll-files.length > 0;
+            enabled: MainLogic.current-mods[mod-index].dll-files.length > 0 && SettingsLogic.loader-installed;
 
             function init-selected-index() {
                 if MainLogic.current-mods[mod-index].dll-files.length != 1 {
@@ -92,6 +92,7 @@ export component ModEdit inherits Tab {
                                     MainLogic.orders-set = MainLogic.orders-set + temp;
                                     MainLogic.current-mods[mod-index].order.set = self.checked;
                                 } else {
+                                    self.checked = !self.checked;
                                     MainLogic.force-deserialize()
                                 }
                                 temp = 0
@@ -103,7 +104,8 @@ export component ModEdit inherits Tab {
                                     MainLogic.orders-set = MainLogic.orders-set + temp;
                                     init-selected-index()
                                 } else {
-                                    MainLogic.force-deserialize();
+                                    self.checked = !self.checked;
+                                    MainLogic.force-deserialize()
                                 }
                             }
                             if temp != 42069 {
@@ -129,6 +131,9 @@ export component ModEdit inherits Tab {
                             if temp == 1 {
                                 MainLogic.current-mods[mod-index].order.set = true;
                             }
+                        } else {
+                            init-selected-index();
+                            MainLogic.force-deserialize()
                         }
                         temp = 0
                     }
@@ -139,6 +144,8 @@ export component ModEdit inherits Tab {
                         temp =  MainLogic.modify-order(selected-dll, selected-dll, v - 1);
                         if temp != -1 {
                             MainLogic.orders-set = MainLogic.orders-set + temp
+                        } else {
+                            MainLogic.force-deserialize()
                         }
                     }
                     if temp != -1 {
