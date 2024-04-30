@@ -142,29 +142,29 @@ fn main() -> Result<(), slint::PlatformError> {
             mod_loader = ModLoader::default();
         } else {
             let game_dir = game_dir.expect("game dir verified");
-            mod_loader = ModLoader::properties(&game_dir).unwrap_or_default();
+            mod_loader = ModLoader::properties(&game_dir);
             deserialize_current_mods(
-                &RegMod::collect(current_ini, !mod_loader.installed).unwrap_or_else(|err| {
+                &RegMod::collect(current_ini, !mod_loader.installed()).unwrap_or_else(|err| {
                     ui.display_msg(&err.to_string());
                     vec![RegMod::default()]
                 }), ui.as_weak()
             );
             ui.global::<SettingsLogic>()
-                .set_loader_disabled(mod_loader.disabled);
-            if mod_loader.installed {
+                .set_loader_disabled(mod_loader.disabled());
+            if mod_loader.installed() {
                 ui.global::<SettingsLogic>().set_loader_installed(true);
-                let loader_cfg = ModLoaderCfg::load(&game_dir, LOADER_SECTIONS[0]).unwrap();
+                let loader_cfg = ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[0]).unwrap();
                 let delay = loader_cfg.get_load_delay().unwrap_or_else(|err| {
                     let err = format!("{err} Reseting to default value");
                     error!("{err}");
-                    save_value_ext(&mod_loader.cfg, LOADER_SECTIONS[0], LOADER_KEYS[0], DEFAULT_VALUES[0])
+                    save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[0], DEFAULT_VALUES[0])
                     .unwrap_or_else(|err| error!("{err}"));
                     DEFAULT_VALUES[0].parse().unwrap()
                 });
                 let show_terminal = loader_cfg.get_show_terminal().unwrap_or_else(|err| {
                     let err = format!("{err} Reseting to default value");
                     error!("{err}");
-                    save_value_ext(&mod_loader.cfg, LOADER_SECTIONS[0], LOADER_KEYS[1], DEFAULT_VALUES[1])
+                    save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[1], DEFAULT_VALUES[1])
                     .unwrap_or_else(|err| error!("{err}"));
                     false
                 });
@@ -172,16 +172,20 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.global::<SettingsLogic>().set_load_delay(SharedString::from(format!("{}ms", delay)));
                 ui.global::<SettingsLogic>().set_show_terminal(show_terminal);
             }
-            if !first_startup && !mod_loader.installed {
+            // MARK: BUG?
+            // sometimes messages in the startup process are not centered
+            // most likely because we are trying to calculate the position data before slint event loop as been initialized with ui.run()
+            // try invoke from event loop?
+            if !first_startup && !mod_loader.installed() {
                 ui.display_msg(&format!("This tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease install files to \"{}\"\nand relaunch Elden Mod Loader GUI", &game_dir.display()));
             }
         }
         if first_startup {
-            if !game_verified && !mod_loader.installed {
+            if !game_verified && !mod_loader.installed() {
                 ui.display_msg(
                     "Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease select the game directory containing \"eldenring.exe\"",
                 );
-            } else if game_verified && !mod_loader.installed {
+            } else if game_verified && !mod_loader.installed() {
                 ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
             } else if game_verified {
                 let ui_handle = ui.as_weak();
@@ -380,22 +384,15 @@ fn main() -> Result<(), slint::PlatformError> {
                             return;
                         };
                         info!("Success: Files found, saved diretory");
-                        let mod_loader = match ModLoader::properties(&try_path) {
-                            Ok(loader) => loader,
-                            Err(err) => {
-                                error!("{err}");
-                                ui.display_msg(&err.to_string());
-                                return;
-                            }
-                        };
+                        let mod_loader = ModLoader::properties(&try_path);
                         ui.global::<SettingsLogic>()
                             .set_game_path(try_path.to_string_lossy().to_string().into());
                         let _ = get_or_update_game_dir(Some(try_path));
                         ui.global::<MainLogic>().set_game_path_valid(true);
                         ui.global::<MainLogic>().set_current_subpage(0);
-                        ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed);
-                        ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled);
-                        if mod_loader.installed {
+                        ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed());
+                        ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled());
+                        if mod_loader.installed() {
                             ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!")
                         } else {
                             ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
@@ -791,9 +788,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 match confirm_scan_mods(ui.as_weak(), &game_dir, current_ini, true).await {
                     Ok(len) => {
                         ui.global::<MainLogic>().set_current_subpage(0);
-                        let loader_installed = ModLoader::properties(&game_dir).map_or(false, |d| d.installed);
+                        let mod_loader = ModLoader::properties(&game_dir);
                         deserialize_current_mods(
-                            &RegMod::collect(current_ini, !loader_installed).unwrap_or_else(|err| {
+                            &RegMod::collect(current_ini, !mod_loader.installed()).unwrap_or_else(|err| {
                                 ui.display_msg(&err.to_string());
                                 vec![RegMod::default()]
                             }),ui.as_weak()
@@ -814,7 +811,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let error = 42069_i32;
             let game_dir = get_or_update_game_dir(None);
             let mut result: i32 = if state { 1 } else { -1 };
-            let mut load_order = match ModLoaderCfg::load(&game_dir, LOADER_SECTIONS[1]) {
+            let mut load_order = match ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1]) {
                 Ok(data) => data,
                 Err(err) => {
                     ui.display_msg(&err);
@@ -853,7 +850,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = ui_handle.unwrap();
             let mut result = 0_i32;
             let game_dir = get_or_update_game_dir(None);
-            let mut load_order = match ModLoaderCfg::load(&game_dir, LOADER_SECTIONS[1]) {
+            let mut load_order = match ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1]) {
                 Ok(data) => data,
                 Err(err) => {
                     ui.display_msg(&err);
@@ -1055,15 +1052,15 @@ fn deserialize_current_mods(mods: &[RegMod], ui_handle: slint::Weak<App>) {
             files: ModelRc::from(files),
             config_files: ModelRc::from(config_files),
             dll_files: ModelRc::from(dll_files),
-            // MARK: TODO
-            // need to be able to sort RegMods by load-order then albethabetical
             order: LoadOrder { at: mod_data.order.at as i32 + 1, i: mod_data.order.i as i32, set: mod_data.order.set },
         })
     }
     ui.global::<MainLogic>().set_current_mods(ModelRc::from(display_mods));
     ui.global::<MainLogic>().set_orders_set(mods.order_count() as i32);
 }
+
 // MARK: TODO
+// need to be able to sort RegMods by load-order then albethabetical
 // need to use ModelNotify::row_changed to handle updating page info on change
 // ui.invoke_update_mod_index(1, 1);
 

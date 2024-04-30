@@ -1,57 +1,75 @@
 use ini::Ini;
-use log::{error, info, warn};
+use log::{error, info, trace};
 use std::path::{Path, PathBuf};
 
 use crate::{
-    utils::ini::parser::{IniProperty, RegMod},
-    utils::ini::writer::EXT_OPTIONS,
+    utils::ini::{
+        parser::{IniProperty, RegMod},
+        writer::EXT_OPTIONS,
+    },
     LOADER_KEYS, LOADER_SECTIONS,
     {does_dir_contain, get_cfg, Operation, LOADER_FILES, LOADER_FILES_DISABLED},
 };
 
 #[derive(Default)]
 pub struct ModLoader {
-    pub installed: bool,
-    pub disabled: bool,
-    pub cfg: PathBuf,
+    installed: bool,
+    disabled: bool,
+    path: PathBuf,
 }
 
 impl ModLoader {
-    pub fn properties(game_dir: &Path) -> std::io::Result<ModLoader> {
-        let disabled: bool;
-        let cfg: PathBuf;
-        let installed = match does_dir_contain(game_dir, Operation::All, &LOADER_FILES) {
+    pub fn properties(game_dir: &Path) -> ModLoader {
+        match does_dir_contain(game_dir, Operation::All, &LOADER_FILES) {
             Ok(true) => {
                 info!("Found mod loader files");
-                cfg = game_dir.join(LOADER_FILES[0]);
-                disabled = false;
-                true
+                ModLoader {
+                    installed: true,
+                    disabled: false,
+                    path: game_dir.join(LOADER_FILES[0]),
+                }
             }
             Ok(false) => {
-                warn!("Checking if mod loader is disabled");
+                trace!("Checking if mod loader is disabled");
                 match does_dir_contain(game_dir, Operation::All, &LOADER_FILES_DISABLED) {
                     Ok(true) => {
                         info!("Found mod loader files in the disabled state");
-                        cfg = game_dir.join(LOADER_FILES[0]);
-                        disabled = true;
-                        true
+                        ModLoader {
+                            installed: true,
+                            disabled: true,
+                            path: game_dir.join(LOADER_FILES[0]),
+                        }
                     }
                     Ok(false) => {
                         error!("Mod Loader Files not found in selected path");
-                        cfg = PathBuf::new();
-                        disabled = false;
-                        false
+                        ModLoader::default()
                     }
-                    Err(err) => return Err(err),
+                    Err(err) => {
+                        error!("{err}");
+                        ModLoader::default()
+                    }
                 }
             }
-            Err(err) => return Err(err),
-        };
-        Ok(ModLoader {
-            installed,
-            disabled,
-            cfg,
-        })
+            Err(err) => {
+                error!("{err}");
+                ModLoader::default()
+            }
+        }
+    }
+
+    #[inline]
+    pub fn installed(&self) -> bool {
+        self.installed
+    }
+
+    #[inline]
+    pub fn disabled(&self) -> bool {
+        self.disabled
+    }
+
+    #[inline]
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 }
 
@@ -63,7 +81,7 @@ pub struct ModLoaderCfg {
 }
 
 impl ModLoaderCfg {
-    pub fn load(game_dir: &Path, section: Option<&str>) -> Result<ModLoaderCfg, String> {
+    pub fn read_section(game_dir: &Path, section: Option<&str>) -> Result<ModLoaderCfg, String> {
         if section.is_none() {
             return Err(String::from("section can not be none"));
         }
@@ -81,19 +99,35 @@ impl ModLoaderCfg {
             Err(err) => return Err(format!("Could not read \"mod_loader_config.ini\"\n{err}")),
         };
         if cfg.section(section).is_none() {
-            cfg.with_section(section).set("setter_temp_val", "0");
-            if cfg.delete_from(section, "setter_temp_val").is_none() {
-                return Err(format!(
-                    "Failed to create a new section: \"{}\"",
-                    section.unwrap()
-                ));
-            };
+            ModLoaderCfg::init_section(&mut cfg, section)?
         }
         Ok(ModLoaderCfg {
             cfg,
             cfg_dir,
             section: section.map(String::from),
         })
+    }
+
+    pub fn update_section(&mut self, section: Option<&str>) -> Result<(), String> {
+        if self.cfg.section(section).is_none() {
+            ModLoaderCfg::init_section(&mut self.cfg, section)?
+        };
+        Ok(())
+    }
+
+    fn init_section(cfg: &mut ini::Ini, section: Option<&str>) -> Result<(), String> {
+        trace!(
+            "Section: \"{}\" not found creating new",
+            section.expect("Passed in section not valid")
+        );
+        cfg.with_section(section).set("setter_temp_val", "0");
+        if cfg.delete_from(section, "setter_temp_val").is_none() {
+            return Err(format!(
+                "Failed to create a new section: \"{}\"",
+                section.unwrap()
+            ));
+        };
+        Ok(())
     }
 
     pub fn get_load_delay(&self) -> Result<u32, String> {
@@ -116,19 +150,23 @@ impl ModLoaderCfg {
         }
     }
 
+    #[inline]
     pub fn mut_section(&mut self) -> &mut ini::Properties {
         self.cfg.section_mut(self.section.as_ref()).unwrap()
     }
 
+    #[inline]
     fn section(&self) -> &ini::Properties {
         self.cfg.section(self.section.as_ref()).unwrap()
     }
 
+    #[inline]
     fn iter(&self) -> ini::PropertyIter {
         self.section().iter()
     }
 
-    pub fn parse(&self) -> Result<Vec<(String, usize)>, std::num::ParseIntError> {
+    /// Returns an owned `Vec` with values parsed into `usize`
+    pub fn parse_section(&self) -> Result<Vec<(String, usize)>, std::num::ParseIntError> {
         self.iter()
             .map(|(k, v)| {
                 let parse_v = v.parse::<usize>();
@@ -137,10 +175,12 @@ impl ModLoaderCfg {
             .collect::<Result<Vec<(String, usize)>, _>>()
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.section().is_empty()
     }
 
+    #[inline]
     pub fn dir(&self) -> &Path {
         &self.cfg_dir
     }

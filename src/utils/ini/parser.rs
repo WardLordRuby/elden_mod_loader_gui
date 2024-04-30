@@ -18,12 +18,14 @@ use crate::{
 
 pub trait ValueType: Sized {
     type ParseError: std::fmt::Display;
+
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
     ) -> Result<Self, Self::ParseError>;
+
     #[allow(unused_variables)]
     fn validate(
         self,
@@ -37,6 +39,7 @@ pub trait ValueType: Sized {
 
 impl ValueType for bool {
     type ParseError = ParseBoolError;
+
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -56,6 +59,7 @@ impl ValueType for bool {
 
 impl ValueType for u32 {
     type ParseError = std::num::ParseIntError;
+
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -70,6 +74,7 @@ impl ValueType for u32 {
 
 impl ValueType for PathBuf {
     type ParseError = std::io::Error;
+
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -86,6 +91,7 @@ impl ValueType for PathBuf {
             parsed_value.validate(ini, section, skip_validation)
         }
     }
+
     fn validate(self, ini: &Ini, section: Option<&str>, disable: bool) -> std::io::Result<Self> {
         if !disable {
             if section == Some("mod-files") {
@@ -108,6 +114,7 @@ impl ValueType for PathBuf {
 
 impl ValueType for Vec<PathBuf> {
     type ParseError = std::io::Error;
+
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -123,6 +130,7 @@ impl ValueType for Vec<PathBuf> {
                 .map(|(_, v)| PathBuf::from(v))
                 .collect()
         }
+
         let parsed_value = read_array(
             ini.section(section)
                 .expect("Validated by IniProperty::is_valid"),
@@ -134,6 +142,7 @@ impl ValueType for Vec<PathBuf> {
             parsed_value.validate(ini, section, skip_validation)
         }
     }
+
     fn validate(self, ini: &Ini, _section: Option<&str>, disable: bool) -> std::io::Result<Self> {
         if !disable {
             let game_dir = match IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
@@ -207,7 +216,7 @@ impl<T: ValueType> IniProperty<T> {
             Ok(value) => {
                 trace!(
                     "Success: read key: \"{key}\" Section: \"{}\" from ini",
-                    section.expect("Passed in section should be valid")
+                    section.expect("Passed in section not valid")
                 );
                 Some(IniProperty {
                     //section: Some(section.unwrap().to_string()),
@@ -220,7 +229,7 @@ impl<T: ValueType> IniProperty<T> {
                     "{}",
                     format!(
                         "Value stored in Section: \"{}\", Key: \"{key}\" is not valid",
-                        section.expect("Passed in section should be valid")
+                        section.expect("Passed in section not valid")
                     )
                 );
                 error!("Error: {err}");
@@ -317,6 +326,7 @@ impl RegMod {
         });
         (mod_files, config_files, other_files)
     }
+
     /// This function omits the population of the `order` field
     pub fn new(name: &str, state: bool, in_files: Vec<PathBuf>) -> Self {
         let (mod_files, config_files, other_files) = RegMod::split_out_config_files(in_files);
@@ -329,6 +339,7 @@ impl RegMod {
             order: LoadOrder::default(),
         }
     }
+
     /// This function populates all fields
     fn new_full(
         name: &str,
@@ -363,8 +374,10 @@ impl RegMod {
             order,
         })
     }
+
     pub fn collect(ini_path: &Path, skip_validation: bool) -> std::io::Result<Vec<Self>> {
         type ModData<'a> = Vec<(&'a str, Result<bool, ParseBoolError>, Vec<PathBuf>)>;
+
         fn sync_keys<'a>(ini: &'a Ini, ini_path: &Path) -> std::io::Result<ModData<'a>> {
             fn collect_file_data(section: &Properties) -> HashMap<&str, Vec<&str>> {
                 section
@@ -382,6 +395,7 @@ impl RegMod {
                     })
                     .collect()
             }
+
             fn combine_map_data<'a>(
                 state_map: HashMap<&'a str, &str>,
                 file_map: HashMap<&str, Vec<&str>>,
@@ -401,6 +415,7 @@ impl RegMod {
                 mod_data.sort_by_key(|(key, _, _)| *key);
                 mod_data
             }
+
             let mod_state_data = ini
                 .section(Some("registered-mods"))
                 .expect("Validated by Ini::is_setup on startup");
@@ -414,16 +429,19 @@ impl RegMod {
                 .filter(|k| !file_data.contains_key(*k))
                 .cloned()
                 .collect::<Vec<_>>();
+
             for key in invalid_state {
                 state_data.remove(key);
                 remove_entry(ini_path, Some("registered-mods"), key)?;
                 warn!("\"{key}\" has no matching files");
             }
+
             let invalid_files = file_data
                 .keys()
                 .filter(|k| !state_data.contains_key(*k))
                 .cloned()
                 .collect::<Vec<_>>();
+
             for key in invalid_files {
                 if file_data.get(key).expect("key exists").len() > 1 {
                     remove_array(ini_path, key)?;
@@ -433,8 +451,10 @@ impl RegMod {
                 file_data.remove(key);
                 warn!("\"{key}\" has no matching state");
             }
+
             Ok(combine_map_data(state_data, file_data))
         }
+
         fn collect_data_unsafe(ini: &Ini) -> Vec<(&str, &str, Vec<&str>)> {
             let mod_state_data = ini
                 .section(Some("registered-mods"))
@@ -458,6 +478,7 @@ impl RegMod {
                 })
                 .collect()
         }
+
         let ini = get_cfg(ini_path)?;
 
         if skip_validation {
@@ -480,9 +501,9 @@ impl RegMod {
                     "Could not read \"game_dir\" from file",
                 ))?
                 .value;
-            let mut load_order_parsed = ModLoaderCfg::load(&game_dir, LOADER_SECTIONS[1])
+            let mut load_order_parsed = ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1])
                 .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?
-                .parse()
+                .parse_section()
                 .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?;
             Ok(parsed_data
                 .iter()
@@ -543,6 +564,7 @@ impl RegMod {
         }
         Ok(())
     }
+
     pub fn file_refs(&self) -> Vec<&Path> {
         let mut path_refs = Vec::with_capacity(self.all_files_len());
         path_refs.extend(self.mod_files.iter().map(|f| f.as_path()));
@@ -550,6 +572,7 @@ impl RegMod {
         path_refs.extend(self.other_files.iter().map(|f| f.as_path()));
         path_refs
     }
+
     pub fn add_other_files_to_files<'a>(&'a self, files: &'a [PathBuf]) -> Vec<&'a Path> {
         let mut path_refs = Vec::with_capacity(files.len() + self.other_files_len());
         path_refs.extend(files.iter().map(|f| f.as_path()));
@@ -557,9 +580,11 @@ impl RegMod {
         path_refs.extend(self.other_files.iter().map(|f| f.as_path()));
         path_refs
     }
+
     pub fn all_files_len(&self) -> usize {
         self.mod_files.len() + self.config_files.len() + self.other_files.len()
     }
+
     pub fn other_files_len(&self) -> usize {
         self.config_files.len() + self.other_files.len()
     }

@@ -56,9 +56,6 @@ export component ModEdit inherits Tab {
         padding-bottom: Formatting.side-padding / 2;
         alignment: space-between;
 
-        // MARK: TODO
-        // inbed load_order data inside RegMod::collect for init deserialize
-        // need to use ModelNotify::row_changed to handle updating page info on change
         load-order-box := GroupBox {
             property <int> temp;
             title: @tr("Load Order");
