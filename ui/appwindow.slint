@@ -40,11 +40,12 @@ export component App inherits Window {
     min-width: Formatting.app-width;
     max-width: Formatting.app-width;
     
-    mp := MainPage {}
-
     callback focus-app;
     callback show-error-popup;
     callback show-confirm-popup;
+    callback update-mod-index(int, int);
+
+    update-mod-index(i, t) => { mp.update-mod-index(i, t) }
     focus-app => { fs.focus() }
     show-error-popup => {
         popup-visible = true;
@@ -54,6 +55,8 @@ export component App inherits Window {
         popup-visible = true;
         alt-std-buttons ? confirm-popup-2.show() : confirm-popup.show()
     }
+    
+    mp := MainPage {}
 
     msg-size := Text {
         visible: false;

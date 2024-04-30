@@ -1,6 +1,6 @@
 struct LoadOrder {
     set: bool,
-    dll: string,
+    i: int,
     at: int,
 }
 
@@ -17,20 +17,21 @@ export struct DisplayMod  {
 export enum Message { confirm, deny, esc }
 
 export global MainLogic {
-    callback toggle-mod(string, bool);
+    callback toggle-mod(string, bool) -> bool;
     callback select-mod-files(string);
     callback add-to-mod(string);
     callback remove-mod(string);
     callback edit-config([string]);
     callback edit-config-item(StandardListViewItem);
     // consider using a string instead of an int for value
-    callback add-remove-order(bool, string, int);
-    callback modify-order(string, string, int);
+    callback add-remove-order(bool, string, int) -> int;
+    callback modify-order(string, string, int) -> int;
     callback force-app-focus();
+    callback force-deserialize();
     callback send-message(Message);
     in property <string> line-edit-text;
-    in-out property <bool> if-err-bool;
     in-out property <bool> game-path-valid;
+    in-out property <int> orders-set;
     in-out property <int> current-subpage: 0;
     in-out property <[DisplayMod]> current-mods: [
         {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true, order: {set: false}},
@@ -42,9 +43,9 @@ export global SettingsLogic  {
     callback open-game-dir();
     callback scan-for-mods();
     callback toggle-theme(bool);
-    callback toggle-terminal(bool);
+    callback toggle-terminal(bool) -> bool;
     callback set-load-delay(string);
-    callback toggle-all(bool);
+    callback toggle-all(bool) -> bool;
     in property <string> game-path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
     in property <bool> loader-installed;
     in-out property <bool> dark-mode: true;

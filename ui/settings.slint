@@ -105,7 +105,12 @@ export component SettingsPage inherits Page {
                         text: @tr("Show Terminal");
                         enabled: SettingsLogic.loader-installed;
                         checked <=> SettingsLogic.show-terminal;
-                        toggled => { SettingsLogic.toggle-terminal(self.checked) }
+                        toggled => {
+                            SettingsLogic.show-terminal = SettingsLogic.toggle-terminal(self.checked);
+                            if SettingsLogic.show-terminal != self.checked {
+                                self.checked = !self.checked;
+                            } 
+                        }
                     }
                 }
                 HorizontalLayout {
@@ -116,7 +121,12 @@ export component SettingsPage inherits Page {
                         text: @tr("Disable All mods");
                         enabled: SettingsLogic.loader-installed;
                         checked <=> SettingsLogic.loader-disabled;
-                        toggled => { SettingsLogic.toggle-all(self.checked) }
+                        toggled => {
+                            SettingsLogic.loader-disabled = SettingsLogic.toggle-all(self.checked);
+                            if SettingsLogic.loader-disabled != self.checked {
+                                self.checked = !self.checked;
+                            }
+                        }
                     }
                 }
                 HorizontalLayout {

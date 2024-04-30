@@ -13,12 +13,15 @@ export component MainPage inherits Page {
     callback focus-line-edit;
     callback focus-settings;
     callback swap-tab;
-    callback edit-mod(int);
+    callback edit-mod(int, int);
+    callback update-mod-index(int, int);
     focus-line-edit => { input-mod.focus() }
     focus-settings => { app-settings.focus-settings-scope() }
     swap-tab => { mod-settings.current-tab = mod-settings.current-tab == 0 ? 1 : 0 }
-    edit-mod(i) => {
-        mod-settings.current-tab = 0;
+
+    update-mod-index(i, t) => { edit-mod(i, t) }
+    edit-mod(i, t) => {
+        mod-settings.current-tab = t;
         mod-settings.mod-index = i;
         MainLogic.current-subpage = 2
     }
@@ -45,12 +48,9 @@ export component MainPage inherits Page {
                         checked: mod.enabled;
                         enabled: reg-mod-box.enabled;
                         toggled => {
-                            MainLogic.if-err-bool = self.checked;
-                            MainLogic.current-mods[idx].enabled = self.checked;
-                            MainLogic.toggle-mod(mod.name, self.checked);
-                            if (MainLogic.if-err-bool != self.checked) {
-                                self.checked = MainLogic.if-err-bool;
-                                MainLogic.current-mods[idx].enabled = MainLogic.if-err-bool;
+                            MainLogic.current-mods[idx].enabled = MainLogic.toggle-mod(mod.name, self.checked);
+                            if MainLogic.current-mods[idx].enabled != self.checked {
+                                self.checked = !self.checked;
                             }
                         }
                     }
@@ -66,7 +66,7 @@ export component MainPage inherits Page {
                             x: mod-box.width - 284px;
                             height: 28px;
                             width: root.width - mod-box.width;
-                            clicked => { edit-mod(idx) }
+                            clicked => { edit-mod(idx, 0) }
                         }
                     }
                     states [
