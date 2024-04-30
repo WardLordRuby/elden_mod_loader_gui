@@ -1,12 +1,12 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
         ini::{
             mod_loader::{ModLoader, ModLoaderCfg, update_order_entries, Countable},
-            parser::{file_registered, IniProperty, RegMod, Valitidity},
+            parser::{file_registered, IniProperty, RegMod, Valitidity, ErrorClone},
             writer::*,
         },
         installer::{remove_mod_files, InstallData, scan_for_mods}
@@ -55,6 +55,7 @@ fn main() -> Result<(), slint::PlatformError> {
     {
         let current_ini = get_ini_dir();
         let first_startup: bool;
+        let mut errors= Vec::new();
         let ini_valid = match get_cfg(current_ini) {
             Ok(ini) => {
                 if ini.is_setup() {
@@ -67,7 +68,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
             Err(err) => {
+                // io::Open error or | parse error with type ErrorKind::InvalidData
                 error!("Error: {err}");
+                errors.push(err);
                 first_startup = true;
                 false
             }
@@ -78,30 +81,37 @@ fn main() -> Result<(), slint::PlatformError> {
         }
 
         let game_verified: bool;
+        let mut reg_mods = None;
         let game_dir = match attempt_locate_game(current_ini) {
             Ok(path_result) => match path_result {
-                PathResult::Full(path) => match RegMod::collect(current_ini, false) {
-                    Ok(reg_mods) => {
+                PathResult::Full(path) => {
+                    reg_mods = Some(RegMod::collect(current_ini, false));
+                    match reg_mods {
+                    Some(Ok(ref reg_mods)) => {
                         reg_mods.iter().for_each(|data| {
                             data.verify_state(&path, current_ini)
-                                .unwrap_or_else(|err| ui.display_msg(&err.to_string()))
+                                // io::Error from toggle files | ErrorKind::InvalidInput - did not pass len check | io::Write error
+                                .unwrap_or_else(|err| errors.push(err))
                         });
                         game_verified = true;
                         Some(path)
                     }
-                    Err(err) => {
-                        ui.display_msg(&err.to_string());
+                    Some(Err(ref err)) => {
+                        // io::Write error
+                        errors.push(err.clone_err());
                         game_verified = true;
                         Some(path)
                     }
-                },
+                    None => unreachable!()
+                }},
                 PathResult::Partial(path) | PathResult::None(path) => {
                     game_verified = false;
                     Some(path)
                 }
             },
             Err(err) => {
-                ui.display_msg(&err.to_string());
+                // io::Write error
+                errors.push(err);
                 game_verified = false;
                 None
             }
@@ -117,7 +127,8 @@ fn main() -> Result<(), slint::PlatformError> {
             None => {
                 ui.global::<SettingsLogic>().set_dark_mode(true);
                 save_bool(current_ini, Some("app-settings"), "dark_mode", true)
-                    .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
+                    // io::Write error
+                    .unwrap_or_else(|err| errors.push(err));
             }
         };
 
@@ -131,86 +142,118 @@ fn main() -> Result<(), slint::PlatformError> {
                 .into(),
         );
         let _ = get_or_update_game_dir(Some(game_dir.clone().unwrap_or_default()));
+
         let mod_loader: ModLoader;
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
-            if !first_startup {
-                ui.display_msg(
-                    "Failed to locate Elden Ring\nPlease Select the install directory for Elden Ring",
-                );
-            }
             mod_loader = ModLoader::default();
         } else {
             let game_dir = game_dir.expect("game dir verified");
             mod_loader = ModLoader::properties(&game_dir);
             deserialize_current_mods(
-                &RegMod::collect(current_ini, !mod_loader.installed()).unwrap_or_else(|err| {
-                    ui.display_msg(&err.to_string());
-                    vec![RegMod::default()]
-                }), ui.as_weak()
+                &match reg_mods {
+                    Some(Ok(mod_data)) => mod_data,
+                    _ => RegMod::collect(current_ini, !mod_loader.installed()).unwrap_or_else(|err| {
+                        // io::Error from toggle files | ErrorKind::InvalidInput - did not pass len check | io::Write error
+                        errors.push(err);
+                        vec![RegMod::default()]
+                    })
+                },ui.as_weak()
             );
-            ui.global::<SettingsLogic>()
-                .set_loader_disabled(mod_loader.disabled());
+            ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled());
+
             if mod_loader.installed() {
                 ui.global::<SettingsLogic>().set_loader_installed(true);
                 let loader_cfg = ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[0]).unwrap();
-                let delay = loader_cfg.get_load_delay().unwrap_or_else(|err| {
-                    let err = format!("{err} Reseting to default value");
+                let delay = loader_cfg.get_load_delay().unwrap_or_else(|_| {
+                    // parse error ErrorKind::InvalidData
+                    let err = std::io::Error::new(ErrorKind::InvalidData, format!(
+                        "Found an unexpected character saved in \"{}\" Reseting to default value",
+                        LOADER_KEYS[0]
+                    ));
                     error!("{err}");
+                    errors.push(err);
                     save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[0], DEFAULT_VALUES[0])
-                    .unwrap_or_else(|err| error!("{err}"));
+                    .unwrap_or_else(|err| {
+                        // io::write error
+                        error!("{err}");
+                        errors.push(err);
+                    });
                     DEFAULT_VALUES[0].parse().unwrap()
                 });
-                let show_terminal = loader_cfg.get_show_terminal().unwrap_or_else(|err| {
-                    let err = format!("{err} Reseting to default value");
+                let show_terminal = loader_cfg.get_show_terminal().unwrap_or_else(|_| {
+                    // parse error ErrorKind::InvalidData
+                    let err = std::io::Error::new(ErrorKind::InvalidData, format!(
+                        "Found an unexpected character saved in \"{}\" Reseting to default value",
+                        LOADER_KEYS[1]
+                    ));
                     error!("{err}");
+                    errors.push(err);
                     save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[1], DEFAULT_VALUES[1])
-                    .unwrap_or_else(|err| error!("{err}"));
+                    .unwrap_or_else(|err| {
+                        // io::write error
+                        error!("{err}");
+                        errors.push(err);
+                    });
                     false
                 });
 
                 ui.global::<SettingsLogic>().set_load_delay(SharedString::from(format!("{}ms", delay)));
                 ui.global::<SettingsLogic>().set_show_terminal(show_terminal);
             }
-            // MARK: BUG?
-            // sometimes messages in the startup process are not centered
-            // most likely because we are trying to calculate the position data before slint event loop as been initialized with ui.run()
-            // try invoke from event loop?
-            if !first_startup && !mod_loader.installed() {
-                ui.display_msg(&format!("This tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease install files to \"{}\"\nand relaunch Elden Mod Loader GUI", &game_dir.display()));
-            }
         }
-        if first_startup {
-            if !game_verified && !mod_loader.installed() {
-                ui.display_msg(
-                    "Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease select the game directory containing \"eldenring.exe\"",
-                );
-            } else if game_verified && !mod_loader.installed() {
-                ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
-            } else if game_verified {
-                let ui_handle = ui.as_weak();
+        // we need to wait for slint event loop to start `ui.run()` before making calls to `ui.display_msg()`
+        // otherwise calculations for the positon of display_msg_popup are not correct
+        let ui_handle = ui.as_weak();
+        let _ = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            slint::invoke_from_event_loop(move || {
                 slint::spawn_local(async move {
                     let ui = ui_handle.unwrap();
-                    match confirm_scan_mods(ui.as_weak(), &get_or_update_game_dir(None), current_ini, false).await {
-                        Ok(len) => {
-                            deserialize_current_mods(
-                                &RegMod::collect(current_ini, false).unwrap_or_else(|err| {
-                                    ui.display_msg(&err.to_string());
-                                    vec![RegMod::default()]
-                                }), ui.as_weak()
+                    if !errors.is_empty() {
+                        for err in errors {
+                            ui.display_msg(&err.to_string());
+                            let _ = receive_msg().await;
+                        }
+                    }
+                    if first_startup {
+                        if !game_verified && !mod_loader.installed() {
+                            ui.display_msg(
+                                "Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease select the game directory containing \"eldenring.exe\"",
                             );
-                            ui.display_msg(&format!("Successfully Found {len} mod(s)"));
-                            let _ = receive_msg().await;
+                        } else if game_verified && !mod_loader.installed() {
+                            ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
+                        } else if game_verified {
+                            match confirm_scan_mods(ui.as_weak(), &get_or_update_game_dir(None), current_ini, false).await {
+                                Ok(len) => {
+                                    deserialize_current_mods(
+                                        &RegMod::collect(current_ini, false).unwrap_or_else(|err| {
+                                            ui.display_msg(&err.to_string());
+                                            vec![RegMod::default()]
+                                        }), ui.as_weak()
+                                    );
+                                    ui.display_msg(&format!("Successfully Found {len} mod(s)"));
+                                    let _ = receive_msg().await;
+                                }
+                                Err(err) => if err.kind() != ErrorKind::ConnectionAborted {
+                                    ui.display_msg(&format!("Error: {err}"));
+                                    let _ = receive_msg().await;
+                                }
+                            };
+                            ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
                         }
-                        Err(err) => if err.kind() != ErrorKind::ConnectionAborted {
-                            ui.display_msg(&format!("Error: {err}"));
-                            let _ = receive_msg().await;
+                    } else if game_verified {
+                        if !mod_loader.installed() {
+                            ui.display_msg(&format!("This tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease install files to \"{}\"\nand relaunch Elden Mod Loader GUI", get_or_update_game_dir(None).display()));
                         }
-                    };
-                    ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
+                    } else {
+                        ui.display_msg(
+                            "Failed to locate Elden Ring\nPlease Select the install directory for Elden Ring",
+                        );
+                    }
                 }).unwrap();
-            }
-        }
+            }).unwrap();
+        });
     }
 
     // TODO: Error check input text for invalid symbols
@@ -814,7 +857,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let mut load_order = match ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1]) {
                 Ok(data) => data,
                 Err(err) => {
-                    ui.display_msg(&err);
+                    ui.display_msg(&err.to_string());
                     return error;
                 }
             };
@@ -853,7 +896,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let mut load_order = match ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1]) {
                 Ok(data) => data,
                 Err(err) => {
-                    ui.display_msg(&err);
+                    ui.display_msg(&err.to_string());
                     return -1;
                 }
             };
