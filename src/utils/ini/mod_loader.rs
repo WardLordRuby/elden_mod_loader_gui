@@ -3,7 +3,9 @@ use log::{error, info, warn};
 use std::path::{Path, PathBuf};
 
 use crate::{
+    utils::ini::parser::IniProperty,
     utils::ini::writer::EXT_OPTIONS,
+    LOADER_KEYS, LOADER_SECTIONS,
     {does_dir_contain, get_cfg, Operation, LOADER_FILES, LOADER_FILES_DISABLED},
 };
 
@@ -53,6 +55,7 @@ impl ModLoader {
     }
 }
 
+#[derive(Default)]
 pub struct ModLoaderCfg {
     cfg: Ini,
     cfg_dir: PathBuf,
@@ -93,8 +96,49 @@ impl ModLoaderCfg {
         })
     }
 
+    pub fn get_load_delay(&self) -> Result<u32, String> {
+        match IniProperty::<u32>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[0], false) {
+            Some(delay_time) => Ok(delay_time.value),
+            None => Err(format!(
+                "Found an unexpected character saved in \"{}\"",
+                LOADER_KEYS[0]
+            )),
+        }
+    }
+
+    pub fn get_show_terminal(&self) -> Result<bool, String> {
+        match IniProperty::<bool>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[1], false) {
+            Some(delay_time) => Ok(delay_time.value),
+            None => Err(format!(
+                "Found an unexpected character saved in \"{}\"",
+                LOADER_KEYS[0]
+            )),
+        }
+    }
+
     pub fn mut_section(&mut self) -> &mut ini::Properties {
         self.cfg.section_mut(self.section.as_ref()).unwrap()
+    }
+
+    fn section(&self) -> &ini::Properties {
+        self.cfg.section(self.section.as_ref()).unwrap()
+    }
+
+    fn iter(&self) -> ini::PropertyIter {
+        self.section().iter()
+    }
+
+    pub fn parse(&self) -> Result<Vec<(String, usize)>, std::num::ParseIntError> {
+        self.iter()
+            .map(|(k, v)| {
+                let parse_v = v.parse::<usize>();
+                Ok((k.to_string(), parse_v?))
+            })
+            .collect::<Result<Vec<(String, usize)>, _>>()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.section().is_empty()
     }
 
     pub fn dir(&self) -> &Path {
