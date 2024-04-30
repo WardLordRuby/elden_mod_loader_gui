@@ -32,9 +32,11 @@ export global MainLogic {
     in-out property <bool> game-path-valid;
     in-out property <int> orders-set;
     in-out property <int> current-subpage: 0;
-    in-out property <[DisplayMod]> current-mods: [
-        {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true, order: {set: false}},
-    ];
+    in-out property <[DisplayMod]> current-mods;
+    // Placeholder data for easy live editing
+    // : [
+    //     {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true, order: {set: false}},
+    // ];
 }
 
 export global SettingsLogic  {
@@ -45,7 +47,8 @@ export global SettingsLogic  {
     callback toggle-terminal(bool) -> bool;
     callback set-load-delay(string);
     callback toggle-all(bool) -> bool;
-    in property <string> game-path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
+    in property <string> game-path;
+    // : "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
     in property <bool> loader-installed;
     in-out property <bool> dark-mode: true;
     in-out property <bool> loader-disabled;

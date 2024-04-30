@@ -131,12 +131,6 @@ fn main() -> Result<(), slint::PlatformError> {
                 .into(),
         );
         let _ = get_or_update_game_dir(Some(game_dir.clone().unwrap_or_default()));
-        deserialize_current_mods(
-            &RegMod::collect(current_ini, !game_verified).unwrap_or_else(|err| {
-                ui.display_msg(&err.to_string());
-                vec![RegMod::default()]
-            }), ui.as_weak()
-        );
         let mod_loader: ModLoader;
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
@@ -149,6 +143,12 @@ fn main() -> Result<(), slint::PlatformError> {
         } else {
             let game_dir = game_dir.expect("game dir verified");
             mod_loader = ModLoader::properties(&game_dir).unwrap_or_default();
+            deserialize_current_mods(
+                &RegMod::collect(current_ini, !mod_loader.installed).unwrap_or_else(|err| {
+                    ui.display_msg(&err.to_string());
+                    vec![RegMod::default()]
+                }), ui.as_weak()
+            );
             ui.global::<SettingsLogic>()
                 .set_loader_disabled(mod_loader.disabled);
             if mod_loader.installed {
@@ -171,12 +171,6 @@ fn main() -> Result<(), slint::PlatformError> {
 
                 ui.global::<SettingsLogic>().set_load_delay(SharedString::from(format!("{}ms", delay)));
                 ui.global::<SettingsLogic>().set_show_terminal(show_terminal);
-                
-            //     Some(delay_time) => 
-            // None => {
-            //     error!("Found an unexpected character saved in \"load_delay\" Reseting to default value");
-            //     
-            // }
             }
             if !first_startup && !mod_loader.installed {
                 ui.display_msg(&format!("This tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease install files to \"{}\"\nand relaunch Elden Mod Loader GUI", &game_dir.display()));
@@ -797,8 +791,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 match confirm_scan_mods(ui.as_weak(), &game_dir, current_ini, true).await {
                     Ok(len) => {
                         ui.global::<MainLogic>().set_current_subpage(0);
+                        let loader_installed = ModLoader::properties(&game_dir).map_or(false, |d| d.installed);
                         deserialize_current_mods(
-                            &RegMod::collect(current_ini, false).unwrap_or_else(|err| {
+                            &RegMod::collect(current_ini, !loader_installed).unwrap_or_else(|err| {
                                 ui.display_msg(&err.to_string());
                                 vec![RegMod::default()]
                             }),ui.as_weak()
