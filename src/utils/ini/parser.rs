@@ -219,7 +219,7 @@ impl<T: ValueType> IniProperty<T> {
                     section.expect("Passed in section not valid")
                 );
                 Some(IniProperty {
-                    //section: Some(section.unwrap().to_string()),
+                    //section: section.map(String::from),
                     //key: key.to_string(),
                     value,
                 })
@@ -598,6 +598,29 @@ pub fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
                 .any(|mod_file| path == mod_file)
         })
     })
+}
+
+pub trait IntoIoError {
+    fn into_io_error(self) -> std::io::Error;
+}
+
+impl IntoIoError for ini::Error {
+    fn into_io_error(self) -> std::io::Error {
+        match self {
+            ini::Error::Io(err) => err,
+            ini::Error::Parse(err) => std::io::Error::new(ErrorKind::InvalidData, err),
+        }
+    }
+}
+
+pub trait ErrorClone {
+    fn clone_err(&self) -> std::io::Error;
+}
+
+impl ErrorClone for std::io::Error {
+    fn clone_err(&self) -> std::io::Error {
+        std::io::Error::new(self.kind(), self.to_string())
+    }
 }
 
 // ----------------------Optimized original implementation-------------------------------

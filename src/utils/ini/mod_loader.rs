@@ -1,8 +1,12 @@
 use ini::Ini;
 use log::{error, info, trace};
-use std::path::{Path, PathBuf};
+use std::{
+    io::ErrorKind,
+    path::{Path, PathBuf},
+};
 
 use crate::{
+    new_io_error,
     utils::ini::{
         parser::{IniProperty, RegMod},
         writer::EXT_OPTIONS,
@@ -81,22 +85,28 @@ pub struct ModLoaderCfg {
 }
 
 impl ModLoaderCfg {
-    pub fn read_section(game_dir: &Path, section: Option<&str>) -> Result<ModLoaderCfg, String> {
+    pub fn read_section(game_dir: &Path, section: Option<&str>) -> std::io::Result<ModLoaderCfg> {
         if section.is_none() {
-            return Err(String::from("section can not be none"));
+            return new_io_error!(ErrorKind::InvalidInput, "section can not be none");
         }
         let cfg_dir = match does_dir_contain(game_dir, Operation::All, &[LOADER_FILES[0]]) {
             Ok(true) => game_dir.join(LOADER_FILES[0]),
             Ok(false) => {
-                return Err(String::from(
-                    "\"mod_loader_config.ini\" does not exist in the current game_dir",
-                ))
+                return new_io_error!(
+                    ErrorKind::NotFound,
+                    "\"mod_loader_config.ini\" does not exist in the current game_dir"
+                );
             }
-            Err(err) => return Err(err.to_string()),
+            Err(err) => return Err(err),
         };
         let mut cfg = match get_cfg(&cfg_dir) {
             Ok(ini) => ini,
-            Err(err) => return Err(format!("Could not read \"mod_loader_config.ini\"\n{err}")),
+            Err(err) => {
+                return new_io_error!(
+                    ErrorKind::NotFound,
+                    format!("Could not read \"mod_loader_config.ini\"\n{err}")
+                )
+            }
         };
         if cfg.section(section).is_none() {
             ModLoaderCfg::init_section(&mut cfg, section)?
@@ -108,45 +118,51 @@ impl ModLoaderCfg {
         })
     }
 
-    pub fn update_section(&mut self, section: Option<&str>) -> Result<(), String> {
+    pub fn update_section(&mut self, section: Option<&str>) -> std::io::Result<()> {
         if self.cfg.section(section).is_none() {
             ModLoaderCfg::init_section(&mut self.cfg, section)?
         };
         Ok(())
     }
 
-    fn init_section(cfg: &mut ini::Ini, section: Option<&str>) -> Result<(), String> {
+    fn init_section(cfg: &mut ini::Ini, section: Option<&str>) -> std::io::Result<()> {
         trace!(
             "Section: \"{}\" not found creating new",
             section.expect("Passed in section not valid")
         );
         cfg.with_section(section).set("setter_temp_val", "0");
         if cfg.delete_from(section, "setter_temp_val").is_none() {
-            return Err(format!(
-                "Failed to create a new section: \"{}\"",
-                section.unwrap()
-            ));
+            return new_io_error!(
+                ErrorKind::BrokenPipe,
+                format!("Failed to create a new section: \"{}\"", section.unwrap())
+            );
         };
         Ok(())
     }
 
-    pub fn get_load_delay(&self) -> Result<u32, String> {
+    pub fn get_load_delay(&self) -> std::io::Result<u32> {
         match IniProperty::<u32>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[0], false) {
             Some(delay_time) => Ok(delay_time.value),
-            None => Err(format!(
-                "Found an unexpected character saved in \"{}\"",
-                LOADER_KEYS[0]
-            )),
+            None => new_io_error!(
+                ErrorKind::InvalidData,
+                format!(
+                    "Found an unexpected character saved in \"{}\"",
+                    LOADER_KEYS[0]
+                )
+            ),
         }
     }
 
-    pub fn get_show_terminal(&self) -> Result<bool, String> {
+    pub fn get_show_terminal(&self) -> std::io::Result<bool> {
         match IniProperty::<bool>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[1], false) {
             Some(delay_time) => Ok(delay_time.value),
-            None => Err(format!(
-                "Found an unexpected character saved in \"{}\"",
-                LOADER_KEYS[0]
-            )),
+            None => new_io_error!(
+                ErrorKind::InvalidData,
+                format!(
+                    "Found an unexpected character saved in \"{}\"",
+                    LOADER_KEYS[1]
+                )
+            ),
         }
     }
 
@@ -181,7 +197,7 @@ impl ModLoaderCfg {
     }
 
     #[inline]
-    pub fn dir(&self) -> &Path {
+    pub fn path(&self) -> &Path {
         &self.cfg_dir
     }
 

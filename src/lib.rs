@@ -10,7 +10,7 @@ pub mod utils {
 use ini::Ini;
 use log::{error, info, trace, warn};
 use utils::ini::{
-    parser::{IniProperty, RegMod},
+    parser::{IniProperty, IntoIoError, RegMod},
     writer::{remove_array, save_bool, save_path, save_path_bufs},
 };
 
@@ -179,8 +179,7 @@ pub fn toggle_files(
 }
 
 pub fn get_cfg(input_file: &Path) -> std::io::Result<Ini> {
-    Ini::load_from_file_noescape(input_file)
-        .map_err(|err| std::io::Error::new(ErrorKind::AddrNotAvailable, err))
+    Ini::load_from_file_noescape(input_file).map_err(|err| err.into_io_error())
 }
 
 pub enum Operation {
