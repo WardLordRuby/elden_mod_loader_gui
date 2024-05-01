@@ -6,9 +6,9 @@ use std::{
     path::Path,
 };
 
-use crate::{get_cfg, parent_or_err};
+use crate::{get_cfg, parent_or_err, INI_SECTIONS as SECTIONS};
 
-pub const INI_SECTIONS: [&str; 4] = [
+const INI_SECTIONS: [&str; 4] = [
     "[app-settings]",
     "[paths]",
     "[registered-mods]",
@@ -35,7 +35,7 @@ pub fn save_paths(file_name: &Path, key: &str, files: &[&Path]) -> std::io::Resu
         .collect::<Vec<_>>()
         .join("\r\narray[]=");
     config
-        .with_section(Some("mod-files"))
+        .with_section(SECTIONS[3])
         .set(key, format!("array\r\narray[]={save_paths}"));
     config.write_to_file_opt(file_name, WRITE_OPTIONS)
 }

@@ -164,6 +164,9 @@ export component ModEdit inherits Tab {
                     model: MainLogic.current-mods[mod-index].dll-files;
                     selected(file) => { modify-file(file, self.current-index) }
                 }
+
+                // MARK: TODO
+                // Create a focus scope to handle up and down arrow inputs
                 if load-order.checked : SpinBox {
                     width: 106px;
                     enabled: load-order.checked;

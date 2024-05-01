@@ -11,7 +11,7 @@ use crate::{
         parser::RegMod,
         writer::{save_bool, save_path, save_paths},
     },
-    FileData,
+    FileData, INI_SECTIONS,
 };
 
 /// Returns the deepest occurance of a directory that contains at least 1 file  
@@ -561,15 +561,10 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
         }
     }
     for mod_data in &file_sets {
-        save_bool(
-            ini_file,
-            Some("registered-mods"),
-            &mod_data.name,
-            mod_data.state,
-        )?;
+        save_bool(ini_file, INI_SECTIONS[2], &mod_data.name, mod_data.state)?;
         let file_refs = mod_data.files.file_refs();
         if file_refs.len() == 1 {
-            save_path(ini_file, Some("mod-files"), &mod_data.name, file_refs[0])?;
+            save_path(ini_file, INI_SECTIONS[3], &mod_data.name, file_refs[0])?;
         } else {
             save_paths(ini_file, &mod_data.name, &file_refs)?;
         }

@@ -1,6 +1,9 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use elden_mod_loader_gui::utils::ini::{parser::RegMod, writer::*};
+use elden_mod_loader_gui::{
+    utils::ini::{parser::RegMod, writer::*},
+    INI_SECTIONS,
+};
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
     fs::remove_file,
@@ -18,11 +21,11 @@ fn populate_non_valid_ini(len: u32, file: &Path) {
         let paths = generate_test_paths();
         let path_refs = paths.iter().map(|p| p.as_path()).collect::<Vec<_>>();
 
-        save_bool(file, Some("registered-mods"), &key, bool_value).unwrap();
+        save_bool(file, INI_SECTIONS[2], &key, bool_value).unwrap();
         if paths.len() > 1 {
             save_paths(file, &key, &path_refs).unwrap();
         } else {
-            save_path(file, Some("mod-files"), &key, paths[0].as_path()).unwrap();
+            save_path(file, INI_SECTIONS[3], &key, paths[0].as_path()).unwrap();
         }
     }
 }

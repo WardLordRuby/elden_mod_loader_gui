@@ -11,6 +11,7 @@ mod tests {
             parser::{IniProperty, RegMod, Setup},
             writer::*,
         },
+        INI_SECTIONS,
     };
 
     #[test]
@@ -22,7 +23,7 @@ mod tests {
         for (i, num) in test_nums.iter().enumerate() {
             save_value_ext(
                 test_file,
-                Some("paths"),
+                INI_SECTIONS[1],
                 &format!("test_num_{i}"),
                 &num.to_string(),
             )
@@ -34,7 +35,7 @@ mod tests {
         for (i, num) in test_nums.iter().enumerate() {
             assert_eq!(
                 *num,
-                IniProperty::<u32>::read(&config, Some("paths"), &format!("test_num_{i}"), false)
+                IniProperty::<u32>::read(&config, INI_SECTIONS[1], &format!("test_num_{i}"), false)
                     .unwrap()
                     .value
             )
@@ -53,7 +54,7 @@ mod tests {
         for (i, bool_str) in test_bools.iter().enumerate() {
             save_value_ext(
                 test_file,
-                Some("paths"),
+                INI_SECTIONS[1],
                 &format!("test_bool_{i}"),
                 bool_str,
             )
@@ -65,9 +66,14 @@ mod tests {
         for (i, bool) in bool_results.iter().enumerate() {
             assert_eq!(
                 *bool,
-                IniProperty::<bool>::read(&config, Some("paths"), &format!("test_bool_{i}"), false)
-                    .unwrap()
-                    .value
+                IniProperty::<bool>::read(
+                    &config,
+                    INI_SECTIONS[1],
+                    &format!("test_bool_{i}"),
+                    false
+                )
+                .unwrap()
+                .value
             )
         }
 
@@ -83,16 +89,17 @@ mod tests {
 
         {
             new_cfg(test_file).unwrap();
-            save_path(test_file, Some("paths"), "game_dir", test_path_1).unwrap();
-            save_path(test_file, Some("paths"), "random_dir", test_path_2).unwrap();
+            save_path(test_file, INI_SECTIONS[1], "game_dir", test_path_1).unwrap();
+            save_path(test_file, INI_SECTIONS[1], "random_dir", test_path_2).unwrap();
         }
 
         let config = get_cfg(test_file).unwrap();
-        let parse_test_1 = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
-            .unwrap()
-            .value;
+        let parse_test_1 =
+            IniProperty::<PathBuf>::read(&config, INI_SECTIONS[1], "game_dir", false)
+                .unwrap()
+                .value;
         let parse_test_2 =
-            IniProperty::<PathBuf>::read(&config, Some("paths"), "random_dir", false)
+            IniProperty::<PathBuf>::read(&config, INI_SECTIONS[1], "random_dir", false)
                 .unwrap()
                 .value;
 
@@ -114,7 +121,7 @@ mod tests {
         let test_file = Path::new("temp\\test_type_check.ini");
 
         new_cfg(test_file).unwrap();
-        save_path(test_file, Some("paths"), "game_dir", test_path).unwrap();
+        save_path(test_file, INI_SECTIONS[1], "game_dir", test_path).unwrap();
         save_paths(test_file, "test_array", &test_array).unwrap();
 
         let config = get_cfg(test_file).unwrap();
@@ -129,14 +136,14 @@ mod tests {
         );
 
         let vec_result =
-            IniProperty::<Vec<PathBuf>>::read(&config, Some("paths"), "game_dir", false);
+            IniProperty::<Vec<PathBuf>>::read(&config, INI_SECTIONS[1], "game_dir", false);
         assert_eq!(
             vec_result.unwrap_err().to_string(),
             vec_pathbuf_err.to_string()
         );
 
         let path_result =
-            IniProperty::<PathBuf>::read(&config, Some("mod-files"), "test_array", false);
+            IniProperty::<PathBuf>::read(&config, INI_SECTIONS[3], "test_array", false);
         assert_eq!(
             path_result.unwrap_err().to_string(),
             pathbuf_err.to_string()
@@ -176,20 +183,20 @@ mod tests {
                 Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
 
             save_paths(test_file, mod_1_key, &mod_1).unwrap();
-            save_bool(test_file, Some("registered-mods"), mod_1_key, mod_1_state).unwrap();
-            save_path(test_file, Some("mod-files"), mod_2_key, &mod_2).unwrap();
-            save_bool(test_file, Some("registered-mods"), mod_2_key, mod_2_state).unwrap();
+            save_bool(test_file, INI_SECTIONS[2], mod_1_key, mod_1_state).unwrap();
+            save_path(test_file, INI_SECTIONS[3], mod_2_key, &mod_2).unwrap();
+            save_bool(test_file, INI_SECTIONS[2], mod_2_key, mod_2_state).unwrap();
             save_paths(test_file, "no_matching_state_1", &invalid_format_1).unwrap();
             save_path(
                 test_file,
-                Some("mod-files"),
+                INI_SECTIONS[3],
                 "no_matching_state_2",
                 &invalid_format_2,
             )
             .unwrap();
-            save_bool(test_file, Some("registered-mods"), "no_matching_path", true).unwrap();
+            save_bool(test_file, INI_SECTIONS[2], "no_matching_path", true).unwrap();
 
-            save_path(test_file, Some("paths"), "game_dir", game_path).unwrap();
+            save_path(test_file, INI_SECTIONS[1], "game_dir", game_path).unwrap();
         }
 
         // -------------------------------------sync_keys runs from inside RegMod::collect()------------------------------------------------

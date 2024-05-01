@@ -2,7 +2,6 @@ use ini::{Ini, Properties};
 use log::{error, warn};
 use std::{
     collections::HashMap,
-    fmt::Debug,
     io::ErrorKind,
     path::{Path, PathBuf},
 };
@@ -11,9 +10,9 @@ use crate::{
     get_cfg, new_io_error, toggle_files,
     utils::ini::{
         mod_loader::ModLoaderCfg,
-        writer::{remove_array, remove_entry, INI_SECTIONS},
+        writer::{remove_array, remove_entry},
     },
-    FileData, LOADER_SECTIONS, OFF_STATE,
+    FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, LOADER_SECTIONS, OFF_STATE,
 };
 
 pub trait Parsable: Sized {
@@ -73,7 +72,7 @@ impl Parsable for PathBuf {
     ) -> std::io::Result<Self> {
         let parsed_value = PathBuf::from({
             let value = ini.get_from(section, key);
-            if matches!(value, Some("array")) {
+            if matches!(value, Some(ARRAY_VALUE)) {
                 return new_io_error!(
                     ErrorKind::InvalidData,
                     "Invalid type found. Expected: Path, Found: Vec<Path>"
@@ -102,11 +101,11 @@ impl Parsable for Vec<PathBuf> {
                 .iter()
                 .skip_while(|(k, _)| *k != key)
                 .skip_while(|(k, _)| *k == key)
-                .take_while(|(k, _)| *k == "array[]")
+                .take_while(|(k, _)| *k == ARRAY_KEY)
                 .map(|(_, v)| PathBuf::from(v))
                 .collect()
         }
-        if !matches!(ini.get_from(section, key), Some("array")) {
+        if !matches!(ini.get_from(section, key), Some(ARRAY_VALUE)) {
             return new_io_error!(
                 ErrorKind::InvalidData,
                 "Invalid type found. Expected: Vec<Path>, Found: Path"
@@ -212,10 +211,9 @@ impl Setup for Ini {
     // MARK: FIXME
     // add functionality for matching Ini filename
     fn is_setup(&self) -> bool {
-        INI_SECTIONS.iter().all(|section| {
-            self.section(Some(section.trim_matches(|c| c == '[' || c == ']')))
-                .is_some()
-        })
+        INI_SECTIONS
+            .iter()
+            .all(|&section| self.section(section).is_some())
     }
 }
 
@@ -251,12 +249,13 @@ impl<T: Parsable> IniProperty<T> {
                 true => {
                     // This will have to be abstracted to the caller if we want the ability for the caller to specify the _path_prefix_
                     // right now _game_dir_ is the only valid prefix && "mod-files" is the only place _short_paths_ are stored
-                    let game_dir = match section {
-                        Some("mod-files") => Some(
-                            IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)?
+                    let game_dir = if section == INI_SECTIONS[3] {
+                        Some(
+                            IniProperty::<PathBuf>::read(ini, INI_SECTIONS[1], INI_KEYS[1], false)?
                                 .value,
-                        ),
-                        _ => None,
+                        )
+                    } else {
+                        None
                     };
                     T::parse_str(ini, section, game_dir, key, skip_validation)
                 }
@@ -456,24 +455,24 @@ impl RegMod {
                 section
                     .iter()
                     .enumerate()
-                    .filter(|(_, (k, _))| *k != "array[]")
+                    .filter(|(_, (k, _))| *k != ARRAY_KEY)
                     .map(|(i, (k, v))| {
                         let paths = section
                             .iter()
                             .skip(i + 1)
-                            .take_while(|(k, _)| *k == "array[]")
+                            .take_while(|(k, _)| *k == ARRAY_KEY)
                             .map(|(_, v)| v)
                             .collect();
-                        (k, if v == "array" { paths } else { vec![v] })
+                        (k, if v == ARRAY_VALUE { paths } else { vec![v] })
                     })
                     .collect()
             }
 
             let mod_state_data = ini
-                .section(Some("registered-mods"))
+                .section(INI_SECTIONS[2])
                 .expect("Validated by Ini::is_setup on startup");
             let dll_data = ini
-                .section(Some("mod-files"))
+                .section(INI_SECTIONS[3])
                 .expect("Validated by Ini::is_setup on startup");
             let mut state_data = mod_state_data.iter().collect::<HashMap<&str, &str>>();
             let mut file_data = collect_paths(dll_data);
@@ -485,7 +484,7 @@ impl RegMod {
 
             for key in invalid_state {
                 state_data.remove(key);
-                remove_entry(ini_path, Some("registered-mods"), key)?;
+                remove_entry(ini_path, INI_SECTIONS[2], key)?;
                 warn!("\"{key}\" has no matching files");
             }
 
@@ -499,7 +498,7 @@ impl RegMod {
                 if file_data.get(key).expect("key exists").len() > 1 {
                     remove_array(ini_path, key)?;
                 } else {
-                    remove_entry(ini_path, Some("mod-files"), key)?;
+                    remove_entry(ini_path, INI_SECTIONS[3], key)?;
                 }
                 file_data.remove(key);
                 warn!("\"{key}\" has no matching state");
@@ -546,24 +545,24 @@ impl RegMod {
 
         fn collect_data_unchecked(ini: &Ini) -> Vec<(&str, &str, Vec<&str>)> {
             let mod_state_data = ini
-                .section(Some("registered-mods"))
+                .section(INI_SECTIONS[2])
                 .expect("Validated by Ini::is_setup on startup");
             let dll_data = ini
-                .section(Some("mod-files"))
+                .section(INI_SECTIONS[3])
                 .expect("Validated by Ini::is_setup on startup");
             dll_data
                 .iter()
                 .enumerate()
-                .filter(|(_, (k, _))| *k != "array[]")
+                .filter(|(_, (k, _))| *k != ARRAY_KEY)
                 .map(|(i, (k, v))| {
                     let paths = dll_data
                         .iter()
                         .skip(i + 1)
-                        .take_while(|(k, _)| *k == "array[]")
+                        .take_while(|(k, _)| *k == ARRAY_KEY)
                         .map(|(_, v)| v)
                         .collect::<Vec<_>>();
                     let s = mod_state_data.get(k).expect("key exists");
-                    (k, s, if v == "array" { paths } else { vec![v] })
+                    (k, s, if v == ARRAY_VALUE { paths } else { vec![v] })
                 })
                 .collect()
         }
@@ -585,7 +584,7 @@ impl RegMod {
         } else {
             let parsed_data = sync_keys(&ini, ini_path)?;
             let game_dir =
-                IniProperty::<PathBuf>::read(&ini, Some("paths"), "game_dir", false)?.value;
+                IniProperty::<PathBuf>::read(&ini, INI_SECTIONS[1], INI_KEYS[1], false)?.value;
             let load_order_parsed = ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1])
                 .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?
                 .parse_section()
@@ -597,15 +596,14 @@ impl RegMod {
                     Ok(bool) => {
                         if let Err(err) = f.file_refs().validate(Some(&game_dir)) {
                             error!("Error: {err}");
-                            remove_entry(ini_path, Some("registered-mods"), k)
-                                .expect("Key is valid");
+                            remove_entry(ini_path, INI_SECTIONS[2], k).expect("Key is valid");
                         } else {
                             output.push(RegMod::from_split_files(k, *bool, f, l))
                         }
                     }
                     Err(err) => {
                         error!("Error: {err}");
-                        remove_entry(ini_path, Some("registered-mods"), k).expect("Key is valid");
+                        remove_entry(ini_path, INI_SECTIONS[2], k).expect("Key is valid");
                     }
                 }
             }
@@ -683,79 +681,3 @@ impl ErrorClone for &std::io::Error {
         std::io::Error::new(self.kind(), self.to_string())
     }
 }
-
-// ----------------------Optimized original implementation-------------------------------
-// let mod_state_data = ini.section(Some("registered-mods")).unwrap();
-// mod_state_data
-//     .iter()
-//     .map(|(key, _)| RegMod {
-//         name: key.replace('_', " ").to_string(),
-//         state: IniProperty::<bool>::read(&ini, Some("registered-mods"), key)
-//             .unwrap()
-//             .value,
-//         files: if ini.get_from(Some("mod-files"), key).unwrap() == "array" {
-//             IniProperty::<Vec<PathBuf>>::read(&ini, Some("mod-files"), key)
-//                 .unwrap()
-//                 .value
-//         } else {
-//             vec![
-//                 IniProperty::<PathBuf>::read(&ini, Some("mod-files"), key)
-//                     .unwrap()
-//                     .value,
-//             ]
-//         },
-//     })
-//     .collect()
-// ----------------------------------Multi-threaded attempt----------------------------------------
-// SLOW ASF -- Prolly because of how parser is setup -- try setting up parse_str to only take a str as input
-// then pass each thread the strings it needs to parse
-// let ini = Arc::new(get_cfg(path).unwrap());
-// let mod_state_data = ini.section(Some("registered-mods")).unwrap();
-// let (tx, rx) = mpsc::channel();
-// let mut found_data: Vec<RegMod> = Vec::with_capacity(mod_state_data.len());
-// for (key, _) in mod_state_data.iter() {
-//     let ini_clone = Arc::clone(&ini);
-//     let key_clone = String::from(key);
-//     let tx_clone = tx.clone();
-//     thread::spawn(move || {
-//         tx_clone
-//             .send(RegMod {
-//                 name: key_clone.replace('_', " "),
-//                 state: IniProperty::<bool>::read(
-//                     &ini_clone,
-//                     Some("registered-mods"),
-//                     &key_clone,
-//                 )
-//                 .unwrap()
-//                 .value,
-//                 files: if ini_clone.get_from(Some("mod-files"), &key_clone).unwrap()
-//                     == "array"
-//                 {
-//                     IniProperty::<Vec<PathBuf>>::read(
-//                         &ini_clone,
-//                         Some("mod-files"),
-//                         &key_clone,
-//                     )
-//                     .unwrap()
-//                     .value
-//                 } else {
-//                     vec![
-//                         IniProperty::<PathBuf>::read(
-//                             &ini_clone,
-//                             Some("mod-files"),
-//                             &key_clone,
-//                         )
-//                         .unwrap()
-//                         .value,
-//                     ]
-//                 },
-//             })
-//             .unwrap()
-//     });
-// }
-// drop(tx);
-
-// for received in rx {
-//     found_data.push(received);
-// }
-// found_data

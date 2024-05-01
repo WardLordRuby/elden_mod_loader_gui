@@ -36,6 +36,16 @@ pub const REQUIRED_GAME_FILES: [&str; 3] = [
 ];
 
 pub const OFF_STATE: &str = ".disabled";
+pub const INI_SECTIONS: [Option<&str>; 4] = [
+    Some("app-settings"),
+    Some("paths"),
+    Some("registered-mods"),
+    Some("mod-files"),
+];
+pub const INI_KEYS: [&str; 2] = ["dark_mode", "game_dir"];
+pub const ARRAY_KEY: &str = "array[]";
+pub const ARRAY_VALUE: &str = "array";
+
 pub const LOADER_FILES: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll"];
 pub const LOADER_FILES_DISABLED: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll.disabled"];
 pub const LOADER_SECTIONS: [Option<&str>; 2] = [Some("modloader"), Some("loadorder")];
@@ -141,12 +151,12 @@ pub fn toggle_files(
         save_file: &Path,
     ) -> std::io::Result<()> {
         if *num_file == 1 {
-            save_path(save_file, Some("mod-files"), key, path_to_save[0])?;
+            save_path(save_file, INI_SECTIONS[3], key, path_to_save[0])?;
         } else {
             remove_array(save_file, key)?;
             save_paths(save_file, key, path_to_save)?;
         }
-        save_bool(save_file, Some("registered-mods"), key, state)?;
+        save_bool(save_file, INI_SECTIONS[2], key, state)?;
         Ok(())
     }
     let num_rename_files = reg_mod.files.dll.len();
@@ -326,7 +336,7 @@ pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
             return Ok(PathResult::None(PathBuf::new()));
         }
     };
-    if let Ok(path) = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
+    if let Ok(path) = IniProperty::<PathBuf>::read(&config, INI_SECTIONS[1], INI_KEYS[1], false)
         .and_then(|ini_property| {
             match does_dir_contain(&ini_property.value, Operation::All, &REQUIRED_GAME_FILES) {
                 Ok(OperationResult {
@@ -360,7 +370,12 @@ pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
         .success
     {
         info!("Success: located \"game_dir\" on drive");
-        save_path(file_name, Some("paths"), "game_dir", try_locate.as_path())?;
+        save_path(
+            file_name,
+            INI_SECTIONS[1],
+            INI_KEYS[1],
+            try_locate.as_path(),
+        )?;
         return Ok(PathResult::Full(try_locate));
     }
     if try_locate.components().count() > 1 {

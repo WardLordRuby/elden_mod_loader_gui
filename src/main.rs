@@ -119,8 +119,8 @@ fn main() -> Result<(), slint::PlatformError> {
 
         match IniProperty::<bool>::read(
             &get_cfg(current_ini).expect("ini file is verified"),
-            Some("app-settings"),
-            "dark_mode",
+            INI_SECTIONS[0],
+            INI_KEYS[0],
             false,
         ) {
             Ok(bool) => ui.global::<SettingsLogic>().set_dark_mode(bool.value),
@@ -128,7 +128,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 // io::Read error
                 errors.push(err);
                 ui.global::<SettingsLogic>().set_dark_mode(true);
-                save_bool(current_ini, Some("app-settings"), "dark_mode", true)
+                save_bool(current_ini, INI_SECTIONS[0], INI_KEYS[0], true)
                     // io::Write error
                     .unwrap_or_else(|err| errors.push(err));
             }
@@ -335,7 +335,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 let state = !files.iter().all(FileData::is_disabled);
                 results.push(save_bool(
                     current_ini,
-                    Some("registered-mods"),
+                    INI_SECTIONS[2],
                     &format_key,
                     state,
                 ));
@@ -343,7 +343,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     0 => return,
                     1 => results.push(save_path(
                         current_ini,
-                        Some("mod-files"),
+                        INI_SECTIONS[3],
                         &format_key,
                         files[0].as_path(),
                     )),
@@ -357,7 +357,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     // If something fails to save attempt to create a corrupt entry so
                     // sync keys will take care of any invalid ini entries
                     let _ =
-                    remove_entry(current_ini, Some("registered-mods"), &format_key);
+                    remove_entry(current_ini, INI_SECTIONS[2], &format_key);
                 }
                 let new_mod = RegMod::new(&format_key, state, files);
                 
@@ -369,7 +369,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         ui.display_msg(&err.to_string());
                         let _ = remove_entry(
                             current_ini,
-                            Some("registered-mods"),
+                            INI_SECTIONS[2],
                             &new_mod.name,
                         );
                     };
@@ -421,8 +421,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 };
                 match does_dir_contain(Path::new(&try_path), Operation::All, &REQUIRED_GAME_FILES) {
                     Ok(OperationResult { success: true, files_found: _ }) => {
-                        let result = save_path(current_ini, Some("paths"), "game_dir", &try_path);
-                        if result.is_err() && save_path(current_ini, Some("paths"), "game_dir", &try_path).is_err() {
+                        let result = save_path(current_ini, INI_SECTIONS[1], INI_KEYS[1], &try_path);
+                        if result.is_err() && save_path(current_ini, INI_SECTIONS[1], INI_KEYS[1], &try_path).is_err() {
                             let err = result.unwrap_err();
                             error!("Failed to save directory. {err}");
                             ui.display_msg(&err.to_string());
@@ -576,7 +576,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         if found_mod.files.len() == 1 {
                             results.push(remove_entry(
                                 current_ini,
-                                Some("mod-files"),
+                                INI_SECTIONS[3],
                                 &found_mod.name,
                             ));
                         } else {
@@ -587,7 +587,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             ui.display_msg(&err.to_string());
                             let _ = remove_entry(
                                 current_ini,
-                                Some("registered-mods"),
+                                INI_SECTIONS[2],
                                 &format_key,
                             );
                         }
@@ -604,7 +604,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                     ui.display_msg(&err.to_string());
                                     let _ = remove_entry(
                                         current_ini,
-                                        Some("registered-mods"),
+                                        INI_SECTIONS[2],
                                         &updated_mod.name,
                                     );
                                 };
@@ -667,7 +667,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }
                     // we can let sync keys take care of removing files from ini
-                    remove_entry(current_ini, Some("registered-mods"), &found_mod.name)
+                    remove_entry(current_ini, INI_SECTIONS[2], &found_mod.name)
                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                     let file_refs = found_mod.files.add_other_files_to_files(&found_files);
                     let ui_handle = ui.as_weak();
@@ -706,7 +706,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move |state| {
             let ui = ui_handle.unwrap();
             let current_ini = get_ini_dir();
-            save_bool(current_ini, Some("app-settings"), "dark_mode", state).unwrap_or_else(
+            save_bool(current_ini, INI_SECTIONS[0], INI_KEYS[0], state).unwrap_or_else(
                 |err| ui.display_msg(&format!("Failed to save theme preference\n\n{err}")),
             );
         }
@@ -1257,8 +1257,8 @@ async fn confirm_scan_mods(
         let dark_mode = ui.global::<SettingsLogic>().get_dark_mode();
         std::fs::remove_file(ini_file)?;
         new_cfg(ini_file)?;
-        save_bool(ini_file, Some("app-settings"), "dark_mode", dark_mode)?;
-        save_path(ini_file, Some("paths"), "game_dir", game_dir)?;
+        save_bool(ini_file, INI_SECTIONS[0], INI_KEYS[0], dark_mode)?;
+        save_path(ini_file, INI_SECTIONS[1], INI_KEYS[1], game_dir)?;
     }
     scan_for_mods(game_dir, ini_file) 
 }
