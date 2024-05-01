@@ -36,14 +36,15 @@ mod tests {
 
         let test_mod = RegMod::new("Test", true, test_files.clone());
         let mut test_files_disabled = test_mod
-            .mod_files
+            .files
+            .dll
             .iter()
             .map(|file| PathBuf::from(format!("{}{OFF_STATE}", file.display())))
             .collect::<Vec<_>>();
 
-        assert_eq!(test_mod.mod_files.len(), 1);
-        assert_eq!(test_mod.config_files.len(), 1);
-        assert_eq!(test_mod.other_files.len(), 4);
+        assert_eq!(test_mod.files.dll.len(), 1);
+        assert_eq!(test_mod.files.config.len(), 1);
+        assert_eq!(test_mod.files.other.len(), 4);
 
         for test_file in test_files.iter() {
             File::create(test_file.to_string_lossy().to_string()).unwrap();
@@ -61,8 +62,8 @@ mod tests {
             assert!(file_exists(path_to_test.as_path()));
         }
 
-        test_files_disabled.extend(test_mod.config_files);
-        test_files_disabled.extend(test_mod.other_files);
+        test_files_disabled.extend(test_mod.files.config);
+        test_files_disabled.extend(test_mod.files.other);
         let test_mod = RegMod::new(&test_mod.name, false, test_files_disabled);
 
         toggle_files(

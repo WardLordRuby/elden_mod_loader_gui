@@ -1,10 +1,9 @@
 use ini::{Ini, Properties};
-use log::{error, trace, warn};
+use log::{error, warn};
 use std::{
     collections::HashMap,
     io::ErrorKind,
     path::{Path, PathBuf},
-    str::ParseBoolError,
 };
 
 use crate::{
@@ -16,65 +15,51 @@ use crate::{
     FileData, LOADER_SECTIONS, OFF_STATE,
 };
 
-pub trait ValueType: Sized {
-    type ParseError: std::fmt::Display;
-
+pub trait Parsable: Sized {
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> Result<Self, Self::ParseError>;
-
-    #[allow(unused_variables)]
-    fn validate(
-        self,
-        ini: &Ini,
-        section: Option<&str>,
-        disable: bool,
-    ) -> Result<Self, Self::ParseError> {
-        Ok(self)
-    }
+    ) -> std::io::Result<Self>;
 }
 
-impl ValueType for bool {
-    type ParseError = ParseBoolError;
-
+impl Parsable for bool {
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         _skip_validation: bool,
-    ) -> Result<Self, Self::ParseError> {
+    ) -> std::io::Result<Self> {
         match ini
             .get_from(section, key)
             .expect("Validated by IniProperty::is_valid")
         {
             "0" => Ok(false),
             "1" => Ok(true),
-            c => c.to_lowercase().parse::<bool>(),
+            c => c
+                .to_lowercase()
+                .parse::<bool>()
+                .map_err(|err| err.into_io_error()),
         }
     }
 }
 
-impl ValueType for u32 {
-    type ParseError = std::num::ParseIntError;
-
+impl Parsable for u32 {
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         _skip_validation: bool,
-    ) -> Result<Self, Self::ParseError> {
+    ) -> std::io::Result<Self> {
         ini.get_from(section, key)
             .expect("Validated by IniProperty::is_valid")
             .parse::<u32>()
+            .map_err(|err| err.into_io_error())
     }
 }
 
-impl ValueType for PathBuf {
-    type ParseError = std::io::Error;
-
+impl Parsable for PathBuf {
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -87,34 +72,15 @@ impl ValueType for PathBuf {
         );
         if skip_validation {
             Ok(parsed_value)
+        } else if let Err(err) = parsed_value.as_path().validate(ini, section) {
+            Err(err)
         } else {
-            parsed_value.validate(ini, section, skip_validation)
-        }
-    }
-
-    fn validate(self, ini: &Ini, section: Option<&str>, disable: bool) -> std::io::Result<Self> {
-        if !disable {
-            if section == Some("mod-files") {
-                let game_dir =
-                    match IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false) {
-                        Some(ini_property) => ini_property.value,
-                        None => return new_io_error!(ErrorKind::NotFound, "game_dir is not valid"),
-                    };
-                validate_file(&game_dir.join(&self))?;
-                Ok(self)
-            } else {
-                validate_existance(&self)?;
-                Ok(self)
-            }
-        } else {
-            Ok(self)
+            Ok(parsed_value)
         }
     }
 }
 
-impl ValueType for Vec<PathBuf> {
-    type ParseError = std::io::Error;
-
+impl Parsable for Vec<PathBuf> {
     fn parse_str(
         ini: &Ini,
         section: Option<&str>,
@@ -138,28 +104,56 @@ impl ValueType for Vec<PathBuf> {
         );
         if skip_validation {
             Ok(parsed_value)
+        } else if let Some(err) = parsed_value
+            .iter()
+            .find_map(|f| f.as_path().validate(ini, section).err())
+        {
+            Err(err)
         } else {
-            parsed_value.validate(ini, section, skip_validation)
+            Ok(parsed_value)
         }
     }
+}
 
-    fn validate(self, ini: &Ini, _section: Option<&str>, disable: bool) -> std::io::Result<Self> {
-        if !disable {
-            let game_dir = match IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)
-            {
-                Some(ini_property) => ini_property.value,
-                None => return new_io_error!(ErrorKind::NotFound, "game_dir is not valid"),
-            };
-            if let Some(err) = self
-                .iter()
-                .find_map(|path| validate_file(&game_dir.join(path)).err())
-            {
-                Err(err)
-            } else {
-                Ok(self)
-            }
+pub trait Valitidity {
+    fn is_setup(&self) -> bool {
+        true
+    }
+    #[allow(unused_variables)]
+    fn validate(&self, ini: &Ini, section: Option<&str>) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Valitidity for Ini {
+    fn is_setup(&self) -> bool {
+        INI_SECTIONS.iter().all(|section| {
+            let trimmed_section: String = section.trim_matches(|c| c == '[' || c == ']').to_owned();
+            self.section(Some(trimmed_section)).is_some()
+        })
+    }
+}
+
+impl Valitidity for &Path {
+    fn validate(&self, ini: &Ini, section: Option<&str>) -> std::io::Result<()> {
+        if section == Some("mod-files") {
+            let game_dir =
+                IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)?.value;
+            validate_file(&game_dir.join(self))?;
+            Ok(())
         } else {
-            Ok(self)
+            validate_existance(self)?;
+            Ok(())
+        }
+    }
+}
+
+impl Valitidity for Vec<&Path> {
+    fn validate(&self, ini: &Ini, section: Option<&str>) -> std::io::Result<()> {
+        if let Some(err) = self.iter().find_map(|f| f.validate(ini, section).err()) {
+            Err(err)
+        } else {
+            Ok(())
         }
     }
 }
@@ -199,43 +193,24 @@ fn validate_existance(path: &Path) -> std::io::Result<()> {
     }
 }
 
-pub struct IniProperty<T: ValueType> {
+pub struct IniProperty<T: Parsable> {
     //section: Option<String>,
     //key: String,
     pub value: T,
 }
 
-impl<T: ValueType> IniProperty<T> {
+impl<T: Parsable> IniProperty<T> {
     pub fn read(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> Option<IniProperty<T>> {
-        match IniProperty::is_valid(ini, section, key, skip_validation) {
-            Ok(value) => {
-                trace!(
-                    "Success: read key: \"{key}\" Section: \"{}\" from ini",
-                    section.expect("Passed in section not valid")
-                );
-                Some(IniProperty {
-                    //section: section.map(String::from),
-                    //key: key.to_string(),
-                    value,
-                })
-            }
-            Err(err) => {
-                error!(
-                    "{}",
-                    format!(
-                        "Value stored in Section: \"{}\", Key: \"{key}\" is not valid",
-                        section.expect("Passed in section not valid")
-                    )
-                );
-                error!("Error: {err}");
-                None
-            }
-        }
+    ) -> std::io::Result<IniProperty<T>> {
+        Ok(IniProperty {
+            //section: section.map(String::from),
+            //key: key.to_string(),
+            value: IniProperty::is_valid(ini, section, key, skip_validation)?,
+        })
     }
 
     fn is_valid(
@@ -243,143 +218,200 @@ impl<T: ValueType> IniProperty<T> {
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> Result<T, String> {
+    ) -> std::io::Result<T> {
         match &ini.section(section) {
             Some(s) => match s.contains_key(key) {
-                true => {
-                    T::parse_str(ini, section, key, skip_validation).map_err(|err| err.to_string())
-                }
-                false => Err(format!("Key: \"{key}\" not found in {ini:?}")),
+                true => T::parse_str(ini, section, key, skip_validation),
+                false => new_io_error!(
+                    ErrorKind::NotFound,
+                    format!("Key: \"{key}\" not found in {ini:?}")
+                ),
             },
-            None => Err(format!(
-                "Section: \"{}\" not found in {ini:?}",
-                section.expect("Passed in section should be valid")
-            )),
+            None => new_io_error!(
+                ErrorKind::NotFound,
+                format!(
+                    "Section: \"{}\" not found in {ini:?}",
+                    section.expect("Passed in section should be valid")
+                )
+            ),
         }
-    }
-}
-
-pub trait Valitidity {
-    fn is_setup(&self) -> bool;
-}
-
-impl Valitidity for Ini {
-    fn is_setup(&self) -> bool {
-        INI_SECTIONS.iter().all(|section| {
-            let trimmed_section: String = section.trim_matches(|c| c == '[' || c == ']').to_owned();
-            self.section(Some(trimmed_section)).is_some()
-        })
     }
 }
 
 #[derive(Default)]
 pub struct RegMod {
-    /// Key in snake_case
+    /// user defined Key in snake_case
     pub name: String,
 
     /// true = enabled | false = disabled
     pub state: bool,
 
-    /// files with extension `.dll` | also possible they end in `.dll.disabled`  
-    /// saved as short paths with `game_dir` truncated
-    pub mod_files: Vec<PathBuf>,
-
-    /// files with extension `.ini`  
-    /// saved as short paths with `game_dir` truncated
-    pub config_files: Vec<PathBuf>,
-
-    /// files with any extension other than `.dll` or `.ini`  
-    /// saved as short paths with `game_dir` truncated
-    pub other_files: Vec<PathBuf>,
+    /// files associated with the Registered Mod
+    pub files: SplitFiles,
 
     /// contains properties related to if a mod has a set load order
     pub order: LoadOrder,
 }
 
 #[derive(Default)]
+pub struct SplitFiles {
+    /// files with extension `.dll` | also possible they end in `.dll.disabled`  
+    /// saved as short paths with `game_dir` truncated
+    pub dll: Vec<PathBuf>,
+
+    /// files with extension `.ini`  
+    /// saved as short paths with `game_dir` truncated
+    pub config: Vec<PathBuf>,
+
+    /// files with any extension other than `.dll` or `.ini`  
+    /// saved as short paths with `game_dir` truncated
+    pub other: Vec<PathBuf>,
+}
+
+#[derive(Default)]
 pub struct LoadOrder {
-    /// if one of `self.mod_files` has a set load_order
+    /// if one of `SplitFiles.dll` has a set load_order
     pub set: bool,
 
-    /// the index of the selected `.dll` within `self.mod_files`
+    /// the index of the selected `mod_file` within `SplitFiles.dll`
     pub i: usize,
 
     /// current set value of `load_order`  
-    /// `self.order.at` is stored as 0 index | front end uses 1 index
+    /// `self.at` is stored as 0 index | front end uses 1 index
     pub at: usize,
 }
 
-impl RegMod {
-    fn split_out_config_files(
-        in_files: Vec<PathBuf>,
-    ) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<PathBuf>) {
+impl LoadOrder {
+    fn from(dll_files: &[PathBuf], parsed_order_val: &HashMap<String, usize>) -> Self {
+        let mut order = LoadOrder::default();
+        if dll_files.is_empty() {
+            return order;
+        }
+        if let Some(files) = dll_files
+            .iter()
+            .map(|f| {
+                let file_name = f.file_name();
+                Some(file_name?.to_string_lossy().replace(OFF_STATE, ""))
+            })
+            .collect::<Option<Vec<_>>>()
+        {
+            for (i, dll) in files.iter().enumerate() {
+                if let Some(v) = parsed_order_val.get(dll) {
+                    order.set = true;
+                    order.i = i;
+                    order.at = *v;
+                    break;
+                }
+            }
+        } else {
+            error!("Failed to retrieve file_name for Path in: {dll_files:?} Returning LoadOrder::default")
+        };
+        order
+    }
+}
+
+impl SplitFiles {
+    fn from(in_files: Vec<PathBuf>) -> Self {
         let len = in_files.len();
-        let mut mod_files = Vec::with_capacity(len);
-        let mut config_files = Vec::with_capacity(len);
-        let mut other_files = Vec::with_capacity(len);
+        let mut dll = Vec::with_capacity(len);
+        let mut config = Vec::with_capacity(len);
+        let mut other = Vec::with_capacity(len);
         in_files.into_iter().for_each(|file| {
             match FileData::from(&file.to_string_lossy()).extension {
-                ".dll" => mod_files.push(file),
-                ".ini" => config_files.push(file),
-                _ => other_files.push(file),
+                ".dll" => dll.push(file),
+                ".ini" => config.push(file),
+                _ => other.push(file),
             }
         });
-        (mod_files, config_files, other_files)
+        SplitFiles { dll, config, other }
     }
 
-    /// This function omits the population of the `order` field
+    /// returns references to all files
+    pub fn file_refs(&self) -> Vec<&Path> {
+        let mut path_refs = Vec::with_capacity(self.len());
+        path_refs.extend(self.dll.iter().map(|f| f.as_path()));
+        path_refs.extend(self.config.iter().map(|f| f.as_path()));
+        path_refs.extend(self.other.iter().map(|f| f.as_path()));
+        path_refs
+    }
+
+    /// returns references to `input_files` + `self.config` + `self.other`
+    pub fn add_other_files_to_files<'a>(&'a self, files: &'a [PathBuf]) -> Vec<&'a Path> {
+        let mut path_refs = Vec::with_capacity(files.len() + self.other_files_len());
+        path_refs.extend(files.iter().map(|f| f.as_path()));
+        path_refs.extend(self.config.iter().map(|f| f.as_path()));
+        path_refs.extend(self.other.iter().map(|f| f.as_path()));
+        path_refs
+    }
+
+    #[inline]
+    /// total number of files
+    pub fn len(&self) -> usize {
+        self.dll.len() + self.config.len() + self.other.len()
+    }
+
+    #[inline]
+    /// returns true if all fields contain no PathBufs
+    pub fn is_empty(&self) -> bool {
+        self.dll.is_empty() && self.config.is_empty() && self.other.is_empty()
+    }
+
+    #[inline]
+    /// number of `config` and `other`
+    pub fn other_files_len(&self) -> usize {
+        self.config.len() + self.other.len()
+    }
+}
+
+impl RegMod {
+    /// this function omits the population of the `order` field
     pub fn new(name: &str, state: bool, in_files: Vec<PathBuf>) -> Self {
-        let (mod_files, config_files, other_files) = RegMod::split_out_config_files(in_files);
         RegMod {
             name: String::from(name),
             state,
-            mod_files,
-            config_files,
-            other_files,
+            files: SplitFiles::from(in_files),
             order: LoadOrder::default(),
         }
     }
 
-    /// This function populates all fields
-    fn new_full(
+    /// unlike `new` this function returns a `RegMod` with all fields populated  
+    /// `parsed_order_val` can be obtained from `ModLoaderCfg::parse_section()`
+    pub fn with_load_order(
         name: &str,
         state: bool,
         in_files: Vec<PathBuf>,
-        parsed_order_val: &mut Vec<(String, usize)>,
-    ) -> std::io::Result<Self> {
-        let (mod_files, config_files, other_files) = RegMod::split_out_config_files(in_files);
-        let mut order = LoadOrder::default();
-        let dll_files = mod_files
-            .iter()
-            .map(|f| {
-                let file_name = f.file_name().ok_or(String::from("Bad file name"));
-                Ok(file_name?.to_string_lossy().replace(OFF_STATE, ""))
-            })
-            .collect::<Result<Vec<_>, String>>()
-            .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?;
-        for (i, dll) in dll_files.iter().enumerate() {
-            if let Some(remove_i) = parsed_order_val.iter().position(|(k, _)| k == dll) {
-                order.set = true;
-                order.i = i;
-                order.at = parsed_order_val.swap_remove(remove_i).1;
-                break;
-            }
-        }
-        Ok(RegMod {
+        parsed_order_val: &HashMap<String, usize>,
+    ) -> Self {
+        let split_files = SplitFiles::from(in_files);
+        let load_order = LoadOrder::from(&split_files.dll, parsed_order_val);
+        RegMod {
             name: String::from(name),
             state,
-            mod_files,
-            config_files,
-            other_files,
+            files: split_files,
+            order: load_order,
+        }
+    }
+
+    fn from_split_files(name: &str, state: bool, in_files: SplitFiles, order: LoadOrder) -> Self {
+        RegMod {
+            name: String::from(name),
+            state,
+            files: in_files,
             order,
-        })
+        }
     }
 
     pub fn collect(ini_path: &Path, skip_validation: bool) -> std::io::Result<Vec<Self>> {
-        type ModData<'a> = Vec<(&'a str, Result<bool, ParseBoolError>, Vec<PathBuf>)>;
+        type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
+        type ModData<'a> = Vec<(
+            &'a str,
+            Result<bool, std::str::ParseBoolError>,
+            SplitFiles,
+            LoadOrder,
+        )>;
 
-        fn sync_keys<'a>(ini: &'a Ini, ini_path: &Path) -> std::io::Result<ModData<'a>> {
-            fn collect_file_data(section: &Properties) -> HashMap<&str, Vec<&str>> {
+        fn sync_keys<'a>(ini: &'a Ini, ini_path: &Path) -> std::io::Result<CollectedMaps<'a>> {
+            fn collect_paths(section: &Properties) -> HashMap<&str, Vec<&str>> {
                 section
                     .iter()
                     .enumerate()
@@ -396,34 +428,14 @@ impl RegMod {
                     .collect()
             }
 
-            fn combine_map_data<'a>(
-                state_map: HashMap<&'a str, &str>,
-                file_map: HashMap<&str, Vec<&str>>,
-            ) -> ModData<'a> {
-                let mut mod_data = state_map
-                    .iter()
-                    .filter_map(|(&key, &state_str)| {
-                        file_map.get(&key).map(|file_strs| {
-                            (
-                                key,
-                                state_str.to_lowercase().parse::<bool>(),
-                                file_strs.iter().map(PathBuf::from).collect::<Vec<_>>(),
-                            )
-                        })
-                    })
-                    .collect::<ModData>();
-                mod_data.sort_by_key(|(key, _, _)| *key);
-                mod_data
-            }
-
             let mod_state_data = ini
                 .section(Some("registered-mods"))
                 .expect("Validated by Ini::is_setup on startup");
-            let mod_files_data = ini
+            let dll_data = ini
                 .section(Some("mod-files"))
                 .expect("Validated by Ini::is_setup on startup");
             let mut state_data = mod_state_data.iter().collect::<HashMap<&str, &str>>();
-            let mut file_data = collect_file_data(mod_files_data);
+            let mut file_data = collect_paths(dll_data);
             let invalid_state = state_data
                 .keys()
                 .filter(|k| !file_data.contains_key(*k))
@@ -452,22 +464,53 @@ impl RegMod {
                 warn!("\"{key}\" has no matching state");
             }
 
-            Ok(combine_map_data(state_data, file_data))
+            Ok((state_data, file_data))
         }
 
-        fn collect_data_unsafe(ini: &Ini) -> Vec<(&str, &str, Vec<&str>)> {
+        fn combine_map_data<'a>(
+            map_data: CollectedMaps<'a>,
+            parsed_order_val: &HashMap<String, usize>,
+        ) -> ModData<'a> {
+            let mut count = 0_usize;
+            let mut mod_data = map_data
+                .0
+                .iter()
+                .filter_map(|(&key, &state_str)| {
+                    map_data.1.get(&key).map(|file_strs| {
+                        let split_files = SplitFiles::from(
+                            file_strs.iter().map(PathBuf::from).collect::<Vec<_>>(),
+                        );
+                        let load_order = LoadOrder::from(&split_files.dll, parsed_order_val);
+                        if load_order.set {
+                            count += 1
+                        }
+                        (
+                            key,
+                            state_str.to_lowercase().parse::<bool>(),
+                            split_files,
+                            load_order,
+                        )
+                    })
+                })
+                .collect::<ModData>();
+            mod_data.sort_by_key(|(_, _, _, l)| if l.set { l.at } else { usize::MAX });
+            mod_data[count..].sort_by_key(|(key, _, _, _)| *key);
+            mod_data
+        }
+
+        fn collect_data_unchecked(ini: &Ini) -> Vec<(&str, &str, Vec<&str>)> {
             let mod_state_data = ini
                 .section(Some("registered-mods"))
                 .expect("Validated by Ini::is_setup on startup");
-            let mod_files_data = ini
+            let dll_data = ini
                 .section(Some("mod-files"))
                 .expect("Validated by Ini::is_setup on startup");
-            mod_files_data
+            dll_data
                 .iter()
                 .enumerate()
                 .filter(|(_, (k, _))| *k != "array[]")
                 .map(|(i, (k, v))| {
-                    let paths = mod_files_data
+                    let paths = dll_data
                         .iter()
                         .skip(i + 1)
                         .take_while(|(k, _)| *k == "array[]")
@@ -482,7 +525,7 @@ impl RegMod {
         let ini = get_cfg(ini_path)?;
 
         if skip_validation {
-            let parsed_data = collect_data_unsafe(&ini);
+            let parsed_data = collect_data_unchecked(&ini);
             Ok(parsed_data
                 .iter()
                 .map(|(n, s, f)| {
@@ -495,66 +538,38 @@ impl RegMod {
                 .collect())
         } else {
             let parsed_data = sync_keys(&ini, ini_path)?;
-            let game_dir = IniProperty::<PathBuf>::read(&ini, Some("paths"), "game_dir", false)
-                .ok_or(std::io::Error::new(
-                    ErrorKind::InvalidData,
-                    "Could not read \"game_dir\" from file",
-                ))?
-                .value;
-            let mut load_order_parsed = ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1])
+            let game_dir =
+                IniProperty::<PathBuf>::read(&ini, Some("paths"), "game_dir", false)?.value;
+            let load_order_parsed = ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1])
                 .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?
                 .parse_section()
                 .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?;
-            Ok(parsed_data
-                .iter()
-                .filter_map(|(k, s, f)| match &s {
-                    Ok(bool) => match f.len() {
-                        0 => unreachable!(),
-                        1 => {
-                            match f[0]
-                                .to_owned()
-                                .validate(&ini, Some("mod-files"), skip_validation)
-                            {
-                                Ok(path) => {
-                                    RegMod::new_full(k, *bool, vec![path], &mut load_order_parsed)
-                                        .ok()
-                                }
-                                Err(err) => {
-                                    error!("Error: {err}");
-                                    remove_entry(ini_path, Some("registered-mods"), k)
-                                        .expect("Key is valid");
-                                    None
-                                }
-                            }
+            let parsed_data = combine_map_data(parsed_data, &load_order_parsed);
+            let mut output = Vec::with_capacity(parsed_data.len());
+            for (k, s, f, l) in parsed_data {
+                match &s {
+                    Ok(bool) => {
+                        if let Err(err) = f.file_refs().validate(&ini, Some("mod-files")) {
+                            error!("Error: {err}");
+                            remove_entry(ini_path, Some("registered-mods"), k)
+                                .expect("Key is valid");
+                        } else {
+                            output.push(RegMod::from_split_files(k, *bool, f, l))
                         }
-                        2.. => match f
-                            .to_owned()
-                            .validate(&ini, Some("mod-files"), skip_validation)
-                        {
-                            Ok(paths) => {
-                                RegMod::new_full(k, *bool, paths, &mut load_order_parsed).ok()
-                            }
-                            Err(err) => {
-                                error!("Error: {err}");
-                                remove_entry(ini_path, Some("registered-mods"), k)
-                                    .expect("Key is valid");
-                                None
-                            }
-                        },
-                    },
+                    }
                     Err(err) => {
                         error!("Error: {err}");
                         remove_entry(ini_path, Some("registered-mods"), k).expect("Key is valid");
-                        None
                     }
-                })
-                .collect())
+                }
+            }
+            Ok(output)
         }
     }
 
     pub fn verify_state(&self, game_dir: &Path, ini_path: &Path) -> std::io::Result<()> {
-        if (!self.state && self.mod_files.iter().any(FileData::is_enabled))
-            || (self.state && self.mod_files.iter().any(FileData::is_disabled))
+        if (!self.state && self.files.dll.iter().any(FileData::is_enabled))
+            || (self.state && self.files.dll.iter().any(FileData::is_disabled))
         {
             warn!(
                 "wrong file state for \"{}\" chaning file extentions",
@@ -564,35 +579,13 @@ impl RegMod {
         }
         Ok(())
     }
-
-    pub fn file_refs(&self) -> Vec<&Path> {
-        let mut path_refs = Vec::with_capacity(self.all_files_len());
-        path_refs.extend(self.mod_files.iter().map(|f| f.as_path()));
-        path_refs.extend(self.config_files.iter().map(|f| f.as_path()));
-        path_refs.extend(self.other_files.iter().map(|f| f.as_path()));
-        path_refs
-    }
-
-    pub fn add_other_files_to_files<'a>(&'a self, files: &'a [PathBuf]) -> Vec<&'a Path> {
-        let mut path_refs = Vec::with_capacity(files.len() + self.other_files_len());
-        path_refs.extend(files.iter().map(|f| f.as_path()));
-        path_refs.extend(self.config_files.iter().map(|f| f.as_path()));
-        path_refs.extend(self.other_files.iter().map(|f| f.as_path()));
-        path_refs
-    }
-
-    pub fn all_files_len(&self) -> usize {
-        self.mod_files.len() + self.config_files.len() + self.other_files.len()
-    }
-
-    pub fn other_files_len(&self) -> usize {
-        self.config_files.len() + self.other_files.len()
-    }
 }
+
 pub fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
     files.iter().any(|path| {
         mod_data.iter().any(|registered_mod| {
             registered_mod
+                .files
                 .file_refs()
                 .iter()
                 .any(|mod_file| path == mod_file)
@@ -613,12 +606,34 @@ impl IntoIoError for ini::Error {
     }
 }
 
-pub trait ErrorClone {
-    fn clone_err(&self) -> std::io::Error;
+impl IntoIoError for std::str::ParseBoolError {
+    fn into_io_error(self) -> std::io::Error {
+        std::io::Error::new(ErrorKind::InvalidData, self.to_string())
+    }
 }
 
-impl ErrorClone for std::io::Error {
-    fn clone_err(&self) -> std::io::Error {
+impl IntoIoError for std::num::ParseIntError {
+    fn into_io_error(self) -> std::io::Error {
+        std::io::Error::new(ErrorKind::InvalidData, self.to_string())
+    }
+}
+
+pub trait ModError {
+    fn add_msg(self, msg: String) -> std::io::Error;
+}
+
+impl ModError for std::io::Error {
+    fn add_msg(self, msg: String) -> std::io::Error {
+        std::io::Error::new(self.kind(), format!("{msg}\n\nError: {self}"))
+    }
+}
+
+pub trait ErrorClone {
+    fn clone_err(self) -> std::io::Error;
+}
+
+impl ErrorClone for &std::io::Error {
+    fn clone_err(self) -> std::io::Error {
         std::io::Error::new(self.kind(), self.to_string())
     }
 }
