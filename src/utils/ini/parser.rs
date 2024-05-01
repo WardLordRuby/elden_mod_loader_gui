@@ -2,6 +2,7 @@ use ini::{Ini, Properties};
 use log::{error, warn};
 use std::{
     collections::HashMap,
+    fmt::Debug,
     io::ErrorKind,
     path::{Path, PathBuf},
 };
@@ -16,18 +17,20 @@ use crate::{
 };
 
 pub trait Parsable: Sized {
-    fn parse_str(
+    fn parse_str<T: AsRef<Path>>(
         ini: &Ini,
         section: Option<&str>,
+        partial_path: Option<T>,
         key: &str,
         skip_validation: bool,
     ) -> std::io::Result<Self>;
 }
 
 impl Parsable for bool {
-    fn parse_str(
+    fn parse_str<T: AsRef<Path>>(
         ini: &Ini,
         section: Option<&str>,
+        _partial_path: Option<T>,
         key: &str,
         _skip_validation: bool,
     ) -> std::io::Result<Self> {
@@ -46,9 +49,10 @@ impl Parsable for bool {
 }
 
 impl Parsable for u32 {
-    fn parse_str(
+    fn parse_str<T: AsRef<Path>>(
         ini: &Ini,
         section: Option<&str>,
+        _partial_path: Option<T>,
         key: &str,
         _skip_validation: bool,
     ) -> std::io::Result<Self> {
@@ -60,30 +64,36 @@ impl Parsable for u32 {
 }
 
 impl Parsable for PathBuf {
-    fn parse_str(
+    fn parse_str<T: AsRef<Path>>(
         ini: &Ini,
         section: Option<&str>,
+        partial_path: Option<T>,
         key: &str,
         skip_validation: bool,
     ) -> std::io::Result<Self> {
-        let parsed_value = PathBuf::from(
-            ini.get_from(section, key)
-                .expect("Validated by IniProperty::is_valid"),
-        );
+        let parsed_value = PathBuf::from({
+            let value = ini.get_from(section, key);
+            if matches!(value, Some("array")) {
+                return new_io_error!(
+                    ErrorKind::InvalidData,
+                    "Invalid type found. Expected: Path, Found: Vec<Path>"
+                );
+            }
+            value.expect("Validated by IniProperty::is_valid")
+        });
         if skip_validation {
-            Ok(parsed_value)
-        } else if let Err(err) = parsed_value.as_path().validate(ini, section) {
-            Err(err)
-        } else {
-            Ok(parsed_value)
+            return Ok(parsed_value);
         }
+        parsed_value.as_path().validate(partial_path)?;
+        Ok(parsed_value)
     }
 }
 
 impl Parsable for Vec<PathBuf> {
-    fn parse_str(
+    fn parse_str<T: AsRef<Path>>(
         ini: &Ini,
         section: Option<&str>,
+        partial_path: Option<T>,
         key: &str,
         skip_validation: bool,
     ) -> std::io::Result<Self> {
@@ -96,65 +106,65 @@ impl Parsable for Vec<PathBuf> {
                 .map(|(_, v)| PathBuf::from(v))
                 .collect()
         }
-
+        if !matches!(ini.get_from(section, key), Some("array")) {
+            return new_io_error!(
+                ErrorKind::InvalidData,
+                "Invalid type found. Expected: Vec<Path>, Found: Path"
+            );
+        }
         let parsed_value = read_array(
             ini.section(section)
                 .expect("Validated by IniProperty::is_valid"),
             key,
         );
         if skip_validation {
-            Ok(parsed_value)
-        } else if let Some(err) = parsed_value
-            .iter()
-            .find_map(|f| f.as_path().validate(ini, section).err())
-        {
-            Err(err)
-        } else {
-            Ok(parsed_value)
+            return Ok(parsed_value);
         }
+        parsed_value.validate(partial_path)?;
+        Ok(parsed_value)
     }
 }
 
 pub trait Valitidity {
-    fn is_setup(&self) -> bool {
-        true
+    /// _full_paths_ are assumed to Point to directories, where as _partial_paths_ are assumed to point to files  
+    /// if you want to validate a _partial_path_ you must supply the _path_prefix_
+    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> std::io::Result<()>;
+}
+
+impl<T: AsRef<Path>> Valitidity for T {
+    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> std::io::Result<()> {
+        if let Some(prefix) = partial_path {
+            validate_file(&prefix.as_ref().join(self))?;
+            Ok(())
+        } else {
+            validate_existance(self.as_ref())?;
+            Ok(())
+        }
     }
-    #[allow(unused_variables)]
-    fn validate(&self, ini: &Ini, section: Option<&str>) -> std::io::Result<()> {
+}
+
+impl<T: AsRef<Path>> Valitidity for [T] {
+    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> std::io::Result<()> {
+        let mut add_errors = String::new();
+        let mut init_err = std::io::Error::new(ErrorKind::WriteZero, "");
+        self.iter().for_each(|f| {
+            if let Err(err) = f.validate(partial_path.as_ref()) {
+                if init_err.kind() == ErrorKind::WriteZero {
+                    init_err = err;
+                } else if add_errors.is_empty() {
+                    add_errors = err.to_string()
+                } else {
+                    add_errors.push_str(&format!("\n{err}"))
+                }
+            }
+        });
+        if init_err.kind() != ErrorKind::WriteZero {
+            if add_errors.is_empty() {
+                return Err(init_err);
+            }
+            return Err(init_err.add_msg(add_errors));
+        }
         Ok(())
-    }
-}
-
-impl Valitidity for Ini {
-    fn is_setup(&self) -> bool {
-        INI_SECTIONS.iter().all(|section| {
-            let trimmed_section: String = section.trim_matches(|c| c == '[' || c == ']').to_owned();
-            self.section(Some(trimmed_section)).is_some()
-        })
-    }
-}
-
-impl Valitidity for &Path {
-    fn validate(&self, ini: &Ini, section: Option<&str>) -> std::io::Result<()> {
-        if section == Some("mod-files") {
-            let game_dir =
-                IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)?.value;
-            validate_file(&game_dir.join(self))?;
-            Ok(())
-        } else {
-            validate_existance(self)?;
-            Ok(())
-        }
-    }
-}
-
-impl Valitidity for Vec<&Path> {
-    fn validate(&self, ini: &Ini, section: Option<&str>) -> std::io::Result<()> {
-        if let Some(err) = self.iter().find_map(|f| f.validate(ini, section).err()) {
-            Err(err)
-        } else {
-            Ok(())
-        }
     }
 }
 
@@ -162,13 +172,14 @@ fn validate_file(path: &Path) -> std::io::Result<()> {
     if path.extension().is_none() {
         let input_file = path.to_string_lossy().to_string();
         let split = input_file.rfind('\\').unwrap_or(0);
-        input_file
-            .split_at(if split != 0 { split + 1 } else { split })
-            .1
-            .to_string();
         return new_io_error!(
             ErrorKind::InvalidInput,
-            format!("\"{input_file}\" does not have an extention")
+            format!(
+                "\"{}\" does not have an extention",
+                input_file
+                    .split_at(if split != 0 { split + 1 } else { split })
+                    .1
+            )
         );
     }
     validate_existance(path)
@@ -193,6 +204,22 @@ fn validate_existance(path: &Path) -> std::io::Result<()> {
     }
 }
 
+pub trait Setup {
+    fn is_setup(&self) -> bool;
+}
+
+impl Setup for Ini {
+    // MARK: FIXME
+    // add functionality for matching Ini filename
+    fn is_setup(&self) -> bool {
+        INI_SECTIONS.iter().all(|section| {
+            self.section(Some(section.trim_matches(|c| c == '[' || c == ']')))
+                .is_some()
+        })
+    }
+}
+
+#[derive(Debug)]
 pub struct IniProperty<T: Parsable> {
     //section: Option<String>,
     //key: String,
@@ -221,7 +248,18 @@ impl<T: Parsable> IniProperty<T> {
     ) -> std::io::Result<T> {
         match &ini.section(section) {
             Some(s) => match s.contains_key(key) {
-                true => T::parse_str(ini, section, key, skip_validation),
+                true => {
+                    // This will have to be abstracted to the caller if we want the ability for the caller to specify the _path_prefix_
+                    // right now _game_dir_ is the only valid prefix && "mod-files" is the only place _short_paths_ are stored
+                    let game_dir = match section {
+                        Some("mod-files") => Some(
+                            IniProperty::<PathBuf>::read(ini, Some("paths"), "game_dir", false)?
+                                .value,
+                        ),
+                        _ => None,
+                    };
+                    T::parse_str(ini, section, game_dir, key, skip_validation)
+                }
                 false => new_io_error!(
                     ErrorKind::NotFound,
                     format!("Key: \"{key}\" not found in {ini:?}")
@@ -401,6 +439,9 @@ impl RegMod {
         }
     }
 
+    // MARK: FIXME?
+    // when is the best time to verify parsed data? currently we verify data after shaping it
+    // the code would most likely be cleaner if we verified it apon parsing before doing any shaping
     pub fn collect(ini_path: &Path, skip_validation: bool) -> std::io::Result<Vec<Self>> {
         type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
         type ModData<'a> = Vec<(
@@ -464,6 +505,7 @@ impl RegMod {
                 warn!("\"{key}\" has no matching state");
             }
 
+            assert_eq!(state_data.len(), file_data.len());
             Ok((state_data, file_data))
         }
 
@@ -493,6 +535,10 @@ impl RegMod {
                     })
                 })
                 .collect::<ModData>();
+
+            // if this fails `sync_keys()` did not do its job
+            assert_eq!(map_data.1.len(), mod_data.len());
+
             mod_data.sort_by_key(|(_, _, _, l)| if l.set { l.at } else { usize::MAX });
             mod_data[count..].sort_by_key(|(key, _, _, _)| *key);
             mod_data
@@ -549,7 +595,7 @@ impl RegMod {
             for (k, s, f, l) in parsed_data {
                 match &s {
                     Ok(bool) => {
-                        if let Err(err) = f.file_refs().validate(&ini, Some("mod-files")) {
+                        if let Err(err) = f.file_refs().validate(Some(&game_dir)) {
                             error!("Error: {err}");
                             remove_entry(ini_path, Some("registered-mods"), k)
                                 .expect("Key is valid");
