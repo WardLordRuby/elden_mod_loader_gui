@@ -6,7 +6,7 @@ use elden_mod_loader_gui::{
     utils::{
         ini::{
             mod_loader::{ModLoader, ModLoaderCfg, update_order_entries, Countable},
-            parser::{file_registered, IniProperty, RegMod, Valitidity, ErrorClone},
+            parser::{file_registered, IniProperty, RegMod, Setup, ErrorClone},
             writer::*,
         },
         installer::{remove_mod_files, InstallData, scan_for_mods}
@@ -349,7 +349,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     )),
                     2.. => {
                         let path_refs = files.iter().map(|p| p.as_path()).collect::<Vec<_>>();
-                        results.push(save_path_bufs(current_ini, &format_key, &path_refs))
+                        results.push(save_paths(current_ini, &format_key, &path_refs))
                     },
                 }
                 if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
@@ -582,7 +582,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         } else {
                             results.push(remove_array(current_ini, &found_mod.name));
                         }
-                        results.push(save_path_bufs(current_ini, &found_mod.name, &new_data_refs));
+                        results.push(save_paths(current_ini, &found_mod.name, &new_data_refs));
                         if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
                             ui.display_msg(&err.to_string());
                             let _ = remove_entry(

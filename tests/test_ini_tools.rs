@@ -8,7 +8,7 @@ mod tests {
     use elden_mod_loader_gui::{
         get_cfg,
         utils::ini::{
-            parser::{IniProperty, RegMod, Valitidity},
+            parser::{IniProperty, RegMod, Setup},
             writer::*,
         },
     };
@@ -31,10 +31,41 @@ mod tests {
 
         let config = get_cfg(test_file).unwrap();
 
-        for (i, _) in test_nums.iter().enumerate() {
+        for (i, num) in test_nums.iter().enumerate() {
             assert_eq!(
-                test_nums[i],
+                *num,
                 IniProperty::<u32>::read(&config, Some("paths"), &format!("test_num_{i}"), false)
+                    .unwrap()
+                    .value
+            )
+        }
+
+        remove_file(test_file).unwrap();
+    }
+
+    #[test]
+    fn does_bool_parse() {
+        let test_bools: [&str; 6] = [" True ", "false", "faLSe", "0 ", "0", "1"];
+        let bool_results: [bool; 6] = [true, false, false, false, false, true];
+        let test_file = Path::new("temp\\test_bools.ini");
+
+        new_cfg(test_file).unwrap();
+        for (i, bool_str) in test_bools.iter().enumerate() {
+            save_value_ext(
+                test_file,
+                Some("paths"),
+                &format!("test_bool_{i}"),
+                bool_str,
+            )
+            .unwrap();
+        }
+
+        let config = get_cfg(test_file).unwrap();
+
+        for (i, bool) in bool_results.iter().enumerate() {
+            assert_eq!(
+                *bool,
+                IniProperty::<bool>::read(&config, Some("paths"), &format!("test_bool_{i}"), false)
                     .unwrap()
                     .value
             )
@@ -72,6 +103,49 @@ mod tests {
     }
 
     #[test]
+    #[allow(unused_variables)]
+    fn type_check() {
+        let test_path =
+            Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
+        let test_array = [
+            Path::new("mods\\UnlockTheFps.dll"),
+            Path::new("mods\\UnlockTheFps\\config.ini"),
+        ];
+        let test_file = Path::new("temp\\test_type_check.ini");
+
+        new_cfg(test_file).unwrap();
+        save_path(test_file, Some("paths"), "game_dir", test_path).unwrap();
+        save_paths(test_file, "test_array", &test_array).unwrap();
+
+        let config = get_cfg(test_file).unwrap();
+
+        let pathbuf_err = std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Invalid type found. Expected: Path, Found: Vec<Path>",
+        );
+        let vec_pathbuf_err = std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Invalid type found. Expected: Vec<Path>, Found: Path",
+        );
+
+        let vec_result =
+            IniProperty::<Vec<PathBuf>>::read(&config, Some("paths"), "game_dir", false);
+        assert_eq!(
+            vec_result.unwrap_err().to_string(),
+            vec_pathbuf_err.to_string()
+        );
+
+        let path_result =
+            IniProperty::<PathBuf>::read(&config, Some("mod-files"), "test_array", false);
+        assert_eq!(
+            path_result.unwrap_err().to_string(),
+            pathbuf_err.to_string()
+        );
+
+        remove_file(test_file).unwrap();
+    }
+
+    #[test]
     fn read_write_delete_from_ini() {
         let test_file = Path::new("temp\\test_collect_mod_data.ini");
         let mod_1_key = "Unlock The Fps  ";
@@ -101,11 +175,11 @@ mod tests {
             let game_path =
                 Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
 
-            save_path_bufs(test_file, mod_1_key, &mod_1).unwrap();
+            save_paths(test_file, mod_1_key, &mod_1).unwrap();
             save_bool(test_file, Some("registered-mods"), mod_1_key, mod_1_state).unwrap();
             save_path(test_file, Some("mod-files"), mod_2_key, &mod_2).unwrap();
             save_bool(test_file, Some("registered-mods"), mod_2_key, mod_2_state).unwrap();
-            save_path_bufs(test_file, "no_matching_state_1", &invalid_format_1).unwrap();
+            save_paths(test_file, "no_matching_state_1", &invalid_format_1).unwrap();
             save_path(
                 test_file,
                 Some("mod-files"),

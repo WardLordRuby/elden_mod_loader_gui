@@ -27,7 +27,7 @@ pub const EXT_OPTIONS: WriteOption = WriteOption {
     kv_separator: " = ",
 };
 
-pub fn save_path_bufs(file_name: &Path, key: &str, files: &[&Path]) -> std::io::Result<()> {
+pub fn save_paths(file_name: &Path, key: &str, files: &[&Path]) -> std::io::Result<()> {
     let mut config: Ini = get_cfg(file_name)?;
     let save_paths = files
         .iter()

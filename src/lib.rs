@@ -11,7 +11,7 @@ use ini::Ini;
 use log::{error, info, trace, warn};
 use utils::ini::{
     parser::{IniProperty, IntoIoError, RegMod},
-    writer::{remove_array, save_bool, save_path, save_path_bufs},
+    writer::{remove_array, save_bool, save_path, save_paths},
 };
 
 use std::{
@@ -144,7 +144,7 @@ pub fn toggle_files(
             save_path(save_file, Some("mod-files"), key, path_to_save[0])?;
         } else {
             remove_array(save_file, key)?;
-            save_path_bufs(save_file, key, path_to_save)?;
+            save_paths(save_file, key, path_to_save)?;
         }
         save_bool(save_file, Some("registered-mods"), key, state)?;
         Ok(())

@@ -9,7 +9,7 @@ use crate::{
     does_dir_contain, file_name_or_err, new_io_error, parent_or_err,
     utils::ini::{
         parser::RegMod,
-        writer::{save_bool, save_path, save_path_bufs},
+        writer::{save_bool, save_path, save_paths},
     },
     FileData,
 };
@@ -571,7 +571,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
         if file_refs.len() == 1 {
             save_path(ini_file, Some("mod-files"), &mod_data.name, file_refs[0])?;
         } else {
-            save_path_bufs(ini_file, &mod_data.name, &file_refs)?;
+            save_paths(ini_file, &mod_data.name, &file_refs)?;
         }
         mod_data.verify_state(game_dir, ini_file)?;
     }

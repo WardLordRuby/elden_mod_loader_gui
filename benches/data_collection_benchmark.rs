@@ -20,7 +20,7 @@ fn populate_non_valid_ini(len: u32, file: &Path) {
 
         save_bool(file, Some("registered-mods"), &key, bool_value).unwrap();
         if paths.len() > 1 {
-            save_path_bufs(file, &key, &path_refs).unwrap();
+            save_paths(file, &key, &path_refs).unwrap();
         } else {
             save_path(file, Some("mod-files"), &key, paths[0].as_path()).unwrap();
         }
