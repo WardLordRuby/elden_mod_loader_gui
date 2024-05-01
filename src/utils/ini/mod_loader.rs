@@ -1,6 +1,7 @@
 use ini::Ini;
 use log::{error, info, trace};
 use std::{
+    collections::HashMap,
     io::ErrorKind,
     path::{Path, PathBuf},
 };
@@ -8,10 +9,10 @@ use std::{
 use crate::{
     new_io_error,
     utils::ini::{
-        parser::{IniProperty, RegMod},
+        parser::{IniProperty, ModError, RegMod},
         writer::EXT_OPTIONS,
     },
-    LOADER_KEYS, LOADER_SECTIONS,
+    OperationResult, LOADER_KEYS, LOADER_SECTIONS,
     {does_dir_contain, get_cfg, Operation, LOADER_FILES, LOADER_FILES_DISABLED},
 };
 
@@ -25,7 +26,12 @@ pub struct ModLoader {
 impl ModLoader {
     pub fn properties(game_dir: &Path) -> ModLoader {
         match does_dir_contain(game_dir, Operation::All, &LOADER_FILES) {
-            Ok(true) => {
+            // MARK: IMPL FEAT?
+            // add branch for if ini not found then create ini with default values
+            Ok(OperationResult {
+                success: true,
+                files_found: _,
+            }) => {
                 info!("Found mod loader files");
                 ModLoader {
                     installed: true,
@@ -33,10 +39,16 @@ impl ModLoader {
                     path: game_dir.join(LOADER_FILES[0]),
                 }
             }
-            Ok(false) => {
+            Ok(OperationResult {
+                success: false,
+                files_found: _,
+            }) => {
                 trace!("Checking if mod loader is disabled");
                 match does_dir_contain(game_dir, Operation::All, &LOADER_FILES_DISABLED) {
-                    Ok(true) => {
+                    Ok(OperationResult {
+                        success: true,
+                        files_found: _,
+                    }) => {
                         info!("Found mod loader files in the disabled state");
                         ModLoader {
                             installed: true,
@@ -44,7 +56,10 @@ impl ModLoader {
                             path: game_dir.join(LOADER_FILES[0]),
                         }
                     }
-                    Ok(false) => {
+                    Ok(OperationResult {
+                        success: false,
+                        files_found: _,
+                    }) => {
                         error!("Mod Loader Files not found in selected path");
                         ModLoader::default()
                     }
@@ -90,8 +105,14 @@ impl ModLoaderCfg {
             return new_io_error!(ErrorKind::InvalidInput, "section can not be none");
         }
         let cfg_dir = match does_dir_contain(game_dir, Operation::All, &[LOADER_FILES[0]]) {
-            Ok(true) => game_dir.join(LOADER_FILES[0]),
-            Ok(false) => {
+            Ok(OperationResult {
+                success: true,
+                files_found: _,
+            }) => game_dir.join(LOADER_FILES[0]),
+            Ok(OperationResult {
+                success: false,
+                files_found: _,
+            }) => {
                 return new_io_error!(
                     ErrorKind::NotFound,
                     "\"mod_loader_config.ini\" does not exist in the current game_dir"
@@ -142,27 +163,21 @@ impl ModLoaderCfg {
 
     pub fn get_load_delay(&self) -> std::io::Result<u32> {
         match IniProperty::<u32>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[0], false) {
-            Some(delay_time) => Ok(delay_time.value),
-            None => new_io_error!(
-                ErrorKind::InvalidData,
-                format!(
-                    "Found an unexpected character saved in \"{}\"",
-                    LOADER_KEYS[0]
-                )
-            ),
+            Ok(delay_time) => Ok(delay_time.value),
+            Err(err) => Err(err.add_msg(format!(
+                "Found an unexpected character saved in \"{}\"",
+                LOADER_KEYS[0]
+            ))),
         }
     }
 
     pub fn get_show_terminal(&self) -> std::io::Result<bool> {
         match IniProperty::<bool>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[1], false) {
-            Some(delay_time) => Ok(delay_time.value),
-            None => new_io_error!(
-                ErrorKind::InvalidData,
-                format!(
-                    "Found an unexpected character saved in \"{}\"",
-                    LOADER_KEYS[1]
-                )
-            ),
+            Ok(delay_time) => Ok(delay_time.value),
+            Err(err) => Err(err.add_msg(format!(
+                "Found an unexpected character saved in \"{}\"",
+                LOADER_KEYS[1]
+            ))),
         }
     }
 
@@ -181,14 +196,14 @@ impl ModLoaderCfg {
         self.section().iter()
     }
 
-    /// Returns an owned `Vec` with values parsed into `usize`
-    pub fn parse_section(&self) -> Result<Vec<(String, usize)>, std::num::ParseIntError> {
+    /// Returns an owned `HashMap` with values parsed into K: `String`, V: `usize`
+    pub fn parse_section(&self) -> Result<HashMap<String, usize>, std::num::ParseIntError> {
         self.iter()
             .map(|(k, v)| {
                 let parse_v = v.parse::<usize>();
                 Ok((k.to_string(), parse_v?))
             })
-            .collect::<Result<Vec<(String, usize)>, _>>()
+            .collect::<Result<HashMap<String, usize>, _>>()
     }
 
     #[inline]

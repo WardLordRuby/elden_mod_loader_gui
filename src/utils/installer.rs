@@ -216,8 +216,8 @@ impl InstallData {
         file_paths: Vec<PathBuf>,
         game_dir: &Path,
     ) -> std::io::Result<Self> {
-        let amend_mod_split_file_names = amend_to.mod_files.iter().try_fold(
-            Vec::with_capacity(amend_to.mod_files.len()),
+        let amend_mod_split_file_names = amend_to.files.dll.iter().try_fold(
+            Vec::with_capacity(amend_to.files.len()),
             |mut acc, file| {
                 let file_name = file_name_or_err(file)?.to_string_lossy();
                 let file_data = FileData::from(&file_name);
@@ -398,7 +398,7 @@ impl InstallData {
             let game_dir = self_clone.install_dir.parent().expect("has parent");
             if valid_dir.strip_prefix(game_dir).is_ok() {
                 return new_io_error!(ErrorKind::InvalidInput, "Files are already installed");
-            } else if does_dir_contain(&valid_dir, crate::Operation::All, &["mods"])? {
+            } else if does_dir_contain(&valid_dir, crate::Operation::All, &["mods"])?.success {
                 return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
             }
 
@@ -567,7 +567,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
             &mod_data.name,
             mod_data.state,
         )?;
-        let file_refs = mod_data.file_refs();
+        let file_refs = mod_data.files.file_refs();
         if file_refs.len() == 1 {
             save_path(ini_file, Some("mod-files"), &mod_data.name, file_refs[0])?;
         } else {

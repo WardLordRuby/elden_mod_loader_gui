@@ -15,6 +15,7 @@ use utils::ini::{
 };
 
 use std::{
+    collections::HashSet,
     io::ErrorKind,
     path::{Path, PathBuf},
 };
@@ -27,6 +28,7 @@ const DEFAULT_GAME_DIR: [&str; 6] = [
     "ELDEN RING",
     "Game",
 ];
+
 pub const REQUIRED_GAME_FILES: [&str; 3] = [
     "eldenring.exe",
     "oo2core_6_win64.dll",
@@ -102,7 +104,7 @@ pub fn toggle_files(
                 } else if !new_state {
                     new_name.push_str(OFF_STATE);
                 }
-                let mut new_path = path.clone();
+                let mut new_path = PathBuf::from(path);
                 new_path.set_file_name(new_name);
                 new_path
             })
@@ -147,10 +149,10 @@ pub fn toggle_files(
         save_bool(save_file, Some("registered-mods"), key, state)?;
         Ok(())
     }
-    let num_rename_files = reg_mod.mod_files.len();
-    let num_total_files = num_rename_files + reg_mod.other_files_len();
+    let num_rename_files = reg_mod.files.dll.len();
+    let num_total_files = num_rename_files + reg_mod.files.other_files_len();
 
-    let file_paths = std::sync::Arc::new(reg_mod.mod_files.clone());
+    let file_paths = std::sync::Arc::new(reg_mod.files.dll.clone());
     let file_paths_clone = file_paths.clone();
     let game_dir_clone = game_dir.to_path_buf();
 
@@ -160,8 +162,8 @@ pub fn toggle_files(
         std::thread::spawn(move || join_paths(&game_dir_clone, &file_paths_clone));
 
     let short_path_new = new_short_paths_thread.join().unwrap_or(Vec::new());
-    let all_short_paths = reg_mod.add_other_files_to_files(&short_path_new);
-    let full_path_new = join_paths(Path::new(game_dir), &short_path_new);
+    let all_short_paths = reg_mod.files.add_other_files_to_files(&short_path_new);
+    let full_path_new = join_paths(game_dir, &short_path_new);
     let full_path_original = original_full_paths_thread.join().unwrap_or(Vec::new());
 
     rename_files(&num_rename_files, &full_path_original, &full_path_new)?;
@@ -187,21 +189,51 @@ pub enum Operation {
     Any,
 }
 
-pub fn does_dir_contain(path: &Path, operation: Operation, list: &[&str]) -> std::io::Result<bool> {
+#[derive(Default)]
+pub struct OperationResult {
+    pub success: bool,
+    pub files_found: usize,
+}
+
+pub fn does_dir_contain(
+    path: &Path,
+    operation: Operation,
+    list: &[&str],
+) -> std::io::Result<OperationResult> {
     let entries = std::fs::read_dir(path)?;
     let file_names = entries
-        .map(|entry| Ok(entry?.file_name()))
-        .collect::<std::io::Result<Vec<std::ffi::OsString>>>()?;
+        // MARK: FIXME
+        // would be nice if we could leave as a OsString here
+        // change count to be the actual file found
+        // can we make a cleaner interface?
+        // not force to match against all file situations? use enum to return different data types?
+        // use bool for called to decide if they want to match against extra data?
+        .map(|entry| Ok(entry?.file_name().to_string_lossy().to_string()))
+        .collect::<std::io::Result<HashSet<_>>>()?;
 
-    let result = match operation {
-        Operation::All => list
-            .iter()
-            .all(|check_file| file_names.iter().any(|file_name| file_name == check_file)),
-        Operation::Any => list
-            .iter()
-            .any(|check_file| file_names.iter().any(|file_name| file_name == check_file)),
-    };
-    Ok(result)
+    match operation {
+        Operation::All => {
+            let mut count = 0_usize;
+            list.iter().for_each(|&check_file| {
+                if file_names.contains(check_file) {
+                    count += 1
+                }
+            });
+            Ok(OperationResult {
+                success: count == list.len(),
+                files_found: count,
+            })
+        }
+        Operation::Any => {
+            let result = list
+                .iter()
+                .any(|&check_file| file_names.contains(check_file));
+            Ok(OperationResult {
+                success: result,
+                files_found: if result { 1 } else { 0 },
+            })
+        }
+    }
 }
 pub struct FileData<'a> {
     pub name: &'a str,
@@ -294,23 +326,27 @@ pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
             return Ok(PathResult::None(PathBuf::new()));
         }
     };
-    if let Some(path) = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
+    if let Ok(path) = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
         .and_then(|ini_property| {
             match does_dir_contain(&ini_property.value, Operation::All, &REQUIRED_GAME_FILES) {
-                Ok(true) => Some(ini_property.value),
-                Ok(false) => {
-                    error!(
-                        "{}",
-                        format!(
-                            "Required Game files not found in:\n\"{}\"",
-                            ini_property.value.display()
-                        )
+                Ok(OperationResult {
+                    success: true,
+                    files_found: _,
+                }) => Ok(ini_property.value),
+                Ok(OperationResult {
+                    success: false,
+                    files_found: _,
+                }) => {
+                    let err = format!(
+                        "Required Game files not found in:\n\"{}\"",
+                        ini_property.value.display()
                     );
-                    None
+                    error!("{err}",);
+                    new_io_error!(ErrorKind::NotFound, err)
                 }
                 Err(err) => {
                     error!("Error: {err}");
-                    None
+                    Err(err)
                 }
             }
         })
@@ -319,7 +355,10 @@ pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
         return Ok(PathResult::Full(path));
     }
     let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
-    if does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES).unwrap_or(false) {
+    if does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES)
+        .unwrap_or_default()
+        .success
+    {
         info!("Success: located \"game_dir\" on drive");
         save_path(file_name, Some("paths"), "game_dir", try_locate.as_path())?;
         return Ok(PathResult::Full(try_locate));

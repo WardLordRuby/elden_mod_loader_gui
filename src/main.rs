@@ -123,8 +123,10 @@ fn main() -> Result<(), slint::PlatformError> {
             "dark_mode",
             false,
         ) {
-            Some(bool) => ui.global::<SettingsLogic>().set_dark_mode(bool.value),
-            None => {
+            Ok(bool) => ui.global::<SettingsLogic>().set_dark_mode(bool.value),
+            Err(err) => {
+                // io::Read error
+                errors.push(err);
                 ui.global::<SettingsLogic>().set_dark_mode(true);
                 save_bool(current_ini, Some("app-settings"), "dark_mode", true)
                     // io::Write error
@@ -409,8 +411,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 info!("User Selected Path: \"{}\"", path.display());
                 let try_path: PathBuf = match does_dir_contain(&path, Operation::All, &["Game"])
                 {
-                    Ok(true) => PathBuf::from(&format!("{}\\Game", path.display())),
-                    Ok(false) => path, 
+                    Ok(OperationResult { success: true, files_found: _ }) => PathBuf::from(&format!("{}\\Game", path.display())),
+                    Ok(OperationResult { success: false, files_found: _ }) => path, 
                     Err(err) => {
                         error!("{err}");
                         ui.display_msg(&err.to_string());
@@ -418,7 +420,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 };
                 match does_dir_contain(Path::new(&try_path), Operation::All, &REQUIRED_GAME_FILES) {
-                    Ok(true) => {
+                    Ok(OperationResult { success: true, files_found: _ }) => {
                         let result = save_path(current_ini, Some("paths"), "game_dir", &try_path);
                         if result.is_err() && save_path(current_ini, Some("paths"), "game_dir", &try_path).is_err() {
                             let err = result.unwrap_err();
@@ -441,7 +443,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
                         }
                     }
-                    Ok(false) => {
+                    Ok(OperationResult { success: false, files_found: _ }) => {
                         let err = format!("Required Game files not found in:\n\"{}\"", try_path.display());
                         error!("{err}");
                         ui.display_msg(&err);
@@ -567,11 +569,11 @@ fn main() -> Result<(), slint::PlatformError> {
                         ui.display_msg("A selected file is already registered to a mod");
                     } else {
                         let num_files = files.len();
-                        let mut new_data = found_mod.mod_files.clone();
+                        let mut new_data = found_mod.files.dll.clone();
                         new_data.extend(files);
                         let mut results = Vec::with_capacity(3);
-                        let new_data_refs = found_mod.add_other_files_to_files(&new_data);
-                        if found_mod.all_files_len() == 1 {
+                        let new_data_refs = found_mod.files.add_other_files_to_files(&new_data);
+                        if found_mod.files.len() == 1 {
                             results.push(remove_entry(
                                 current_ini,
                                 Some("mod-files"),
@@ -654,7 +656,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 if let Some(found_mod) =
                     reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
                 {
-                    let mut found_files = found_mod.mod_files.clone();
+                    let mut found_files = found_mod.files.dll.clone();
                     if found_files.iter().any(FileData::is_disabled) {
                         match toggle_files(&game_dir, true, found_mod, Some(current_ini)) {
                             Ok(files) => found_files = files,
@@ -667,7 +669,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     // we can let sync keys take care of removing files from ini
                     remove_entry(current_ini, Some("registered-mods"), &found_mod.name)
                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-                    let file_refs = found_mod.add_other_files_to_files(&found_files);
+                    let file_refs = found_mod.files.add_other_files_to_files(&found_files);
                     let ui_handle = ui.as_weak();
                     match confirm_remove_mod(ui_handle, &game_dir, file_refs).await {
                         Ok(_) => ui.display_msg(&format!("Successfully removed all files associated with the previously registered mod \"{key}\"")),
@@ -1072,16 +1074,16 @@ fn deserialize_current_mods(mods: &[RegMod], ui_handle: slint::Weak<App>) {
         let files: Rc<VecModel<slint::StandardListViewItem>> = Default::default();
         let dll_files: Rc<VecModel<SharedString>> = Default::default();
         let config_files: Rc<VecModel<SharedString>> = Default::default();
-        if !mod_data.mod_files.is_empty() {
-            files.extend(mod_data.mod_files.iter().map(|f| SharedString::from(f.to_string_lossy().replace(OFF_STATE, "")).into()));
-            dll_files.extend(mod_data.mod_files.iter().map(|f| SharedString::from(f.file_name().unwrap().to_string_lossy().replace(OFF_STATE, ""))));
+        if !mod_data.files.dll.is_empty() {
+            files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(f.to_string_lossy().replace(OFF_STATE, "")).into()));
+            dll_files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(f.file_name().unwrap().to_string_lossy().replace(OFF_STATE, ""))));
         };
-        if !mod_data.config_files.is_empty() {
-            files.extend(mod_data.config_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
-            config_files.extend(mod_data.config_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string())));
+        if !mod_data.files.config.is_empty() {
+            files.extend(mod_data.files.config.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
+            config_files.extend(mod_data.files.config.iter().map(|f| SharedString::from(f.to_string_lossy().to_string())));
         };
-        if !mod_data.other_files.is_empty() {
-            files.extend(mod_data.other_files.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
+        if !mod_data.files.other.is_empty() {
+            files.extend(mod_data.files.other.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
         };
         let name = mod_data.name.replace('_', " ");
         display_mods.push(DisplayMod {
@@ -1103,7 +1105,6 @@ fn deserialize_current_mods(mods: &[RegMod], ui_handle: slint::Weak<App>) {
 }
 
 // MARK: TODO
-// need to be able to sort RegMods by load-order then albethabetical
 // need to use ModelNotify::row_changed to handle updating page info on change
 // ui.invoke_update_mod_index(1, 1);
 
