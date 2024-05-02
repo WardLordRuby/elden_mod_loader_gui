@@ -39,10 +39,7 @@ impl Parsable for bool {
         {
             "0" => Ok(false),
             "1" => Ok(true),
-            c => c
-                .to_lowercase()
-                .parse::<bool>()
-                .map_err(|err| err.into_io_error()),
+            c => c.to_lowercase().parse::<bool>().map_err(|err| err.into_io_error()),
         }
     }
 }
@@ -112,8 +109,7 @@ impl Parsable for Vec<PathBuf> {
             );
         }
         let parsed_value = read_array(
-            ini.section(section)
-                .expect("Validated by IniProperty::is_valid"),
+            ini.section(section).expect("Validated by IniProperty::is_valid"),
             key,
         );
         if skip_validation {
@@ -175,9 +171,7 @@ fn validate_file(path: &Path) -> std::io::Result<()> {
             ErrorKind::InvalidInput,
             format!(
                 "\"{}\" does not have an extention",
-                input_file
-                    .split_at(if split != 0 { split + 1 } else { split })
-                    .1
+                input_file.split_at(if split != 0 { split + 1 } else { split }).1
             )
         );
     }
@@ -211,9 +205,7 @@ impl Setup for Ini {
     // MARK: FIXME
     // add functionality for matching Ini filename
     fn is_setup(&self) -> bool {
-        INI_SECTIONS
-            .iter()
-            .all(|&section| self.section(section).is_some())
+        INI_SECTIONS.iter().all(|&section| self.section(section).is_some())
     }
 }
 
@@ -404,7 +396,7 @@ impl RegMod {
     /// this function omits the population of the `order` field
     pub fn new(name: &str, state: bool, in_files: Vec<PathBuf>) -> Self {
         RegMod {
-            name: String::from(name),
+            name: name.trim().replace(' ', "_"),
             state,
             files: SplitFiles::from(in_files),
             order: LoadOrder::default(),
@@ -422,7 +414,7 @@ impl RegMod {
         let split_files = SplitFiles::from(in_files);
         let load_order = LoadOrder::from(&split_files.dll, parsed_order_val);
         RegMod {
-            name: String::from(name),
+            name: name.trim().replace(' ', "_"),
             state,
             files: split_files,
             order: load_order,
@@ -441,6 +433,8 @@ impl RegMod {
     // MARK: FIXME?
     // when is the best time to verify parsed data? currently we verify data after shaping it
     // the code would most likely be cleaner if we verified it apon parsing before doing any shaping
+
+    // should we have two collections? one for deserialization(full) one for just collect and verify
     pub fn collect(ini_path: &Path, skip_validation: bool) -> std::io::Result<Vec<Self>> {
         type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
         type ModData<'a> = Vec<(
@@ -585,10 +579,9 @@ impl RegMod {
             let parsed_data = sync_keys(&ini, ini_path)?;
             let game_dir =
                 IniProperty::<PathBuf>::read(&ini, INI_SECTIONS[1], INI_KEYS[1], false)?.value;
-            let load_order_parsed = ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1])
-                .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?
+            let load_order_parsed = ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1])?
                 .parse_section()
-                .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err))?;
+                .map_err(|err| err.into_io_error())?;
             let parsed_data = combine_map_data(parsed_data, &load_order_parsed);
             let mut output = Vec::with_capacity(parsed_data.len());
             for (k, s, f, l) in parsed_data {
@@ -598,7 +591,12 @@ impl RegMod {
                             error!("Error: {err}");
                             remove_entry(ini_path, INI_SECTIONS[2], k).expect("Key is valid");
                         } else {
-                            output.push(RegMod::from_split_files(k, *bool, f, l))
+                            let reg_mod = RegMod::from_split_files(k, *bool, f, l);
+                            // MARK: FIXME
+                            // verify_state should be ran within collect, but this call is too late, we should handle verification earilier
+                            // when sync keys hits an error we should give it a chance to correct by calling verify_state before it deletes an entry
+                            reg_mod.verify_state(&game_dir, ini_path)?;
+                            output.push(reg_mod)
                         }
                     }
                     Err(err) => {
@@ -619,7 +617,7 @@ impl RegMod {
                 "wrong file state for \"{}\" chaning file extentions",
                 self.name
             );
-            toggle_files(game_dir, self.state, self, Some(ini_path)).map(|_| ())?
+            let _ = toggle_files(game_dir, self.state, self, Some(ini_path))?;
         }
         Ok(())
     }

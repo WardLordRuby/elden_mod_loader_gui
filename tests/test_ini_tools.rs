@@ -11,8 +11,10 @@ mod tests {
             parser::{IniProperty, RegMod, Setup},
             writer::*,
         },
-        INI_SECTIONS,
+        INI_KEYS, INI_SECTIONS, OFF_STATE,
     };
+
+    const GAME_DIR: &str = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
 
     #[test]
     fn does_u32_parse() {
@@ -82,20 +84,19 @@ mod tests {
 
     #[test]
     fn does_path_parse() {
-        let test_path_1 =
-            Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
+        let test_path_1 = Path::new(GAME_DIR);
         let test_path_2 = Path::new("C:\\Windows\\System32");
         let test_file = Path::new("temp\\test_path.ini");
 
         {
             new_cfg(test_file).unwrap();
-            save_path(test_file, INI_SECTIONS[1], "game_dir", test_path_1).unwrap();
+            save_path(test_file, INI_SECTIONS[1], INI_KEYS[1], test_path_1).unwrap();
             save_path(test_file, INI_SECTIONS[1], "random_dir", test_path_2).unwrap();
         }
 
         let config = get_cfg(test_file).unwrap();
         let parse_test_1 =
-            IniProperty::<PathBuf>::read(&config, INI_SECTIONS[1], "game_dir", false)
+            IniProperty::<PathBuf>::read(&config, INI_SECTIONS[1], INI_KEYS[1], false)
                 .unwrap()
                 .value;
         let parse_test_2 =
@@ -112,8 +113,7 @@ mod tests {
     #[test]
     #[allow(unused_variables)]
     fn type_check() {
-        let test_path =
-            Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
+        let test_path = Path::new(GAME_DIR);
         let test_array = [
             Path::new("mods\\UnlockTheFps.dll"),
             Path::new("mods\\UnlockTheFps\\config.ini"),
@@ -121,7 +121,7 @@ mod tests {
         let test_file = Path::new("temp\\test_type_check.ini");
 
         new_cfg(test_file).unwrap();
-        save_path(test_file, INI_SECTIONS[1], "game_dir", test_path).unwrap();
+        save_path(test_file, INI_SECTIONS[1], INI_KEYS[1], test_path).unwrap();
         save_paths(test_file, "test_array", &test_array).unwrap();
 
         let config = get_cfg(test_file).unwrap();
@@ -136,7 +136,7 @@ mod tests {
         );
 
         let vec_result =
-            IniProperty::<Vec<PathBuf>>::read(&config, INI_SECTIONS[1], "game_dir", false);
+            IniProperty::<Vec<PathBuf>>::read(&config, INI_SECTIONS[1], INI_KEYS[1], false);
         assert_eq!(
             vec_result.unwrap_err().to_string(),
             vec_pathbuf_err.to_string()
@@ -155,15 +155,17 @@ mod tests {
     #[test]
     fn read_write_delete_from_ini() {
         let test_file = Path::new("temp\\test_collect_mod_data.ini");
-        let mod_1_key = "Unlock The Fps  ";
-        let mod_1_state = false;
-        let mod_2_key = "Skip The Intro";
-        let mod_2_state = true;
+        let game_path = Path::new(GAME_DIR);
+
         let mod_1 = vec![
-            Path::new("mods\\UnlockTheFps.dll"),
-            Path::new("mods\\UnlockTheFps\\config.ini"),
+            PathBuf::from("mods\\UnlockTheFps.dll"),
+            PathBuf::from("mods\\UnlockTheFps\\config.ini"),
         ];
         let mod_2 = PathBuf::from("mods\\SkipTheIntro.dll");
+
+        // test_mod_2 state is set incorrectly
+        let test_mod_1 = RegMod::new("Unlock The Fps  ", true, mod_1);
+        let mut test_mod_2 = RegMod::new(" Skip The Intro", false, vec![mod_2]);
 
         {
             // Test if new_cfg will write all Sections to the file with .is_setup()
@@ -179,13 +181,29 @@ mod tests {
             // We must save a working game_dir in the ini before we can parse entries in Section("mod-files")
             // -----------------------parser is set up to only parse valid entries---------------------------
             // ----use case for entries in Section("mod-files") is to keep track of files within game_dir----
-            let game_path =
-                Path::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game");
 
-            save_paths(test_file, mod_1_key, &mod_1).unwrap();
-            save_bool(test_file, INI_SECTIONS[2], mod_1_key, mod_1_state).unwrap();
-            save_path(test_file, INI_SECTIONS[3], mod_2_key, &mod_2).unwrap();
-            save_bool(test_file, INI_SECTIONS[2], mod_2_key, mod_2_state).unwrap();
+            save_paths(test_file, &test_mod_1.name, &test_mod_1.files.file_refs()).unwrap();
+            save_bool(
+                test_file,
+                INI_SECTIONS[2],
+                &test_mod_1.name,
+                test_mod_1.state,
+            )
+            .unwrap();
+            save_path(
+                test_file,
+                INI_SECTIONS[3],
+                &test_mod_2.name,
+                &test_mod_2.files.dll[0],
+            )
+            .unwrap();
+            save_bool(
+                test_file,
+                INI_SECTIONS[2],
+                &test_mod_2.name,
+                test_mod_2.state,
+            )
+            .unwrap();
             save_paths(test_file, "no_matching_state_1", &invalid_format_1).unwrap();
             save_path(
                 test_file,
@@ -196,33 +214,60 @@ mod tests {
             .unwrap();
             save_bool(test_file, INI_SECTIONS[2], "no_matching_path", true).unwrap();
 
-            save_path(test_file, INI_SECTIONS[1], "game_dir", game_path).unwrap();
+            save_path(test_file, INI_SECTIONS[1], INI_KEYS[1], game_path).unwrap();
         }
 
-        // -------------------------------------sync_keys runs from inside RegMod::collect()------------------------------------------------
+        // -------------------------------------sync_keys() runs from inside RegMod::collect()------------------------------------------------
         // ----this deletes any keys that do not have a matching state eg. (key has state but no files, or key has files but no state)-----
         // this tests delete_entry && delete_array in this case we delete "no_matching_path", "no_matching_state_1", and "no_matching_state_2"
         let registered_mods = RegMod::collect(test_file, false).unwrap();
         assert_eq!(registered_mods.len(), 2);
 
+        // verify_state() also runs from within RegMod::collect() lets see if changed the state of the mods .dll file
+        let mut disabled_state = game_path.join(format!(
+            "{}{}",
+            test_mod_2.files.dll[0].display(),
+            OFF_STATE
+        ));
+        assert!(matches!(&disabled_state.try_exists(), Ok(true)));
+        std::mem::swap(&mut test_mod_2.files.dll[0], &mut disabled_state);
+
+        // lets set it correctly now
+        test_mod_2.state = true;
+        test_mod_2.verify_state(game_path, test_file).unwrap();
+        std::mem::swap(&mut test_mod_2.files.dll[0], &mut disabled_state);
+        assert!(matches!(
+            game_path.join(&test_mod_2.files.dll[0]).try_exists(),
+            Ok(true)
+        ));
+
+        test_mod_2.state = IniProperty::<bool>::read(
+            &get_cfg(test_file).unwrap(),
+            INI_SECTIONS[2],
+            &test_mod_2.name,
+            false,
+        )
+        .unwrap()
+        .value;
+
         // Tests name format is correct
-        let reg_mod_1: &RegMod = registered_mods
+        let reg_mod_1 = registered_mods
             .iter()
-            .find(|data| data.name == mod_1_key.trim())
+            .find(|data| data.name == test_mod_1.name.trim())
             .unwrap();
-        let reg_mod_2: &RegMod = registered_mods
+        let reg_mod_2 = registered_mods
             .iter()
-            .find(|data| data.name == mod_2_key.trim())
+            .find(|data| data.name == test_mod_2.name.trim())
             .unwrap();
 
         // Tests if PathBuf and Vec<PathBuf>'s from Section("mod-files") parse correctly | these are partial paths
-        assert_eq!(mod_1[0], reg_mod_1.files.dll[0]);
-        assert_eq!(mod_1[1], reg_mod_1.files.config[0]);
-        assert_eq!(mod_2, reg_mod_2.files.dll[0]);
+        assert_eq!(test_mod_1.files.dll[0], reg_mod_1.files.dll[0]);
+        assert_eq!(test_mod_1.files.config[0], reg_mod_1.files.config[0]);
+        assert_eq!(test_mod_2.files.dll[0], reg_mod_2.files.dll[0]);
 
         // Tests if bool was parsed correctly
-        assert_eq!(mod_1_state, reg_mod_1.state);
-        assert_eq!(mod_2_state, reg_mod_2.state);
+        assert_eq!(test_mod_1.state, reg_mod_1.state);
+        assert!(test_mod_2.state);
 
         remove_file(test_file).unwrap();
     }

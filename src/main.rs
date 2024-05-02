@@ -1255,6 +1255,8 @@ async fn confirm_scan_mods(
             return new_io_error!(ErrorKind::ConnectionAborted, "Did not select to scan for mods");
         };
         let dark_mode = ui.global::<SettingsLogic>().get_dark_mode();
+        // MARK: TODO
+        // need to check if a deleted mod was in the disabled state and then toggle if so
         std::fs::remove_file(ini_file)?;
         new_cfg(ini_file)?;
         save_bool(ini_file, INI_SECTIONS[0], INI_KEYS[0], dark_mode)?;

@@ -74,16 +74,14 @@ impl PathErrors {
 
 pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>, PathErrors> {
     let mut results = PathErrors::new(paths.len());
-    paths
-        .iter()
-        .for_each(|path| match path.strip_prefix(remove) {
-            Ok(file) => {
-                results.ok_paths_short.push(PathBuf::from(file));
-            }
-            Err(_) => {
-                results.err_paths_long.push(PathBuf::from(path));
-            }
-        });
+    paths.iter().for_each(|path| match path.strip_prefix(remove) {
+        Ok(file) => {
+            results.ok_paths_short.push(PathBuf::from(file));
+        }
+        Err(_) => {
+            results.err_paths_long.push(PathBuf::from(path));
+        }
+    });
     if results.err_paths_long.is_empty() {
         Ok(results.ok_paths_short)
     } else {
@@ -91,6 +89,7 @@ pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>
     }
 }
 
+/// returns all the modified _partial_paths_
 pub fn toggle_files(
     game_dir: &Path,
     new_state: bool,
@@ -135,13 +134,10 @@ pub fn toggle_files(
             );
         }
 
-        paths
-            .iter()
-            .zip(new_paths.iter())
-            .try_for_each(|(path, new_path)| {
-                std::fs::rename(path, new_path)?;
-                Ok(())
-            })
+        paths.iter().zip(new_paths.iter()).try_for_each(|(path, new_path)| {
+            std::fs::rename(path, new_path)?;
+            Ok(())
+        })
     }
     fn update_cfg(
         num_file: &usize,
@@ -235,9 +231,7 @@ pub fn does_dir_contain(
             })
         }
         Operation::Any => {
-            let result = list
-                .iter()
-                .any(|&check_file| file_names.contains(check_file));
+            let result = list.iter().any(|&check_file| file_names.contains(check_file));
             Ok(OperationResult {
                 success: result,
                 files_found: if result { 1 } else { 0 },
