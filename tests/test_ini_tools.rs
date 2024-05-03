@@ -170,7 +170,7 @@ mod tests {
         {
             // Test if new_cfg will write all Sections to the file with .is_setup()
             new_cfg(test_file).unwrap();
-            assert!(get_cfg(test_file).unwrap().is_setup());
+            assert!(get_cfg(test_file).unwrap().is_setup(&INI_SECTIONS));
 
             let invalid_format_1 = vec![
                 Path::new("mods\\UnlockTheFps.dll"),

@@ -36,6 +36,8 @@ pub const REQUIRED_GAME_FILES: [&str; 3] = [
 ];
 
 pub const OFF_STATE: &str = ".disabled";
+
+pub const INI_NAME: &str = "EML_gui_config.ini";
 pub const INI_SECTIONS: [Option<&str>; 4] = [
     Some("app-settings"),
     Some("paths"),
@@ -43,13 +45,18 @@ pub const INI_SECTIONS: [Option<&str>; 4] = [
     Some("mod-files"),
 ];
 pub const INI_KEYS: [&str; 2] = ["dark_mode", "game_dir"];
+pub const DEFAULT_INI_VALUES: [&str; 1] = ["true"];
 pub const ARRAY_KEY: &str = "array[]";
 pub const ARRAY_VALUE: &str = "array";
 
-pub const LOADER_FILES: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll"];
-pub const LOADER_FILES_DISABLED: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll.disabled"];
+pub const LOADER_FILES: [&str; 3] = [
+    "dinput8.dll.disabled",
+    "dinput8.dll",
+    "mod_loader_config.ini",
+];
 pub const LOADER_SECTIONS: [Option<&str>; 2] = [Some("modloader"), Some("loadorder")];
 pub const LOADER_KEYS: [&str; 2] = ["load_delay", "show_terminal"];
+pub const DEFAULT_LOADER_VALUES: [&str; 2] = ["5000", "0"];
 
 #[macro_export]
 macro_rules! new_io_error {
@@ -193,52 +200,50 @@ pub fn get_cfg(input_file: &Path) -> std::io::Result<Ini> {
 pub enum Operation {
     All,
     Any,
+    Count,
 }
 
-#[derive(Default)]
-pub struct OperationResult {
-    pub success: bool,
-    pub files_found: usize,
+pub enum OperationResult<'a, T: ?Sized> {
+    Bool(bool),
+    Count((usize, HashSet<&'a T>)),
 }
 
-pub fn does_dir_contain(
+/// `Operation::All` and `Operation::Any` map to `OperationResult::bool(_result_)`  
+/// `Operation::Count` maps to `OperationResult::Count((_num_found_, _HashSet<_&input_list_>))`  
+/// when matching you will always have to `_ => unreachable()` for the return type you will never get
+pub fn does_dir_contain<'a, T>(
     path: &Path,
     operation: Operation,
-    list: &[&str],
-) -> std::io::Result<OperationResult> {
+    list: &'a [&T],
+) -> std::io::Result<OperationResult<'a, T>>
+where
+    T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash + ?Sized,
+    for<'b> &'b str: std::borrow::Borrow<T>,
+{
     let entries = std::fs::read_dir(path)?;
     let file_names = entries
-        // MARK: FIXME
-        // would be nice if we could leave as a OsString here
-        // change count to be the actual file found
-        // can we make a cleaner interface?
-        // not force to match against all file situations? use enum to return different data types?
-        // use bool for called to decide if they want to match against extra data?
-        .map(|entry| Ok(entry?.file_name().to_string_lossy().to_string()))
-        .collect::<std::io::Result<HashSet<_>>>()?;
+        .filter_map(|entry| Some(entry.ok()?.file_name()))
+        .collect::<Vec<_>>();
+    let str_names = file_names.iter().filter_map(|f| f.to_str()).collect::<HashSet<_>>();
 
     match operation {
-        Operation::All => {
-            let mut count = 0_usize;
-            list.iter().for_each(|&check_file| {
-                if file_names.contains(check_file) {
-                    count += 1
-                }
-            });
-            Ok(OperationResult {
-                success: count == list.len(),
-                files_found: count,
-            })
-        }
-        Operation::Any => {
-            let result = list.iter().any(|&check_file| file_names.contains(check_file));
-            Ok(OperationResult {
-                success: result,
-                files_found: if result { 1 } else { 0 },
-            })
+        Operation::All => Ok(OperationResult::Bool(
+            list.iter().all(|&check_file| str_names.contains(check_file)),
+        )),
+        Operation::Any => Ok(OperationResult::Bool(
+            list.iter().any(|&check_file| str_names.contains(check_file)),
+        )),
+        Operation::Count => {
+            let collection = list
+                .iter()
+                .filter(|&check_file| str_names.contains(check_file))
+                .copied()
+                .collect::<HashSet<_>>();
+            Ok(OperationResult::Count((collection.len(), collection)))
         }
     }
 }
+
 pub struct FileData<'a> {
     pub name: &'a str,
     pub extension: &'a str,
@@ -332,26 +337,22 @@ pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
     };
     if let Ok(path) = IniProperty::<PathBuf>::read(&config, INI_SECTIONS[1], INI_KEYS[1], false)
         .and_then(|ini_property| {
+            // right now all we do is log this error if we want to bail on the fn we can use the ? operator here
             match does_dir_contain(&ini_property.value, Operation::All, &REQUIRED_GAME_FILES) {
-                Ok(OperationResult {
-                    success: true,
-                    files_found: _,
-                }) => Ok(ini_property.value),
-                Ok(OperationResult {
-                    success: false,
-                    files_found: _,
-                }) => {
+                Ok(OperationResult::Bool(true)) => Ok(ini_property.value),
+                Ok(OperationResult::Bool(false)) => {
                     let err = format!(
                         "Required Game files not found in:\n\"{}\"",
                         ini_property.value.display()
                     );
-                    error!("{err}",);
+                    error!("{err}");
                     new_io_error!(ErrorKind::NotFound, err)
                 }
                 Err(err) => {
                     error!("Error: {err}");
                     Err(err)
                 }
+                _ => unreachable!(),
             }
         })
     {
@@ -359,10 +360,10 @@ pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
         return Ok(PathResult::Full(path));
     }
     let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
-    if does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES)
-        .unwrap_or_default()
-        .success
-    {
+    if matches!(
+        does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES),
+        Ok(OperationResult::Bool(true))
+    ) {
         info!("Success: located \"game_dir\" on drive");
         save_path(
             file_name,

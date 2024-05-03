@@ -398,7 +398,10 @@ impl InstallData {
             let game_dir = self_clone.install_dir.parent().expect("has parent");
             if valid_dir.strip_prefix(game_dir).is_ok() {
                 return new_io_error!(ErrorKind::InvalidInput, "Files are already installed");
-            } else if does_dir_contain(&valid_dir, crate::Operation::All, &["mods"])?.success {
+            } else if matches!(
+                does_dir_contain(&valid_dir, crate::Operation::All, &["mods"])?,
+                crate::OperationResult::Bool(true)
+            ) {
                 return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
             }
 
@@ -425,7 +428,7 @@ impl InstallData {
                 trace!("New directory selected contains unique files, entire folder will be moved");
                 match items_in_directory(&valid_dir, FileType::Dir)? == 0 {
                     true => self_clone.parent_dir = parent_or_err(&valid_dir)?.to_path_buf(),
-                    false => self_clone.parent_dir = valid_dir.clone(),
+                    false => self_clone.parent_dir.clone_from(&valid_dir),
                 }
             }
 
@@ -455,10 +458,7 @@ impl InstallData {
 pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<()> {
     let remove_files = files.iter().map(|f| game_dir.join(f)).collect::<Vec<_>>();
 
-    if remove_files
-        .iter()
-        .any(|file| !matches!(file.try_exists(), Ok(true)))
-    {
+    if remove_files.iter().any(|file| !matches!(file.try_exists(), Ok(true))) {
         return new_io_error!(
             ErrorKind::InvalidInput,
             "Could not confirm existance of all files to remove"
@@ -497,6 +497,8 @@ pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<(
             Ok(())
         }
     })?;
+    // MARK: TODO
+    // if mod has load order remove load order
 
     Ok(())
 }
@@ -531,10 +533,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
         if file_data.extension != ".dll" {
             continue;
         };
-        if let Some(dir) = dirs
-            .iter()
-            .find(|d| d.file_name().expect("is dir") == file_data.name)
-        {
+        if let Some(dir) = dirs.iter().find(|d| d.file_name().expect("is dir") == file_data.name) {
             let mut data = InstallData::new(file_data.name, vec![file.clone()], game_dir)?;
             data.import_files_from_dir(dir, &DisplayItems::None)?;
             file_sets.push(RegMod::new(
@@ -542,21 +541,14 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
                 file_data.enabled,
                 data.from_paths
                     .into_iter()
-                    .map(|p| {
-                        p.strip_prefix(game_dir)
-                            .expect("file found here")
-                            .to_path_buf()
-                    })
+                    .map(|p| p.strip_prefix(game_dir).expect("file found here").to_path_buf())
                     .collect::<Vec<_>>(),
             ));
         } else {
             file_sets.push(RegMod::new(
                 file_data.name,
                 file_data.enabled,
-                vec![file
-                    .strip_prefix(game_dir)
-                    .expect("file found here")
-                    .to_path_buf()],
+                vec![file.strip_prefix(game_dir).expect("file found here").to_path_buf()],
             ));
         }
     }

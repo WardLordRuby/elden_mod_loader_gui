@@ -1,5 +1,5 @@
 use ini::{Ini, Properties};
-use log::{error, warn};
+use log::{error, trace, warn};
 use std::{
     collections::HashMap,
     io::ErrorKind,
@@ -198,14 +198,28 @@ fn validate_existance(path: &Path) -> std::io::Result<()> {
 }
 
 pub trait Setup {
-    fn is_setup(&self) -> bool;
+    fn is_setup(&self, sections: &[Option<&str>]) -> bool;
+    fn init_section(&mut self, section: Option<&str>) -> std::io::Result<()>;
 }
 
 impl Setup for Ini {
-    // MARK: FIXME
-    // add functionality for matching Ini filename
-    fn is_setup(&self) -> bool {
-        INI_SECTIONS.iter().all(|&section| self.section(section).is_some())
+    fn is_setup(&self, sections: &[Option<&str>]) -> bool {
+        sections.iter().all(|&section| self.section(section).is_some())
+    }
+
+    fn init_section(&mut self, section: Option<&str>) -> std::io::Result<()> {
+        trace!(
+            "Section: \"{}\" not found creating new",
+            section.expect("Passed in section not valid")
+        );
+        self.with_section(section).set("setter_temp_val", "0");
+        if self.delete_from(section, "setter_temp_val").is_none() {
+            return new_io_error!(
+                ErrorKind::BrokenPipe,
+                format!("Failed to create a new section: \"{}\"", section.unwrap())
+            );
+        };
+        Ok(())
     }
 }
 

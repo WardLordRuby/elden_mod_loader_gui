@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -29,8 +29,6 @@ use tokio::sync::{
 
 slint::include_modules!();
 
-const CONFIG_NAME: &str = "EML_gui_config.ini";
-const DEFAULT_VALUES: [&str; 2] = ["5000", "0"];
 static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
 static RESTRICTED_FILES: OnceLock<[&'static OsStr; 6]> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
@@ -58,7 +56,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let mut errors= Vec::new();
         let ini_valid = match get_cfg(current_ini) {
             Ok(ini) => {
-                if ini.is_setup() {
+                if ini.is_setup(&INI_SECTIONS) {
                     info!("Config file found at \"{}\"", current_ini.display());
                     first_startup = false;
                     true
@@ -70,7 +68,9 @@ fn main() -> Result<(), slint::PlatformError> {
             Err(err) => {
                 // io::Open error or | parse error with type ErrorKind::InvalidData
                 error!("Error: {err}");
-                errors.push(err);
+                if err.kind() == ErrorKind::InvalidData {
+                    errors.push(err);
+                }
                 first_startup = true;
                 false
             }
@@ -151,7 +151,10 @@ fn main() -> Result<(), slint::PlatformError> {
             mod_loader = ModLoader::default();
         } else {
             let game_dir = game_dir.expect("game dir verified");
-            mod_loader = ModLoader::properties(&game_dir);
+            mod_loader = ModLoader::properties(&game_dir).unwrap_or_else(|err| {
+                errors.push(err);
+                ModLoader::default()
+            });
             deserialize_current_mods(
                 &match reg_mods {
                     Some(Ok(mod_data)) => mod_data,
@@ -175,13 +178,13 @@ fn main() -> Result<(), slint::PlatformError> {
                     ));
                     error!("{err}");
                     errors.push(err);
-                    save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[0], DEFAULT_VALUES[0])
+                    save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[0], DEFAULT_LOADER_VALUES[0])
                     .unwrap_or_else(|err| {
                         // io::write error
                         error!("{err}");
                         errors.push(err);
                     });
-                    DEFAULT_VALUES[0].parse().unwrap()
+                    DEFAULT_LOADER_VALUES[0].parse().unwrap()
                 });
                 let show_terminal = loader_cfg.get_show_terminal().unwrap_or_else(|_| {
                     // parse error ErrorKind::InvalidData
@@ -191,7 +194,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     ));
                     error!("{err}");
                     errors.push(err);
-                    save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[1], DEFAULT_VALUES[1])
+                    save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[1], DEFAULT_LOADER_VALUES[1])
                     .unwrap_or_else(|err| {
                         // io::write error
                         error!("{err}");
@@ -411,16 +414,17 @@ fn main() -> Result<(), slint::PlatformError> {
                 info!("User Selected Path: \"{}\"", path.display());
                 let try_path: PathBuf = match does_dir_contain(&path, Operation::All, &["Game"])
                 {
-                    Ok(OperationResult { success: true, files_found: _ }) => PathBuf::from(&format!("{}\\Game", path.display())),
-                    Ok(OperationResult { success: false, files_found: _ }) => path, 
+                    Ok(OperationResult::Bool(true)) => PathBuf::from(&format!("{}\\Game", path.display())),
+                    Ok(OperationResult::Bool(false)) => path, 
                     Err(err) => {
                         error!("{err}");
                         ui.display_msg(&err.to_string());
                         return;
                     }
+                    _ => unreachable!(),
                 };
                 match does_dir_contain(Path::new(&try_path), Operation::All, &REQUIRED_GAME_FILES) {
-                    Ok(OperationResult { success: true, files_found: _ }) => {
+                    Ok(OperationResult::Bool(true)) => {
                         let result = save_path(current_ini, INI_SECTIONS[1], INI_KEYS[1], &try_path);
                         if result.is_err() && save_path(current_ini, INI_SECTIONS[1], INI_KEYS[1], &try_path).is_err() {
                             let err = result.unwrap_err();
@@ -429,7 +433,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             return;
                         };
                         info!("Success: Files found, saved diretory");
-                        let mod_loader = ModLoader::properties(&try_path);
+                        let mod_loader = ModLoader::properties(&try_path).unwrap_or_default();
                         ui.global::<SettingsLogic>()
                             .set_game_path(try_path.to_string_lossy().to_string().into());
                         let _ = get_or_update_game_dir(Some(try_path));
@@ -443,7 +447,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
                         }
                     }
-                    Ok(OperationResult { success: false, files_found: _ }) => {
+                    Ok(OperationResult::Bool(false)) => {
                         let err = format!("Required Game files not found in:\n\"{}\"", try_path.display());
                         error!("{err}");
                         ui.display_msg(&err);
@@ -455,6 +459,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                         ui.display_msg(&err.to_string())
                     }
+                    _ => unreachable!(),
                 }
             }).unwrap();
         }
@@ -745,7 +750,13 @@ fn main() -> Result<(), slint::PlatformError> {
         move |state| -> bool {
             let ui = ui_handle.unwrap();
             let value = if state { "1" } else { "0" };
-            let ext_ini = get_or_update_game_dir(None).join(LOADER_FILES[0]);
+            let ext_ini = match ModLoader::properties(&get_or_update_game_dir(None)) {
+                Ok(ini) => ini.own_path(),
+                Err(err) => {
+                    ui.display_msg(&err.to_string());
+                    return !state
+                }
+            };
             let mut result = state;
             save_value_ext(&ext_ini, LOADER_SECTIONS[0], LOADER_KEYS[1], value).unwrap_or_else(
                 |err| {
@@ -760,7 +771,13 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |time| {
             let ui = ui_handle.unwrap();
-            let ext_ini = get_or_update_game_dir(None).join(LOADER_FILES[0]);
+            let ext_ini = match ModLoader::properties(&get_or_update_game_dir(None)) {
+                Ok(ini) => ini.own_path(),
+                Err(err) => {
+                    ui.display_msg(&err.to_string());
+                    return
+                }
+            };
             ui.global::<MainLogic>().invoke_force_app_focus();
             if let Err(err) = save_value_ext(&ext_ini, LOADER_SECTIONS[0], LOADER_KEYS[0], &time) {
                 ui.display_msg(&format!("Failed to set load delay\n\n{err}"));
@@ -780,7 +797,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let files = if state {
                 vec![PathBuf::from(LOADER_FILES[1])]
             } else {
-                vec![PathBuf::from(LOADER_FILES_DISABLED[1])]
+                vec![PathBuf::from(LOADER_FILES[0])]
             };
             let main_dll = RegMod::new("main", !state, files);
             match toggle_files(&game_dir, !state, &main_dll, None) {
@@ -833,7 +850,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 match confirm_scan_mods(ui.as_weak(), &game_dir, current_ini, true).await {
                     Ok(len) => {
                         ui.global::<MainLogic>().set_current_subpage(0);
-                        let mod_loader = ModLoader::properties(&game_dir);
+                        let mod_loader = ModLoader::properties(&game_dir).unwrap_or_default();
                         deserialize_current_mods(
                             &RegMod::collect(current_ini, !mod_loader.installed()).unwrap_or_else(|err| {
                                 ui.display_msg(&err.to_string());
@@ -1008,7 +1025,7 @@ fn get_ini_dir() -> &'static PathBuf {
     static CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
     CONFIG_PATH.get_or_init(|| {
         let exe_dir = std::env::current_dir().expect("Failed to get current dir");
-        exe_dir.join(CONFIG_NAME)
+        exe_dir.join(INI_NAME)
     })
 }
 
@@ -1027,15 +1044,13 @@ fn get_or_update_game_dir(update: Option<PathBuf>) -> tokio::sync::RwLockReadGua
 }
 
 fn populate_restricted_files() -> [&'static OsStr; 6] {
-    let mut restricted_files: [&OsStr; 6] = [&OsStr::new(""); 6];
+    let mut restricted_files: [&OsStr; 6] = [OsStr::new(""); 6];
     for (i, file) in LOADER_FILES.iter().map(OsStr::new).enumerate() {
         restricted_files[i] = file;
     }
     for (i, file) in REQUIRED_GAME_FILES.iter().map(OsStr::new).enumerate() {
         restricted_files[i + LOADER_FILES.len()] = file;
     }
-    restricted_files[LOADER_FILES.len() + REQUIRED_GAME_FILES.len()] =
-        OsStr::new(LOADER_FILES_DISABLED[1]);
 
     restricted_files
 }

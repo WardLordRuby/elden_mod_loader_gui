@@ -1,5 +1,4 @@
 use ini::Ini;
-use log::{error, info, trace};
 use std::{
     collections::HashMap,
     io::ErrorKind,
@@ -7,13 +6,12 @@ use std::{
 };
 
 use crate::{
-    new_io_error,
+    does_dir_contain, get_cfg, new_io_error,
     utils::ini::{
-        parser::{IniProperty, ModError, RegMod},
-        writer::EXT_OPTIONS,
+        parser::{IniProperty, ModError, RegMod, Setup},
+        writer::{new_cfg, EXT_OPTIONS},
     },
-    OperationResult, LOADER_KEYS, LOADER_SECTIONS,
-    {does_dir_contain, get_cfg, Operation, LOADER_FILES, LOADER_FILES_DISABLED},
+    Operation, OperationResult, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
 };
 
 #[derive(Default)]
@@ -24,55 +22,40 @@ pub struct ModLoader {
 }
 
 impl ModLoader {
-    pub fn properties(game_dir: &Path) -> ModLoader {
-        match does_dir_contain(game_dir, Operation::All, &LOADER_FILES) {
-            // MARK: IMPL FEAT?
-            // add branch for if ini not found then create ini with default values
-            Ok(OperationResult {
-                success: true,
-                files_found: _,
-            }) => {
-                info!("Found mod loader files");
-                ModLoader {
-                    installed: true,
-                    disabled: false,
-                    path: game_dir.join(LOADER_FILES[0]),
+    pub fn properties(game_dir: &Path) -> std::io::Result<ModLoader> {
+        let cfg_dir = game_dir.join(LOADER_FILES[2]);
+        match does_dir_contain(game_dir, Operation::Count, &LOADER_FILES) {
+            Ok(OperationResult::Count((_, files))) => {
+                if files.contains(LOADER_FILES[1]) || !files.contains(LOADER_FILES[0]) {
+                    if !files.contains(LOADER_FILES[2]) {
+                        new_cfg(&cfg_dir)?;
+                    }
+                    Ok(ModLoader {
+                        installed: true,
+                        disabled: false,
+                        path: cfg_dir,
+                    })
+                } else if files.contains(LOADER_FILES[0]) || !files.contains(LOADER_FILES[1]) {
+                    if !files.contains(LOADER_FILES[2]) {
+                        new_cfg(&cfg_dir)?;
+                    }
+                    Ok(ModLoader {
+                        installed: true,
+                        disabled: true,
+                        path: cfg_dir,
+                    })
+                } else {
+                    return new_io_error!(
+                        ErrorKind::InvalidData,
+                        format!(
+                            "Elden Mod Loader is not installed at: {}",
+                            game_dir.display()
+                        )
+                    );
                 }
             }
-            Ok(OperationResult {
-                success: false,
-                files_found: _,
-            }) => {
-                trace!("Checking if mod loader is disabled");
-                match does_dir_contain(game_dir, Operation::All, &LOADER_FILES_DISABLED) {
-                    Ok(OperationResult {
-                        success: true,
-                        files_found: _,
-                    }) => {
-                        info!("Found mod loader files in the disabled state");
-                        ModLoader {
-                            installed: true,
-                            disabled: true,
-                            path: game_dir.join(LOADER_FILES[0]),
-                        }
-                    }
-                    Ok(OperationResult {
-                        success: false,
-                        files_found: _,
-                    }) => {
-                        error!("Mod Loader Files not found in selected path");
-                        ModLoader::default()
-                    }
-                    Err(err) => {
-                        error!("{err}");
-                        ModLoader::default()
-                    }
-                }
-            }
-            Err(err) => {
-                error!("{err}");
-                ModLoader::default()
-            }
+            Err(err) => Err(err),
+            _ => unreachable!(),
         }
     }
 
@@ -90,6 +73,11 @@ impl ModLoader {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    #[inline]
+    pub fn own_path(self) -> PathBuf {
+        self.path
+    }
 }
 
 #[derive(Default)]
@@ -104,61 +92,19 @@ impl ModLoaderCfg {
         if section.is_none() {
             return new_io_error!(ErrorKind::InvalidInput, "section can not be none");
         }
-        let cfg_dir = match does_dir_contain(game_dir, Operation::All, &[LOADER_FILES[0]]) {
-            Ok(OperationResult {
-                success: true,
-                files_found: _,
-            }) => game_dir.join(LOADER_FILES[0]),
-            Ok(OperationResult {
-                success: false,
-                files_found: _,
-            }) => {
-                return new_io_error!(
-                    ErrorKind::NotFound,
-                    "\"mod_loader_config.ini\" does not exist in the current game_dir"
-                );
-            }
-            Err(err) => return Err(err),
-        };
-        let mut cfg = match get_cfg(&cfg_dir) {
-            Ok(ini) => ini,
-            Err(err) => {
-                return new_io_error!(
-                    ErrorKind::NotFound,
-                    format!("Could not read \"mod_loader_config.ini\"\n{err}")
-                )
-            }
-        };
+        let cfg_dir = ModLoader::properties(game_dir)?.path;
+        let mut cfg = get_cfg(&cfg_dir)?;
+        if !cfg.is_setup(&LOADER_SECTIONS) {
+            new_cfg(&cfg_dir)?;
+        }
         if cfg.section(section).is_none() {
-            ModLoaderCfg::init_section(&mut cfg, section)?
+            cfg.init_section(section)?
         }
         Ok(ModLoaderCfg {
             cfg,
             cfg_dir,
             section: section.map(String::from),
         })
-    }
-
-    pub fn update_section(&mut self, section: Option<&str>) -> std::io::Result<()> {
-        if self.cfg.section(section).is_none() {
-            ModLoaderCfg::init_section(&mut self.cfg, section)?
-        };
-        Ok(())
-    }
-
-    fn init_section(cfg: &mut ini::Ini, section: Option<&str>) -> std::io::Result<()> {
-        trace!(
-            "Section: \"{}\" not found creating new",
-            section.expect("Passed in section not valid")
-        );
-        cfg.with_section(section).set("setter_temp_val", "0");
-        if cfg.delete_from(section, "setter_temp_val").is_none() {
-            return new_io_error!(
-                ErrorKind::BrokenPipe,
-                format!("Failed to create a new section: \"{}\"", section.unwrap())
-            );
-        };
-        Ok(())
     }
 
     pub fn get_load_delay(&self) -> std::io::Result<u32> {
@@ -262,6 +208,7 @@ pub trait Countable {
 }
 
 impl<'a> Countable for &'a [RegMod] {
+    #[inline]
     fn order_count(&self) -> usize {
         self.iter().filter(|m| m.order.set).count()
     }

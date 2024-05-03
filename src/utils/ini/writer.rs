@@ -6,14 +6,10 @@ use std::{
     path::Path,
 };
 
-use crate::{get_cfg, parent_or_err, INI_SECTIONS as SECTIONS};
-
-const INI_SECTIONS: [&str; 4] = [
-    "[app-settings]",
-    "[paths]",
-    "[registered-mods]",
-    "[mod-files]",
-];
+use crate::{
+    file_name_or_err, get_cfg, parent_or_err, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS,
+    INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
+};
 
 const WRITE_OPTIONS: WriteOption = WriteOption {
     escape_policy: EscapePolicy::Nothing,
@@ -35,7 +31,7 @@ pub fn save_paths(file_name: &Path, key: &str, files: &[&Path]) -> std::io::Resu
         .collect::<Vec<_>>()
         .join("\r\narray[]=");
     config
-        .with_section(SECTIONS[3])
+        .with_section(INI_SECTIONS[3])
         .set(key, format!("array\r\narray[]={save_paths}"));
     config.write_to_file_opt(file_name, WRITE_OPTIONS)
 }
@@ -76,14 +72,29 @@ pub fn save_value_ext(
 }
 
 pub fn new_cfg(path: &Path) -> std::io::Result<()> {
+    let file_name = file_name_or_err(path)?;
     let parent = parent_or_err(path)?;
+
     fs::create_dir_all(parent)?;
     let mut new_ini = File::create(path)?;
 
-    for section in INI_SECTIONS {
-        writeln!(new_ini, "{section}")?;
+    if file_name == LOADER_FILES[2] {
+        for (i, section) in LOADER_SECTIONS.iter().enumerate() {
+            writeln!(new_ini, "[{}]", section.unwrap())?;
+            if i == 0 {
+                for (j, _) in LOADER_KEYS.iter().enumerate() {
+                    writeln!(new_ini, "{} = {}", LOADER_KEYS[j], DEFAULT_LOADER_VALUES[j])?
+                }
+            }
+        }
+    } else {
+        for (i, section) in INI_SECTIONS.iter().enumerate() {
+            writeln!(new_ini, "[{}]", section.unwrap())?;
+            if i == 0 {
+                writeln!(new_ini, "{}={}", INI_KEYS[i], DEFAULT_INI_VALUES[i])?
+            }
+        }
     }
-
     Ok(())
 }
 
@@ -105,10 +116,7 @@ pub fn remove_array(file_name: &Path, key: &str) -> std::io::Result<()> {
         !skip_next_line
     };
 
-    let lines = content
-        .lines()
-        .filter(|&line| filter_lines(line))
-        .collect::<Vec<_>>();
+    let lines = content.lines().filter(|&line| filter_lines(line)).collect::<Vec<_>>();
 
     write(file_name, lines.join("\r\n"))
 }
