@@ -132,20 +132,19 @@ mod tests {
             does_dir_contain(
                 &mods_dir,
                 Operation::Count,
-                entries.iter().map(|f| f.as_str()).collect::<Vec<_>>().as_slice()
-            )
-            .unwrap(),
-            OperationResult::Count((num_entries, _))
+                entries.iter().map(|e| e.as_ref()).collect::<Vec<_>>().as_slice()
+            ),
+            Ok(OperationResult::Count((num_entries, _)))
         ));
 
         assert!(matches!(
-            does_dir_contain(&mods_dir, Operation::Any, &[entries[1].as_str()]).unwrap(),
-            OperationResult::Bool(true)
+            does_dir_contain(&mods_dir, Operation::Any, &[&entries[1]]),
+            Ok(OperationResult::Bool(true))
         ));
 
         assert!(matches!(
-            does_dir_contain(&mods_dir, Operation::Any, &["this_should_not_exist"]).unwrap(),
-            OperationResult::Bool(false)
+            does_dir_contain(&mods_dir, Operation::Any, &["this_should_not_exist"]),
+            Ok(OperationResult::Bool(false))
         ));
     }
 }
