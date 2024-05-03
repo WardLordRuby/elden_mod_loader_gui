@@ -3,19 +3,19 @@ pub mod common;
 #[cfg(test)]
 mod tests {
     use elden_mod_loader_gui::{
-        get_cfg, toggle_files,
+        does_dir_contain, get_cfg, toggle_files,
         utils::ini::{
             parser::{IniProperty, RegMod},
             writer::{new_cfg, save_path, save_paths},
         },
-        INI_KEYS, INI_SECTIONS, OFF_STATE,
+        Operation, OperationResult, INI_KEYS, INI_SECTIONS, OFF_STATE,
     };
     use std::{
-        fs::{remove_file, File},
+        fs::{self, remove_file, File},
         path::{Path, PathBuf},
     };
 
-    use crate::common::file_exists;
+    use crate::common::{file_exists, GAME_DIR};
 
     #[test]
     fn do_files_toggle() {
@@ -116,5 +116,36 @@ mod tests {
             remove_file(test_file).unwrap();
         }
         remove_file(save_file).unwrap();
+    }
+
+    #[test]
+    #[allow(unused_variables)]
+    fn does_dir_contain_work() {
+        let mods_dir = PathBuf::from(&format!("{GAME_DIR}\\mods"));
+        let entries = fs::read_dir(&mods_dir)
+            .unwrap()
+            .map(|f| f.unwrap().file_name().into_string().unwrap())
+            .collect::<Vec<_>>();
+        let num_entries = entries.len();
+
+        assert!(matches!(
+            does_dir_contain(
+                &mods_dir,
+                Operation::Count,
+                entries.iter().map(|f| f.as_str()).collect::<Vec<_>>().as_slice()
+            )
+            .unwrap(),
+            OperationResult::Count((num_entries, _))
+        ));
+
+        assert!(matches!(
+            does_dir_contain(&mods_dir, Operation::Any, &[entries[1].as_str()]).unwrap(),
+            OperationResult::Bool(true)
+        ));
+
+        assert!(matches!(
+            does_dir_contain(&mods_dir, Operation::Any, &["this_should_not_exist"]).unwrap(),
+            OperationResult::Bool(false)
+        ));
     }
 }

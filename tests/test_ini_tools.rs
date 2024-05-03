@@ -17,9 +17,7 @@ mod tests {
         INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_SECTIONS, OFF_STATE,
     };
 
-    use crate::common::new_cfg_with_sections;
-
-    const GAME_DIR: &str = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
+    use crate::common::{new_cfg_with_sections, GAME_DIR, TEMP_DIR};
 
     #[test]
     fn does_u32_parse() {
@@ -128,8 +126,7 @@ mod tests {
         let test_values = ["69420", "2", "1", "0"];
         let sorted_order = ["d_mod", "c_mod", "b_mod", "a_mod", "e_mod", "f_mod"];
         let test_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[2]));
-        let temp_path =
-            Path::new("C:\\Users\\cal_b\\Documents\\School\\code\\elden_mod_loader_gui\\temp");
+        let temp_path = Path::new(TEMP_DIR);
         let test_sections = [LOADER_SECTIONS[1], LOADER_SECTIONS[1], Some("paths")];
         let required_file = LOADER_FILES[1];
         {
