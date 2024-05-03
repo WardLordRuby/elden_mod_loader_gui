@@ -635,6 +635,14 @@ impl RegMod {
         }
         Ok(())
     }
+
+    pub fn update_dlls(&mut self, new: Vec<PathBuf>) {
+        self.files.dll = new
+    }
+
+    pub fn update_state(&mut self, new: bool) {
+        self.state = new
+    }
 }
 
 pub fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {

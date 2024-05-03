@@ -649,7 +649,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 if receive_msg().await != Message::Confirm {
                     return
                 }
-                let reg_mods = match RegMod::collect(current_ini, false) {
+                let mut reg_mods = match RegMod::collect(current_ini, false) {
                     Ok(reg_mods) => reg_mods,
                     Err(err) => {
                         ui.display_msg(&err.to_string());
@@ -659,12 +659,14 @@ fn main() -> Result<(), slint::PlatformError> {
                 };
                 let game_dir = get_or_update_game_dir(None);
                 if let Some(found_mod) =
-                    reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
+                    reg_mods.iter_mut().find(|reg_mod| format_key == reg_mod.name)
                 {
-                    let mut found_files = found_mod.files.dll.clone();
-                    if found_files.iter().any(FileData::is_disabled) {
+                    if found_mod.files.dll.iter().any(FileData::is_disabled) {
                         match toggle_files(&game_dir, true, found_mod, Some(current_ini)) {
-                            Ok(files) => found_files = files,
+                            Ok(files) => {
+                                found_mod.files.dll = files;
+                                found_mod.state = true;
+                            },
                             Err(err) => {
                                 ui.display_msg(&format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}"));
                                 return;
@@ -674,9 +676,8 @@ fn main() -> Result<(), slint::PlatformError> {
                     // we can let sync keys take care of removing files from ini
                     remove_entry(current_ini, INI_SECTIONS[2], &found_mod.name)
                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-                    let file_refs = found_mod.files.add_other_files_to_files(&found_files);
                     let ui_handle = ui.as_weak();
-                    match confirm_remove_mod(ui_handle, &game_dir, file_refs).await {
+                    match confirm_remove_mod(ui_handle, &game_dir, found_mod).await {
                         Ok(_) => ui.display_msg(&format!("Successfully removed all files associated with the previously registered mod \"{key}\"")),
                         Err(err) => {
                             match err.kind() {
@@ -1237,9 +1238,9 @@ async fn confirm_install(
 
 async fn confirm_remove_mod(
     ui_weak: slint::Weak<App>,
-    game_dir: &Path, files: Vec<&Path>) -> std::io::Result<()> {
+    game_dir: &Path, reg_mod: &RegMod) -> std::io::Result<()> {
     let ui = ui_weak.unwrap();
-    let install_dir = match files.iter().min_by_key(|file| file.ancestors().count()) {
+    let install_dir = match reg_mod.files.file_refs().iter().min_by_key(|file| file.ancestors().count()) {
         Some(path) => game_dir.join(parent_or_err(path)?),
         None => PathBuf::from("Error: Failed to display a parent_dir"),
     };
@@ -1251,7 +1252,7 @@ async fn confirm_remove_mod(
     if receive_msg().await != Message::Confirm {
         return new_io_error!(ErrorKind::ConnectionAborted, format!("Mod files are still installed at \"{}\"", install_dir.display()));
     };
-    remove_mod_files(game_dir, files)
+    remove_mod_files(game_dir, reg_mod)
 }
 
 async fn confirm_scan_mods(

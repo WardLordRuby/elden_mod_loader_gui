@@ -11,8 +11,10 @@ use crate::{
         parser::RegMod,
         writer::{save_bool, save_path, save_paths},
     },
-    FileData, INI_SECTIONS,
+    FileData, INI_SECTIONS, LOADER_SECTIONS,
 };
+
+use super::ini::{mod_loader::ModLoader, writer::remove_entry};
 
 /// Returns the deepest occurance of a directory that contains at least 1 file  
 /// Use parent_or_err for a direct binding to what is one level up
@@ -455,8 +457,13 @@ impl InstallData {
     }
 }
 
-pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<()> {
-    let remove_files = files.iter().map(|f| game_dir.join(f)).collect::<Vec<_>>();
+pub fn remove_mod_files(game_dir: &Path, reg_mod: &RegMod) -> std::io::Result<()> {
+    let remove_files = reg_mod
+        .files
+        .file_refs()
+        .iter()
+        .map(|f| game_dir.join(f))
+        .collect::<Vec<_>>();
 
     if remove_files.iter().any(|file| !matches!(file.try_exists(), Ok(true))) {
         return new_io_error!(
@@ -497,9 +504,17 @@ pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<(
             Ok(())
         }
     })?;
-    // MARK: TODO
-    // if mod has load order remove load order
-
+    if reg_mod.order.set {
+        let file_name = file_name_or_err(&reg_mod.files.dll[reg_mod.order.i])?;
+        remove_entry(
+            ModLoader::properties(game_dir)?.path(),
+            LOADER_SECTIONS[1],
+            file_name.to_str().ok_or(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("{file_name:?} is not valid UTF-8"),
+            ))?,
+        )?;
+    }
     Ok(())
 }
 
