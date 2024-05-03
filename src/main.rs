@@ -5,7 +5,7 @@
 use elden_mod_loader_gui::{
     utils::{
         ini::{
-            mod_loader::{ModLoader, ModLoaderCfg, update_order_entries, Countable},
+            mod_loader::{ModLoader, ModLoaderCfg, Countable},
             parser::{file_registered, IniProperty, RegMod, Setup, ErrorClone},
             writer::*,
         },
@@ -895,12 +895,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     None
                 }
             };
-            update_order_entries(stable_k, load_orders).unwrap_or_else(|err| {
-                ui.display_msg(&format!("Failed to parse value to an unsigned int\nError: {err}\n\nResetting load orders"));
-                result = error;
-                std::mem::swap(load_orders, &mut ini::Properties::new());
-            });
-            load_order.write_to_file().unwrap_or_else(|err| {
+            load_order.update_order_entries(stable_k).unwrap_or_else(|err| {
                 ui.display_msg(&format!("Failed to write to \"mod_loader_config.ini\"\n{err}"));
                 result = error;
             });
@@ -931,12 +926,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 result = 1
             };
             
-            update_order_entries(Some(&to_k), load_orders).unwrap_or_else(|err| {
-                ui.display_msg(&format!("Failed to parse value to an unsigned int\nError: {err}\n\nResetting load orders"));
-                result = -1;
-                std::mem::swap(load_orders, &mut ini::Properties::new());
-            });
-            load_order.write_to_file().unwrap_or_else(|err| {
+            load_order.update_order_entries(Some(&to_k)).unwrap_or_else(|err| {
                 ui.display_msg(&format!("Failed to write to \"mod_loader_config.ini\"\n{err}"));
                 if !result.is_negative() { result = -1 }
             });

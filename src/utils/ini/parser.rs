@@ -444,11 +444,13 @@ impl RegMod {
         }
     }
 
-    // MARK: FIXME?
+    // MARK: FIXME
     // when is the best time to verify parsed data? currently we verify data after shaping it
     // the code would most likely be cleaner if we verified it apon parsing before doing any shaping
 
     // should we have two collections? one for deserialization(full) one for just collect and verify
+
+    // collect needs to be completely recoverable, runing into an error and then returning a default is not good enough
     pub fn collect(ini_path: &Path, skip_validation: bool) -> std::io::Result<Vec<Self>> {
         type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
         type ModData<'a> = Vec<(
@@ -593,9 +595,9 @@ impl RegMod {
             let parsed_data = sync_keys(&ini, ini_path)?;
             let game_dir =
                 IniProperty::<PathBuf>::read(&ini, INI_SECTIONS[1], INI_KEYS[1], false)?.value;
-            let load_order_parsed = ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1])?
-                .parse_section()
-                .map_err(|err| err.into_io_error())?;
+            // parse_section is non critical write error | read_section is also non critical write error
+            let load_order_parsed =
+                ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1])?.parse_section()?;
             let parsed_data = combine_map_data(parsed_data, &load_order_parsed);
             let mut output = Vec::with_capacity(parsed_data.len());
             for (k, s, f, l) in parsed_data {
@@ -634,14 +636,6 @@ impl RegMod {
             let _ = toggle_files(game_dir, self.state, self, Some(ini_path))?;
         }
         Ok(())
-    }
-
-    pub fn update_dlls(&mut self, new: Vec<PathBuf>) {
-        self.files.dll = new
-    }
-
-    pub fn update_state(&mut self, new: bool) {
-        self.state = new
     }
 }
 

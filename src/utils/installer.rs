@@ -8,13 +8,12 @@ use std::{
 use crate::{
     does_dir_contain, file_name_or_err, new_io_error, parent_or_err,
     utils::ini::{
+        mod_loader::ModLoader,
         parser::RegMod,
-        writer::{save_bool, save_path, save_paths},
+        writer::{remove_entry, save_bool, save_path, save_paths},
     },
     FileData, INI_SECTIONS, LOADER_SECTIONS,
 };
-
-use super::ini::{mod_loader::ModLoader, writer::remove_entry};
 
 /// Returns the deepest occurance of a directory that contains at least 1 file  
 /// Use parent_or_err for a direct binding to what is one level up

@@ -1,4 +1,5 @@
 use ini::Ini;
+use log::trace;
 use std::{
     collections::HashMap,
     io::ErrorKind,
@@ -142,14 +143,34 @@ impl ModLoaderCfg {
         self.section().iter()
     }
 
-    /// Returns an owned `HashMap` with values parsed into K: `String`, V: `usize`
-    pub fn parse_section(&self) -> Result<HashMap<String, usize>, std::num::ParseIntError> {
+    /// Returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
+    /// this function also fixes usize.parse() errors and if values are out of order
+    pub fn parse_section(&mut self) -> std::io::Result<HashMap<String, usize>> {
+        let map = self.parse_into_map();
+        if self.section().len() != map.len() {
+            trace!("fixing usize parse error in \"{}\"", LOADER_FILES[2]);
+            self.update_order_entries(None)?;
+            return Ok(self.parse_into_map());
+        }
+        let mut values = self.iter().filter_map(|(k, _)| map.get(k)).collect::<Vec<_>>();
+        values.sort();
+        for (i, value) in values.iter().enumerate() {
+            if i != **value {
+                trace!(
+                    "values in \"{}\" are not in order, sorting entries",
+                    LOADER_FILES[2]
+                );
+                self.update_order_entries(None)?;
+                return Ok(self.parse_into_map());
+            }
+        }
+        Ok(map)
+    }
+
+    fn parse_into_map(&self) -> HashMap<String, usize> {
         self.iter()
-            .map(|(k, v)| {
-                let parse_v = v.parse::<usize>();
-                Ok((k.to_string(), parse_v?))
-            })
-            .collect::<Result<HashMap<String, usize>, _>>()
+            .filter_map(|(k, v)| Some((k.to_string(), v.parse::<usize>().ok()?)))
+            .collect::<HashMap<String, usize>>()
     }
 
     #[inline]
@@ -165,42 +186,42 @@ impl ModLoaderCfg {
     pub fn write_to_file(&self) -> std::io::Result<()> {
         self.cfg.write_to_file_opt(&self.cfg_dir, EXT_OPTIONS)
     }
-}
 
-pub fn update_order_entries(
-    stable: Option<&str>,
-    section: &mut ini::Properties,
-) -> Result<(), std::num::ParseIntError> {
-    let mut k_v = Vec::with_capacity(section.len());
-    let (mut stable_k, mut stable_v) = (String::new(), 0_usize);
-    for (k, v) in section.clone() {
-        section.remove(&k);
-        if let Some(new_k) = stable {
-            if k == new_k {
-                (stable_k, stable_v) = (k, v.parse::<usize>()?);
-                continue;
+    pub fn update_order_entries(&mut self, stable: Option<&str>) -> std::io::Result<()> {
+        let mut k_v = Vec::with_capacity(self.section().len());
+        let (mut stable_k, mut stable_v) = ("", 0_usize);
+        for (k, v) in self.iter() {
+            if let Some(new_k) = stable {
+                if k == new_k {
+                    (stable_k, stable_v) = (k, v.parse::<usize>().unwrap_or(usize::MAX));
+                    continue;
+                }
             }
+            k_v.push((k, v.parse::<usize>().unwrap_or(usize::MAX)));
         }
-        k_v.push((k, v.parse::<usize>()?));
-    }
-    k_v.sort_by_key(|(_, v)| *v);
-    if k_v.is_empty() && !stable_k.is_empty() {
-        section.append(&stable_k, "0");
-    } else {
-        let mut offset = 0_usize;
-        for (k, _) in k_v {
-            if !stable_k.is_empty() && !section.contains_key(&stable_k) && stable_v == offset {
-                section.append(&stable_k, stable_v.to_string());
+        k_v.sort_by_key(|(_, v)| *v);
+
+        let mut new_section = ini::Properties::new();
+
+        if k_v.is_empty() && !stable_k.is_empty() {
+            new_section.append(stable_k, "0");
+        } else {
+            let mut offset = 0_usize;
+            for (k, _) in k_v {
+                if !stable_k.is_empty() && stable_v == offset {
+                    new_section.append(std::mem::take(&mut stable_k), stable_v.to_string());
+                    offset += 1;
+                }
+                new_section.append(k, offset.to_string());
                 offset += 1;
             }
-            section.append(k, offset.to_string());
-            offset += 1;
+            if !stable_k.is_empty() {
+                new_section.append(stable_k, offset.to_string())
+            }
         }
-        if !stable_k.is_empty() && !section.contains_key(&stable_k) {
-            section.append(&stable_k, offset.to_string())
-        }
+        std::mem::swap(self.mut_section(), &mut new_section);
+        self.write_to_file()
     }
-    Ok(())
 }
 
 pub trait Countable {
