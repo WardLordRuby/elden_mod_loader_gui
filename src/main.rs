@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -352,7 +352,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     )),
                     2.. => {
                         let path_refs = files.iter().map(|p| p.as_path()).collect::<Vec<_>>();
-                        results.push(save_paths(current_ini, &format_key, &path_refs))
+                        results.push(save_paths(current_ini, INI_SECTIONS[3], &format_key, &path_refs))
                     },
                 }
                 if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
@@ -587,7 +587,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         } else {
                             results.push(remove_array(current_ini, &found_mod.name));
                         }
-                        results.push(save_paths(current_ini, &found_mod.name, &new_data_refs));
+                        results.push(save_paths(current_ini, INI_SECTIONS[3], &found_mod.name, &new_data_refs));
                         if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
                             ui.display_msg(&err.to_string());
                             let _ = remove_entry(

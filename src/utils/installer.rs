@@ -572,7 +572,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
         if file_refs.len() == 1 {
             save_path(ini_file, INI_SECTIONS[3], &mod_data.name, file_refs[0])?;
         } else {
-            save_paths(ini_file, &mod_data.name, &file_refs)?;
+            save_paths(ini_file, INI_SECTIONS[3], &mod_data.name, &file_refs)?;
         }
         mod_data.verify_state(game_dir, ini_file)?;
     }

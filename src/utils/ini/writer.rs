@@ -23,7 +23,12 @@ pub const EXT_OPTIONS: WriteOption = WriteOption {
     kv_separator: " = ",
 };
 
-pub fn save_paths(file_name: &Path, key: &str, files: &[&Path]) -> std::io::Result<()> {
+pub fn save_paths(
+    file_name: &Path,
+    section: Option<&str>,
+    key: &str,
+    files: &[&Path],
+) -> std::io::Result<()> {
     let mut config: Ini = get_cfg(file_name)?;
     let save_paths = files
         .iter()
@@ -31,7 +36,7 @@ pub fn save_paths(file_name: &Path, key: &str, files: &[&Path]) -> std::io::Resu
         .collect::<Vec<_>>()
         .join("\r\narray[]=");
     config
-        .with_section(INI_SECTIONS[3])
+        .with_section(section)
         .set(key, format!("array\r\narray[]={save_paths}"));
     config.write_to_file_opt(file_name, WRITE_OPTIONS)
 }

@@ -15,7 +15,7 @@ use crate::{
     Operation, OperationResult, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
 };
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ModLoader {
     installed: bool,
     disabled: bool,
@@ -46,13 +46,7 @@ impl ModLoader {
                         path: cfg_dir,
                     })
                 } else {
-                    return new_io_error!(
-                        ErrorKind::InvalidData,
-                        format!(
-                            "Elden Mod Loader is not installed at: {}",
-                            game_dir.display()
-                        )
-                    );
+                    Ok(ModLoader::default())
                 }
             }
             Err(err) => Err(err),
@@ -81,7 +75,7 @@ impl ModLoader {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ModLoaderCfg {
     cfg: Ini,
     cfg_dir: PathBuf,
@@ -94,6 +88,7 @@ impl ModLoaderCfg {
             return new_io_error!(ErrorKind::InvalidInput, "section can not be none");
         }
         let cfg_dir = ModLoader::properties(game_dir)?.path;
+
         let mut cfg = get_cfg(&cfg_dir)?;
         if !cfg.is_setup(&LOADER_SECTIONS) {
             new_cfg(&cfg_dir)?;
@@ -136,6 +131,14 @@ impl ModLoaderCfg {
     #[inline]
     fn section(&self) -> &ini::Properties {
         self.cfg.section(self.section.as_ref()).unwrap()
+    }
+
+    #[inline]
+    /// updates the current section, general sections `None` are not supported
+    pub fn set_section(&mut self, new: Option<&str>) {
+        if new.is_some() {
+            self.section = new.map(String::from)
+        }
     }
 
     #[inline]
@@ -187,7 +190,23 @@ impl ModLoaderCfg {
         self.cfg.write_to_file_opt(&self.cfg_dir, EXT_OPTIONS)
     }
 
+    /// updates the load order values in `Some("loadorder")` so they are always `0..`  
+    /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  
+    /// then writes the updated key values to file
+    ///
+    /// error cases:  
+    ///     section is not set to "loadorder"  
+    ///     fails to write to file  
     pub fn update_order_entries(&mut self, stable: Option<&str>) -> std::io::Result<()> {
+        if self.section.as_deref() != LOADER_SECTIONS[1] {
+            return new_io_error!(
+                ErrorKind::InvalidInput,
+                format!(
+                    "This function is only supported to modify Section: \"{}\"",
+                    LOADER_SECTIONS[1].unwrap()
+                )
+            );
+        }
         let mut k_v = Vec::with_capacity(self.section().len());
         let (mut stable_k, mut stable_v) = ("", 0_usize);
         for (k, v) in self.iter() {
@@ -228,7 +247,7 @@ pub trait Countable {
     fn order_count(&self) -> usize;
 }
 
-impl<'a> Countable for &'a [RegMod] {
+impl Countable for &[RegMod] {
     #[inline]
     fn order_count(&self) -> usize {
         self.iter().filter(|m| m.order.set).count()

@@ -157,7 +157,7 @@ pub fn toggle_files(
             save_path(save_file, INI_SECTIONS[3], key, path_to_save[0])?;
         } else {
             remove_array(save_file, key)?;
-            save_paths(save_file, key, path_to_save)?;
+            save_paths(save_file, INI_SECTIONS[3], key, path_to_save)?;
         }
         save_bool(save_file, INI_SECTIONS[2], key, state)?;
         Ok(())

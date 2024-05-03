@@ -281,7 +281,7 @@ impl<T: Parsable> IniProperty<T> {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct RegMod {
     /// user defined Key in snake_case
     pub name: String,
@@ -296,7 +296,7 @@ pub struct RegMod {
     pub order: LoadOrder,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct SplitFiles {
     /// files with extension `.dll` | also possible they end in `.dll.disabled`  
     /// saved as short paths with `game_dir` truncated
@@ -311,7 +311,7 @@ pub struct SplitFiles {
     pub other: Vec<PathBuf>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct LoadOrder {
     /// if one of `SplitFiles.dll` has a set load_order
     pub set: bool,
@@ -682,7 +682,7 @@ pub trait ModError {
 
 impl ModError for std::io::Error {
     fn add_msg(self, msg: String) -> std::io::Error {
-        std::io::Error::new(self.kind(), format!("{msg}\n\nError: {self}"))
+        std::io::Error::new(self.kind(), format!("{msg}\n\n{self}"))
     }
 }
 

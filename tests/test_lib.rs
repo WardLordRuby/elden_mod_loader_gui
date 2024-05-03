@@ -1,40 +1,47 @@
+pub mod common;
+
 #[cfg(test)]
 mod tests {
     use elden_mod_loader_gui::{
-        toggle_files,
-        utils::ini::{parser::RegMod, writer::new_cfg},
-        OFF_STATE,
+        get_cfg, toggle_files,
+        utils::ini::{
+            parser::{IniProperty, RegMod},
+            writer::{new_cfg, save_path, save_paths},
+        },
+        INI_KEYS, INI_SECTIONS, OFF_STATE,
     };
     use std::{
-        fs::{metadata, remove_file, File},
+        fs::{remove_file, File},
         path::{Path, PathBuf},
     };
 
+    use crate::common::file_exists;
+
     #[test]
     fn do_files_toggle() {
-        fn file_exists(file_path: &Path) -> bool {
-            if let Ok(metadata) = metadata(file_path) {
-                metadata.is_file()
-            } else {
-                false
-            }
-        }
-
         let dir_to_test_files =
             Path::new("C:\\Users\\cal_b\\Documents\\School\\code\\elden_mod_loader_gui");
         let save_file = Path::new("temp\\file_toggle_test.ini");
-        new_cfg(save_file).unwrap();
 
         let test_files = vec![
-            PathBuf::from("temp\\test1.txt"),
-            PathBuf::from("temp\\test2.bhd"),
-            PathBuf::from("temp\\test3.dll"),
-            PathBuf::from("temp\\test4.exe"),
-            PathBuf::from("temp\\test5.bin"),
-            PathBuf::from("temp\\config.ini"),
+            Path::new("temp\\test1.txt"),
+            Path::new("temp\\test2.bhd"),
+            Path::new("temp\\test3.dll"),
+            Path::new("temp\\test4.exe"),
+            Path::new("temp\\test5.bin"),
+            Path::new("temp\\config.ini"),
         ];
+        let test_key = "test_files";
 
-        let test_mod = RegMod::new("Test", true, test_files.clone());
+        new_cfg(save_file).unwrap();
+        save_path(save_file, INI_SECTIONS[1], INI_KEYS[1], dir_to_test_files).unwrap();
+        save_paths(save_file, INI_SECTIONS[3], test_key, &test_files).unwrap();
+
+        let test_mod = RegMod::new(
+            test_key,
+            true,
+            test_files.iter().map(PathBuf::from).collect(),
+        );
         let mut test_files_disabled = test_mod
             .files
             .dll
@@ -64,6 +71,20 @@ mod tests {
 
         test_files_disabled.extend(test_mod.files.config);
         test_files_disabled.extend(test_mod.files.other);
+
+        let read_disabled_ini = IniProperty::<Vec<PathBuf>>::read(
+            &get_cfg(save_file).unwrap(),
+            INI_SECTIONS[3],
+            test_key,
+            true,
+        )
+        .unwrap()
+        .value;
+
+        assert!(read_disabled_ini
+            .iter()
+            .all(|read| test_files_disabled.contains(read)));
+
         let test_mod = RegMod::new(&test_mod.name, false, test_files_disabled);
 
         toggle_files(
@@ -75,11 +96,24 @@ mod tests {
         .unwrap();
 
         for path_to_test in test_files.iter() {
-            assert!(file_exists(path_to_test.as_path()));
+            assert!(file_exists(path_to_test));
         }
 
+        let read_enabled_ini = IniProperty::<Vec<PathBuf>>::read(
+            &get_cfg(save_file).unwrap(),
+            INI_SECTIONS[3],
+            test_key,
+            true,
+        )
+        .unwrap()
+        .value;
+
+        assert!(read_enabled_ini
+            .iter()
+            .all(|read| test_files.contains(&read.as_path())));
+
         for test_file in test_files.iter() {
-            remove_file(test_file.as_path()).unwrap();
+            remove_file(test_file).unwrap();
         }
         remove_file(save_file).unwrap();
     }
