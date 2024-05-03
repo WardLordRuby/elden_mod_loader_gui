@@ -1,5 +1,6 @@
 pub mod common;
 
+#[cfg(test)]
 mod tests {
     use std::{
         fs::{remove_file, File},
