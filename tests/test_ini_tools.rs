@@ -17,7 +17,7 @@ mod tests {
         INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_SECTIONS, OFF_STATE,
     };
 
-    use crate::common::{new_cfg_with_sections, GAME_DIR, TEMP_DIR};
+    use crate::common::{new_cfg_with_sections, GAME_DIR};
 
     #[test]
     fn does_u32_parse() {
@@ -125,28 +125,29 @@ mod tests {
             .collect::<Vec<_>>();
         let test_values = ["69420", "2", "1", "0"];
         let sorted_order = ["d_mod", "c_mod", "b_mod", "a_mod", "e_mod", "f_mod"];
+
         let test_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[2]));
-        let temp_path = Path::new(TEMP_DIR);
+        let required_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[1]));
+
         let test_sections = [LOADER_SECTIONS[1], LOADER_SECTIONS[1], Some("paths")];
-        let required_file = LOADER_FILES[1];
         {
-            new_cfg_with_sections(test_file.as_path(), &test_sections).unwrap();
+            new_cfg_with_sections(&test_file, &test_sections).unwrap();
             for (i, key) in test_keys.iter().enumerate() {
-                save_path(test_file.as_path(), test_sections[2], key, &test_files[i]).unwrap();
+                save_path(&test_file, test_sections[2], key, &test_files[i]).unwrap();
             }
             for (i, value) in test_values.iter().enumerate() {
                 save_value_ext(
-                    test_file.as_path(),
+                    &test_file,
                     test_sections[1],
                     test_files[i].to_str().unwrap(),
                     value,
                 )
                 .unwrap();
             }
-            File::create(temp_path.join(required_file)).unwrap();
+            File::create(&required_file).unwrap();
         }
 
-        let mut cfg = ModLoaderCfg::read_section(temp_path, test_sections[1]).unwrap();
+        let mut cfg = ModLoaderCfg::read_section(Path::new("temp\\"), test_sections[1]).unwrap();
 
         let parsed_cfg = cfg.parse_section().unwrap();
 
@@ -169,16 +170,14 @@ mod tests {
             .for_each(|m| assert_eq!(m.name, sorted_order[m.order.at]));
 
         remove_file(test_file).unwrap();
+        remove_file(required_file).unwrap();
     }
 
     #[test]
     #[allow(unused_variables)]
     fn type_check() {
         let test_path = Path::new(GAME_DIR);
-        let test_array = [
-            Path::new("mods\\UnlockTheFps.dll"),
-            Path::new("mods\\UnlockTheFps\\config.ini"),
-        ];
+        let test_array = [Path::new("temp\\test"), Path::new("temp\\test")];
         let test_file = Path::new("temp\\test_type_check.ini");
         let test_sections = [Some("path"), Some("paths")];
         let array_key = "test_array";

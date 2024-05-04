@@ -19,22 +19,20 @@ mod tests {
 
     #[test]
     fn do_files_toggle() {
-        let dir_to_test_files =
-            Path::new("C:\\Users\\cal_b\\Documents\\School\\code\\elden_mod_loader_gui");
         let save_file = Path::new("temp\\file_toggle_test.ini");
 
         let test_files = vec![
-            Path::new("temp\\test1.txt"),
-            Path::new("temp\\test2.bhd"),
-            Path::new("temp\\test3.dll"),
-            Path::new("temp\\test4.exe"),
-            Path::new("temp\\test5.bin"),
-            Path::new("temp\\config.ini"),
+            Path::new("test1.txt"),
+            Path::new("test2.bhd"),
+            Path::new("test3.dll"),
+            Path::new("test4.exe"),
+            Path::new("test5.bin"),
+            Path::new("config.ini"),
         ];
         let test_key = "test_files";
 
         new_cfg(save_file).unwrap();
-        save_path(save_file, INI_SECTIONS[1], INI_KEYS[1], dir_to_test_files).unwrap();
+        save_path(save_file, INI_SECTIONS[1], INI_KEYS[1], Path::new("temp\\")).unwrap();
         save_paths(save_file, INI_SECTIONS[3], test_key, &test_files).unwrap();
 
         let test_mod = RegMod::new(
@@ -54,16 +52,10 @@ mod tests {
         assert_eq!(test_mod.files.other.len(), 4);
 
         for test_file in test_files.iter() {
-            File::create(test_file.to_string_lossy().to_string()).unwrap();
+            File::create(test_file).unwrap();
         }
 
-        toggle_files(
-            dir_to_test_files,
-            !test_mod.state,
-            &test_mod,
-            Some(save_file),
-        )
-        .unwrap();
+        toggle_files(Path::new(""), !test_mod.state, &test_mod, Some(save_file)).unwrap();
 
         for path_to_test in test_files_disabled.iter() {
             assert!(file_exists(path_to_test.as_path()));
@@ -87,13 +79,7 @@ mod tests {
 
         let test_mod = RegMod::new(&test_mod.name, false, test_files_disabled);
 
-        toggle_files(
-            dir_to_test_files,
-            !test_mod.state,
-            &test_mod,
-            Some(save_file),
-        )
-        .unwrap();
+        toggle_files(Path::new(""), !test_mod.state, &test_mod, Some(save_file)).unwrap();
 
         for path_to_test in test_files.iter() {
             assert!(file_exists(path_to_test));

@@ -24,12 +24,12 @@ pub const EXT_OPTIONS: WriteOption = WriteOption {
 };
 
 pub fn save_paths(
-    file_name: &Path,
+    file_path: &Path,
     section: Option<&str>,
     key: &str,
     files: &[&Path],
 ) -> std::io::Result<()> {
-    let mut config: Ini = get_cfg(file_name)?;
+    let mut config: Ini = get_cfg(file_path)?;
     let save_paths = files
         .iter()
         .map(|path| path.to_string_lossy())
@@ -38,42 +38,42 @@ pub fn save_paths(
     config
         .with_section(section)
         .set(key, format!("array\r\narray[]={save_paths}"));
-    config.write_to_file_opt(file_name, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)
 }
 
 pub fn save_path(
-    file_name: &Path,
+    file_path: &Path,
     section: Option<&str>,
     key: &str,
     path: &Path,
 ) -> std::io::Result<()> {
-    let mut config: Ini = get_cfg(file_name)?;
+    let mut config: Ini = get_cfg(file_path)?;
     config
         .with_section(section)
         .set(key, path.to_string_lossy().to_string());
-    config.write_to_file_opt(file_name, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)
 }
 
 pub fn save_bool(
-    file_name: &Path,
+    file_path: &Path,
     section: Option<&str>,
     key: &str,
     value: bool,
 ) -> std::io::Result<()> {
-    let mut config: Ini = get_cfg(file_name)?;
+    let mut config: Ini = get_cfg(file_path)?;
     config.with_section(section).set(key, value.to_string());
-    config.write_to_file_opt(file_name, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)
 }
 
 pub fn save_value_ext(
-    file_name: &Path,
+    file_path: &Path,
     section: Option<&str>,
     key: &str,
     value: &str,
 ) -> std::io::Result<()> {
-    let mut config: Ini = get_cfg(file_name)?;
+    let mut config: Ini = get_cfg(file_path)?;
     config.with_section(section).set(key, value);
-    config.write_to_file_opt(file_name, EXT_OPTIONS)
+    config.write_to_file_opt(file_path, EXT_OPTIONS)
 }
 
 pub fn new_cfg(path: &Path) -> std::io::Result<()> {
@@ -103,8 +103,8 @@ pub fn new_cfg(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn remove_array(file_name: &Path, key: &str) -> std::io::Result<()> {
-    let content = read_to_string(file_name)?;
+pub fn remove_array(file_path: &Path, key: &str) -> std::io::Result<()> {
+    let content = read_to_string(file_path)?;
 
     let mut skip_next_line = false;
     let mut key_found = false;
@@ -123,11 +123,11 @@ pub fn remove_array(file_name: &Path, key: &str) -> std::io::Result<()> {
 
     let lines = content.lines().filter(|&line| filter_lines(line)).collect::<Vec<_>>();
 
-    write(file_name, lines.join("\r\n"))
+    write(file_path, lines.join("\r\n"))
 }
 
-pub fn remove_entry(file_name: &Path, section: Option<&str>, key: &str) -> std::io::Result<()> {
-    let mut config: Ini = get_cfg(file_name)?;
+pub fn remove_entry(file_path: &Path, section: Option<&str>, key: &str) -> std::io::Result<()> {
+    let mut config: Ini = get_cfg(file_path)?;
     config.delete_from(section, key).ok_or(std::io::Error::new(
         ErrorKind::Other,
         format!(
@@ -135,5 +135,5 @@ pub fn remove_entry(file_name: &Path, section: Option<&str>, key: &str) -> std::
             &section.expect("Passed in section should be valid")
         ),
     ))?;
-    config.write_to_file_opt(file_name, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)
 }

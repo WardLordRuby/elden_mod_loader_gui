@@ -193,8 +193,8 @@ pub fn toggle_files(
     Ok(short_path_new)
 }
 
-pub fn get_cfg(input_file: &Path) -> std::io::Result<Ini> {
-    Ini::load_from_file_noescape(input_file).map_err(|err| err.into_io_error())
+pub fn get_cfg(from_path: &Path) -> std::io::Result<Ini> {
+    Ini::load_from_file_noescape(from_path).map_err(|err| err.into_io_error())
 }
 
 pub enum Operation {

@@ -5,7 +5,6 @@ use std::{
 };
 
 pub const GAME_DIR: &str = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
-pub const TEMP_DIR: &str = "C:\\Users\\cal_b\\Documents\\School\\code\\elden_mod_loader_gui\\temp";
 
 pub fn new_cfg_with_sections(path: &Path, sections: &[Option<&str>]) -> std::io::Result<()> {
     let parent = path.parent().unwrap();
