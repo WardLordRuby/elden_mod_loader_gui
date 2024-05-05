@@ -77,7 +77,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 None
             }
         };
-        let ini = match ini {
+        let mut ini = match ini {
             Some(ini_data) => Cfg::from(ini_data, current_ini),
             None => {
                 Cfg::read(current_ini).unwrap_or_else(|err| {
@@ -129,6 +129,13 @@ fn main() -> Result<(), slint::PlatformError> {
                             errors.push(err);
                         }
                     };
+                    if reg_mods.is_some() && reg_mods.as_ref().unwrap().len() != mods_registered(&ini.data) {
+                        ini = Cfg::read(current_ini).unwrap_or_else(|err| {
+                            debug!("error 7");
+                            errors.push(err);
+                            Cfg { data: ini::Ini::new(), dir: current_ini.to_owned() }
+                        })
+                    }
                     game_verified = true;
                     Some(path)
                 },

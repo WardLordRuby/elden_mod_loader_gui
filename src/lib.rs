@@ -377,7 +377,7 @@ impl Cfg {
         })
     }
 
-    pub fn attempt_locate_game(&self) -> std::io::Result<PathResult> {
+    pub fn attempt_locate_game(&mut self) -> std::io::Result<PathResult> {
         if let Ok(path) =
             IniProperty::<PathBuf>::read(&self.data, INI_SECTIONS[1], INI_KEYS[1], false)
         {
@@ -396,6 +396,9 @@ impl Cfg {
                 INI_KEYS[1],
                 try_locate.as_path(),
             )?;
+            self.data
+                .with_section(INI_SECTIONS[1])
+                .set(INI_KEYS[1], try_locate.to_string_lossy().to_string());
             return Ok(PathResult::Full(try_locate));
         }
         if try_locate.components().count() > 1 {
