@@ -76,7 +76,7 @@ pub fn save_value_ext(
     config.write_to_file_opt(file_path, EXT_OPTIONS)
 }
 
-pub fn new_cfg(path: &Path) -> std::io::Result<()> {
+pub fn new_cfg(path: &Path) -> std::io::Result<Ini> {
     let file_name = file_name_or_err(path)?;
     let parent = parent_or_err(path)?;
 
@@ -100,7 +100,7 @@ pub fn new_cfg(path: &Path) -> std::io::Result<()> {
             }
         }
     }
-    Ok(())
+    get_cfg(path)
 }
 
 pub fn remove_array(file_path: &Path, key: &str) -> std::io::Result<()> {

@@ -41,7 +41,7 @@ mod tests {
         for (i, num) in test_nums.iter().enumerate() {
             assert_eq!(
                 *num,
-                IniProperty::<u32>::read(&config, test_section[0], &format!("test_num_{i}"), false)
+                IniProperty::<u32>::read(&config, test_section[0], &format!("test_num_{i}"))
                     .unwrap()
                     .value
             )
@@ -73,14 +73,9 @@ mod tests {
         for (i, bool) in bool_results.iter().enumerate() {
             assert_eq!(
                 *bool,
-                IniProperty::<bool>::read(
-                    &config,
-                    test_section[0],
-                    &format!("test_bool_{i}"),
-                    false
-                )
-                .unwrap()
-                .value
+                IniProperty::<bool>::read(&config, test_section[0], &format!("test_bool_{i}"))
+                    .unwrap()
+                    .value
             )
         }
 
@@ -129,7 +124,7 @@ mod tests {
         let test_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[2]));
         let required_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[1]));
 
-        let test_sections = [LOADER_SECTIONS[1], LOADER_SECTIONS[1], Some("paths")];
+        let test_sections = [LOADER_SECTIONS[0], LOADER_SECTIONS[1], Some("paths")];
         {
             new_cfg_with_sections(&test_file, &test_sections).unwrap();
             for (i, key) in test_keys.iter().enumerate() {
@@ -147,7 +142,7 @@ mod tests {
             File::create(&required_file).unwrap();
         }
 
-        let mut cfg = ModLoaderCfg::read_section(Path::new("temp\\"), test_sections[1]).unwrap();
+        let mut cfg = ModLoaderCfg::read_section(&test_file, test_sections[1]).unwrap();
 
         let parsed_cfg = cfg.parse_section().unwrap();
 
@@ -197,8 +192,13 @@ mod tests {
             "Invalid type found. Expected: Vec<Path>, Found: Path",
         );
 
-        let vec_result =
-            IniProperty::<Vec<PathBuf>>::read(&config, test_sections[0], INI_KEYS[1], false);
+        let vec_result = IniProperty::<Vec<PathBuf>>::read(
+            &config,
+            test_sections[0],
+            INI_KEYS[1],
+            test_path,
+            false,
+        );
         assert_eq!(
             vec_result.unwrap_err().to_string(),
             vec_pathbuf_err.to_string()
@@ -318,7 +318,6 @@ mod tests {
             &get_cfg(test_file).unwrap(),
             INI_SECTIONS[2],
             &test_mod_2.name,
-            false,
         )
         .unwrap()
         .value;

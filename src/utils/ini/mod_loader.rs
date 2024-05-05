@@ -1,5 +1,5 @@
 use ini::Ini;
-use log::trace;
+use log::{trace, warn};
 use std::{
     collections::HashMap,
     io::ErrorKind,
@@ -7,9 +7,9 @@ use std::{
 };
 
 use crate::{
-    does_dir_contain, get_cfg, new_io_error,
+    does_dir_contain, get_or_setup_cfg, new_io_error,
     utils::ini::{
-        parser::{IniProperty, ModError, RegMod, Setup},
+        parser::{IniProperty, ModError, RegMod},
         writer::{new_cfg, EXT_OPTIONS},
     },
     Operation, OperationResult, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
@@ -27,7 +27,8 @@ impl ModLoader {
         let cfg_dir = game_dir.join(LOADER_FILES[2]);
         match does_dir_contain(game_dir, Operation::Count, &LOADER_FILES) {
             Ok(OperationResult::Count((_, files))) => {
-                if files.contains(LOADER_FILES[1]) || !files.contains(LOADER_FILES[0]) {
+                if files.contains(LOADER_FILES[1]) && !files.contains(LOADER_FILES[0]) {
+                    trace!("Mod loader found in the Enabled state");
                     if !files.contains(LOADER_FILES[2]) {
                         new_cfg(&cfg_dir)?;
                     }
@@ -36,7 +37,8 @@ impl ModLoader {
                         disabled: false,
                         path: cfg_dir,
                     })
-                } else if files.contains(LOADER_FILES[0]) || !files.contains(LOADER_FILES[1]) {
+                } else if files.contains(LOADER_FILES[0]) && !files.contains(LOADER_FILES[1]) {
+                    trace!("Mod loader found in the Disabled state");
                     if !files.contains(LOADER_FILES[2]) {
                         new_cfg(&cfg_dir)?;
                     }
@@ -46,6 +48,7 @@ impl ModLoader {
                         path: cfg_dir,
                     })
                 } else {
+                    warn!("Mod loader dll hook not found");
                     Ok(ModLoader::default())
                 }
             }
@@ -83,28 +86,21 @@ pub struct ModLoaderCfg {
 }
 
 impl ModLoaderCfg {
-    pub fn read_section(game_dir: &Path, section: Option<&str>) -> std::io::Result<ModLoaderCfg> {
+    pub fn read_section(cfg_dir: &Path, section: Option<&str>) -> std::io::Result<ModLoaderCfg> {
         if section.is_none() {
             return new_io_error!(ErrorKind::InvalidInput, "section can not be none");
         }
-        let cfg_dir = ModLoader::properties(game_dir)?.path;
 
-        let mut cfg = get_cfg(&cfg_dir)?;
-        if !cfg.is_setup(&LOADER_SECTIONS) {
-            new_cfg(&cfg_dir)?;
-        }
-        if cfg.section(section).is_none() {
-            cfg.init_section(section)?
-        }
+        let cfg = get_or_setup_cfg(cfg_dir, &LOADER_SECTIONS)?;
         Ok(ModLoaderCfg {
             cfg,
-            cfg_dir,
+            cfg_dir: PathBuf::from(cfg_dir),
             section: section.map(String::from),
         })
     }
 
     pub fn get_load_delay(&self) -> std::io::Result<u32> {
-        match IniProperty::<u32>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[0], false) {
+        match IniProperty::<u32>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[0]) {
             Ok(delay_time) => Ok(delay_time.value),
             Err(err) => Err(err.add_msg(format!(
                 "Found an unexpected character saved in \"{}\"",
@@ -114,7 +110,7 @@ impl ModLoaderCfg {
     }
 
     pub fn get_show_terminal(&self) -> std::io::Result<bool> {
-        match IniProperty::<bool>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[1], false) {
+        match IniProperty::<bool>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[1]) {
             Ok(delay_time) => Ok(delay_time.value),
             Err(err) => Err(err.add_msg(format!(
                 "Found an unexpected character saved in \"{}\"",

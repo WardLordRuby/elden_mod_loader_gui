@@ -8,7 +8,7 @@ mod tests {
             parser::{IniProperty, RegMod},
             writer::{new_cfg, save_path, save_paths},
         },
-        Operation, OperationResult, INI_KEYS, INI_SECTIONS, OFF_STATE,
+        Operation, OperationResult, INI_SECTIONS, OFF_STATE,
     };
     use std::{
         fs::{self, remove_file, File},
@@ -30,9 +30,11 @@ mod tests {
             Path::new("config.ini"),
         ];
         let test_key = "test_files";
+        let prefix_key = "test_dir";
+        let prefix = Path::new("temp\\");
 
         new_cfg(save_file).unwrap();
-        save_path(save_file, INI_SECTIONS[1], INI_KEYS[1], Path::new("temp\\")).unwrap();
+        save_path(save_file, INI_SECTIONS[1], prefix_key, prefix).unwrap();
         save_paths(save_file, INI_SECTIONS[3], test_key, &test_files).unwrap();
 
         let test_mod = RegMod::new(
@@ -68,6 +70,7 @@ mod tests {
             &get_cfg(save_file).unwrap(),
             INI_SECTIONS[3],
             test_key,
+            prefix,
             true,
         )
         .unwrap()
@@ -89,6 +92,7 @@ mod tests {
             &get_cfg(save_file).unwrap(),
             INI_SECTIONS[3],
             test_key,
+            prefix,
             true,
         )
         .unwrap()

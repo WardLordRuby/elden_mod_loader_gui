@@ -7,29 +7,30 @@ use std::{
 };
 
 use crate::{
-    get_cfg, new_io_error, toggle_files,
+    files_not_found, get_cfg, new_io_error, toggle_files,
     utils::ini::{
         mod_loader::ModLoaderCfg,
         writer::{remove_array, remove_entry},
     },
-    FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, LOADER_SECTIONS, OFF_STATE,
+    FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_SECTIONS,
+    OFF_STATE, REQUIRED_GAME_FILES,
 };
 
 pub trait Parsable: Sized {
-    fn parse_str<T: AsRef<Path>>(
+    fn parse_str(
         ini: &Ini,
         section: Option<&str>,
-        partial_path: Option<T>,
+        partial_path: Option<&Path>,
         key: &str,
         skip_validation: bool,
     ) -> std::io::Result<Self>;
 }
 
 impl Parsable for bool {
-    fn parse_str<T: AsRef<Path>>(
+    fn parse_str(
         ini: &Ini,
         section: Option<&str>,
-        _partial_path: Option<T>,
+        _partial_path: Option<&Path>,
         key: &str,
         _skip_validation: bool,
     ) -> std::io::Result<Self> {
@@ -45,10 +46,10 @@ impl Parsable for bool {
 }
 
 impl Parsable for u32 {
-    fn parse_str<T: AsRef<Path>>(
+    fn parse_str(
         ini: &Ini,
         section: Option<&str>,
-        _partial_path: Option<T>,
+        _partial_path: Option<&Path>,
         key: &str,
         _skip_validation: bool,
     ) -> std::io::Result<Self> {
@@ -60,10 +61,10 @@ impl Parsable for u32 {
 }
 
 impl Parsable for PathBuf {
-    fn parse_str<T: AsRef<Path>>(
+    fn parse_str(
         ini: &Ini,
         section: Option<&str>,
-        partial_path: Option<T>,
+        partial_path: Option<&Path>,
         key: &str,
         skip_validation: bool,
     ) -> std::io::Result<Self> {
@@ -81,15 +82,25 @@ impl Parsable for PathBuf {
             return Ok(parsed_value);
         }
         parsed_value.as_path().validate(partial_path)?;
+        if key == INI_KEYS[1] {
+            match files_not_found(&parsed_value, &REQUIRED_GAME_FILES) {
+                Ok(not_found) => {
+                    if !not_found.is_empty() {
+                        return new_io_error!(ErrorKind::NotFound, format!("Could not verify the install directory of Elden Ring, the following files were not found: \n{}", not_found.join("\n")));
+                    }
+                }
+                Err(err) => return Err(err),
+            }
+        }
         Ok(parsed_value)
     }
 }
 
 impl Parsable for Vec<PathBuf> {
-    fn parse_str<T: AsRef<Path>>(
+    fn parse_str(
         ini: &Ini,
         section: Option<&str>,
-        partial_path: Option<T>,
+        partial_path: Option<&Path>,
         key: &str,
         skip_validation: bool,
     ) -> std::io::Result<Self> {
@@ -230,41 +241,66 @@ pub struct IniProperty<T: Parsable> {
     pub value: T,
 }
 
-impl<T: Parsable> IniProperty<T> {
+impl IniProperty<bool> {
+    pub fn read(ini: &Ini, section: Option<&str>, key: &str) -> std::io::Result<IniProperty<bool>> {
+        Ok(IniProperty {
+            //section: section.map(String::from),
+            //key: key.to_string(),
+            value: IniProperty::is_valid(ini, section, key, false, None)?,
+        })
+    }
+}
+impl IniProperty<u32> {
+    pub fn read(ini: &Ini, section: Option<&str>, key: &str) -> std::io::Result<IniProperty<u32>> {
+        Ok(IniProperty {
+            //section: section.map(String::from),
+            //key: key.to_string(),
+            value: IniProperty::is_valid(ini, section, key, false, None)?,
+        })
+    }
+}
+impl IniProperty<PathBuf> {
     pub fn read(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
-    ) -> std::io::Result<IniProperty<T>> {
+    ) -> std::io::Result<IniProperty<PathBuf>> {
         Ok(IniProperty {
             //section: section.map(String::from),
             //key: key.to_string(),
-            value: IniProperty::is_valid(ini, section, key, skip_validation)?,
+            value: IniProperty::is_valid(ini, section, key, skip_validation, None)?,
         })
     }
+}
 
+impl IniProperty<Vec<PathBuf>> {
+    pub fn read(
+        ini: &Ini,
+        section: Option<&str>,
+        key: &str,
+        path_prefix: &Path,
+        skip_validation: bool,
+    ) -> std::io::Result<IniProperty<Vec<PathBuf>>> {
+        Ok(IniProperty {
+            //section: section.map(String::from),
+            //key: key.to_string(),
+            value: IniProperty::is_valid(ini, section, key, skip_validation, Some(path_prefix))?,
+        })
+    }
+}
+
+impl<T: Parsable> IniProperty<T> {
     fn is_valid(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
         skip_validation: bool,
+        path_prefix: Option<&Path>,
     ) -> std::io::Result<T> {
         match &ini.section(section) {
             Some(s) => match s.contains_key(key) {
-                true => {
-                    // This will have to be abstracted to the caller if we want the ability for the caller to specify the _path_prefix_
-                    // right now _game_dir_ is the only valid prefix && "mod-files" is the only place _short_paths_ are stored
-                    let game_dir = if section == INI_SECTIONS[3] {
-                        Some(
-                            IniProperty::<PathBuf>::read(ini, INI_SECTIONS[1], INI_KEYS[1], false)?
-                                .value,
-                        )
-                    } else {
-                        None
-                    };
-                    T::parse_str(ini, section, game_dir, key, skip_validation)
-                }
+                true => T::parse_str(ini, section, path_prefix, key, skip_validation),
                 false => new_io_error!(
                     ErrorKind::NotFound,
                     format!("Key: \"{key}\" not found in {ini:?}")
@@ -597,7 +633,8 @@ impl RegMod {
                 IniProperty::<PathBuf>::read(&ini, INI_SECTIONS[1], INI_KEYS[1], false)?.value;
             // parse_section is non critical write error | read_section is also non critical write error
             let load_order_parsed =
-                ModLoaderCfg::read_section(&game_dir, LOADER_SECTIONS[1])?.parse_section()?;
+                ModLoaderCfg::read_section(&game_dir.join(LOADER_FILES[2]), LOADER_SECTIONS[1])?
+                    .parse_section()?;
             let parsed_data = combine_map_data(parsed_data, &load_order_parsed);
             let mut output = Vec::with_capacity(parsed_data.len());
             for (k, s, f, l) in parsed_data {

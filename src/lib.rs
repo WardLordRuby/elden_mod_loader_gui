@@ -8,10 +8,10 @@ pub mod utils {
 }
 
 use ini::Ini;
-use log::{error, info, trace, warn};
+use log::{info, trace, warn};
 use utils::ini::{
-    parser::{IniProperty, IntoIoError, RegMod},
-    writer::{remove_array, save_bool, save_path, save_paths},
+    parser::{IniProperty, IntoIoError, RegMod, Setup},
+    writer::{new_cfg, remove_array, save_bool, save_path, save_paths},
 };
 
 use std::{
@@ -20,6 +20,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+// changing the order of any of the following consts would not be good
 const DEFAULT_GAME_DIR: [&str; 6] = [
     "Program Files (x86)",
     "Steam",
@@ -193,6 +194,20 @@ pub fn toggle_files(
     Ok(short_path_new)
 }
 
+pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io::Result<Ini> {
+    if let Ok(ini) = get_cfg(from_path) {
+        if ini.is_setup(sections) {
+            trace!("{} found, and is already setup", LOADER_FILES[2]);
+            return Ok(ini);
+        }
+    };
+    warn!(
+        "ini: {} is not setup: trying to create new",
+        from_path.display()
+    );
+    new_cfg(from_path)
+}
+
 pub fn get_cfg(from_path: &Path) -> std::io::Result<Ini> {
     Ini::load_from_file_noescape(from_path).map_err(|err| err.into_io_error())
 }
@@ -241,6 +256,21 @@ where
                 .collect::<HashSet<_>>();
             Ok(OperationResult::Count((collection.len(), collection)))
         }
+    }
+}
+
+pub fn files_not_found<'a, T>(in_path: &Path, list: &'a [&T]) -> std::io::Result<Vec<&'a T>>
+where
+    T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash + ?Sized,
+    for<'b> &'b str: std::borrow::Borrow<T>,
+{
+    match does_dir_contain(in_path, Operation::Count, list) {
+        Ok(OperationResult::Count((c, _))) if c == REQUIRED_GAME_FILES.len() => Ok(Vec::new()),
+        Ok(OperationResult::Count((_, found_files))) => {
+            Ok(list.iter().filter(|&&e| !found_files.contains(e)).copied().collect())
+        }
+        Err(err) => Err(err),
+        _ => unreachable!(),
     }
 }
 
@@ -317,47 +347,10 @@ pub enum PathResult {
     Partial(PathBuf),
     None(PathBuf),
 }
-pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
-    let config: Ini = match get_cfg(file_name) {
-        Ok(ini) => {
-            trace!(
-                "Success: (attempt_locate_game) Read ini from \"{}\"",
-                file_name.display()
-            );
-            ini
-        }
-        Err(err) => {
-            error!(
-                "Failure: (attempt_locate_game) Could not complete. Could not read ini from \"{}\"",
-                file_name.display()
-            );
-            error!("Error: {err}");
-            return Ok(PathResult::None(PathBuf::new()));
-        }
-    };
-    if let Ok(path) = IniProperty::<PathBuf>::read(&config, INI_SECTIONS[1], INI_KEYS[1], false)
-        .and_then(|ini_property| {
-            // right now all we do is log this error if we want to bail on the fn we can use the ? operator here
-            match does_dir_contain(&ini_property.value, Operation::All, &REQUIRED_GAME_FILES) {
-                Ok(OperationResult::Bool(true)) => Ok(ini_property.value),
-                Ok(OperationResult::Bool(false)) => {
-                    let err = format!(
-                        "Required Game files not found in:\n\"{}\"",
-                        ini_property.value.display()
-                    );
-                    error!("{err}");
-                    new_io_error!(ErrorKind::NotFound, err)
-                }
-                Err(err) => {
-                    error!("Error: {err}");
-                    Err(err)
-                }
-                _ => unreachable!(),
-            }
-        })
-    {
+pub fn attempt_locate_game(ini_path: &Path, ini: &Ini) -> std::io::Result<PathResult> {
+    if let Ok(path) = IniProperty::<PathBuf>::read(ini, INI_SECTIONS[1], INI_KEYS[1], false) {
         info!("Success: \"game_dir\" from ini is valid");
-        return Ok(PathResult::Full(path));
+        return Ok(PathResult::Full(path.value));
     }
     let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
     if matches!(
@@ -365,12 +358,7 @@ pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
         Ok(OperationResult::Bool(true))
     ) {
         info!("Success: located \"game_dir\" on drive");
-        save_path(
-            file_name,
-            INI_SECTIONS[1],
-            INI_KEYS[1],
-            try_locate.as_path(),
-        )?;
+        save_path(ini_path, INI_SECTIONS[1], INI_KEYS[1], try_locate.as_path())?;
         return Ok(PathResult::Full(try_locate));
     }
     if try_locate.components().count() > 1 {
