@@ -8,7 +8,7 @@ pub mod utils {
 }
 
 use ini::Ini;
-use log::{info, trace, warn};
+use log::{error, info, trace, warn};
 use utils::ini::{
     parser::{IniProperty, IntoIoError, RegMod, Setup},
     writer::{new_cfg, remove_array, save_bool, save_path, save_paths},
@@ -64,6 +64,11 @@ macro_rules! new_io_error {
     ($kind:expr, $msg:expr) => {
         Err(std::io::Error::new($kind, $msg))
     };
+}
+
+pub enum IniOption<'a> {
+    Ini(&'a ini::Ini),
+    Path(&'a Path),
 }
 
 pub struct PathErrors {
@@ -195,16 +200,19 @@ pub fn toggle_files(
 }
 
 pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io::Result<Ini> {
-    if let Ok(ini) = get_cfg(from_path) {
-        if ini.is_setup(sections) {
-            trace!("{} found, and is already setup", LOADER_FILES[2]);
-            return Ok(ini);
+    match get_cfg(from_path) {
+        Ok(ini) => {
+            if ini.is_setup(sections) {
+                trace!("{:?} found, and is already setup", from_path.file_name());
+                return Ok(ini);
+            }
+            trace!(
+                "ini: {:?} is not setup, creating new",
+                from_path.file_name()
+            );
         }
+        Err(err) => error!("{err} : {:?}", from_path.file_name()),
     };
-    warn!(
-        "ini: {} is not setup: trying to create new",
-        from_path.display()
-    );
     new_cfg(from_path)
 }
 
@@ -342,31 +350,61 @@ pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
     ))
 }
 
+#[derive(Debug, Default)]
+pub struct Cfg {
+    pub data: Ini,
+    pub dir: PathBuf,
+}
+
 pub enum PathResult {
     Full(PathBuf),
     Partial(PathBuf),
     None(PathBuf),
 }
-pub fn attempt_locate_game(ini_path: &Path, ini: &Ini) -> std::io::Result<PathResult> {
-    if let Ok(path) = IniProperty::<PathBuf>::read(ini, INI_SECTIONS[1], INI_KEYS[1], false) {
-        info!("Success: \"game_dir\" from ini is valid");
-        return Ok(PathResult::Full(path.value));
+
+impl Cfg {
+    pub fn from(ini: Ini, ini_path: &Path) -> Self {
+        Cfg {
+            data: ini,
+            dir: PathBuf::from(ini_path),
+        }
     }
-    let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
-    if matches!(
-        does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES),
-        Ok(OperationResult::Bool(true))
-    ) {
-        info!("Success: located \"game_dir\" on drive");
-        save_path(ini_path, INI_SECTIONS[1], INI_KEYS[1], try_locate.as_path())?;
-        return Ok(PathResult::Full(try_locate));
+    pub fn read(ini_path: &Path) -> std::io::Result<Cfg> {
+        let data = get_or_setup_cfg(ini_path, &INI_SECTIONS)?;
+        Ok(Cfg {
+            data,
+            dir: PathBuf::from(ini_path),
+        })
     }
-    if try_locate.components().count() > 1 {
-        info!("Partial \"game_dir\" found");
-        return Ok(PathResult::Partial(try_locate));
+
+    pub fn attempt_locate_game(&self) -> std::io::Result<PathResult> {
+        if let Ok(path) =
+            IniProperty::<PathBuf>::read(&self.data, INI_SECTIONS[1], INI_KEYS[1], false)
+        {
+            info!("Success: \"game_dir\" from ini is valid");
+            return Ok(PathResult::Full(path.value));
+        }
+        let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
+        if matches!(
+            does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES),
+            Ok(OperationResult::Bool(true))
+        ) {
+            info!("Success: located \"game_dir\" on drive");
+            save_path(
+                &self.dir,
+                INI_SECTIONS[1],
+                INI_KEYS[1],
+                try_locate.as_path(),
+            )?;
+            return Ok(PathResult::Full(try_locate));
+        }
+        if try_locate.components().count() > 1 {
+            info!("Partial \"game_dir\" found");
+            return Ok(PathResult::Partial(try_locate));
+        }
+        warn!("Could not locate \"game_dir\"");
+        Ok(PathResult::None(try_locate))
     }
-    warn!("Could not locate \"game_dir\"");
-    Ok(PathResult::None(try_locate))
 }
 
 fn attempt_locate_dir(target_path: &[&str]) -> std::io::Result<PathBuf> {

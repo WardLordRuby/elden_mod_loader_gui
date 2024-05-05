@@ -1,9 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use elden_mod_loader_gui::{
-    utils::ini::{parser::RegMod, writer::*},
-    INI_SECTIONS,
-};
+use elden_mod_loader_gui::{utils::ini::writer::*, Cfg, INI_SECTIONS};
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
     fs::remove_file,
@@ -48,10 +45,11 @@ fn generate_test_paths() -> Vec<PathBuf> {
 
 fn data_collection_benchmark(c: &mut Criterion) {
     let test_file = Path::new(BENCH_TEST_FILE);
+    let ini = Cfg::read(test_file).unwrap();
     populate_non_valid_ini(NUM_ENTRIES, test_file);
 
     c.bench_function("data_collection", |b| {
-        b.iter(|| black_box(RegMod::collect(test_file, true)));
+        b.iter(|| black_box(ini.collect_mods(None, true)));
     });
     remove_file(test_file).unwrap();
 }

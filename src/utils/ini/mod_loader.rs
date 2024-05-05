@@ -24,37 +24,34 @@ pub struct ModLoader {
 
 impl ModLoader {
     pub fn properties(game_dir: &Path) -> std::io::Result<ModLoader> {
-        let cfg_dir = game_dir.join(LOADER_FILES[2]);
+        let mut cfg_dir = game_dir.join(LOADER_FILES[2]);
+        let mut properties = ModLoader::default();
         match does_dir_contain(game_dir, Operation::Count, &LOADER_FILES) {
             Ok(OperationResult::Count((_, files))) => {
                 if files.contains(LOADER_FILES[1]) && !files.contains(LOADER_FILES[0]) {
                     trace!("Mod loader found in the Enabled state");
-                    if !files.contains(LOADER_FILES[2]) {
-                        new_cfg(&cfg_dir)?;
-                    }
-                    Ok(ModLoader {
-                        installed: true,
-                        disabled: false,
-                        path: cfg_dir,
-                    })
+                    properties.installed = true;
                 } else if files.contains(LOADER_FILES[0]) && !files.contains(LOADER_FILES[1]) {
                     trace!("Mod loader found in the Disabled state");
-                    if !files.contains(LOADER_FILES[2]) {
-                        new_cfg(&cfg_dir)?;
-                    }
-                    Ok(ModLoader {
-                        installed: true,
-                        disabled: true,
-                        path: cfg_dir,
-                    })
-                } else {
-                    warn!("Mod loader dll hook not found");
-                    Ok(ModLoader::default())
+                    properties.installed = true;
+                    properties.disabled = true;
+                }
+                if files.contains(LOADER_FILES[2]) {
+                    std::mem::swap(&mut cfg_dir, &mut properties.path);
                 }
             }
-            Err(err) => Err(err),
+            Err(err) => return Err(err),
             _ => unreachable!(),
+        };
+        if properties.installed && properties.path == Path::new("") {
+            trace!("{} not found, creating new", LOADER_FILES[2]);
+            new_cfg(&cfg_dir)?;
+            properties.path = cfg_dir;
         }
+        if !properties.installed {
+            warn!("Mod loader dll hook not found");
+        }
+        Ok(properties)
     }
 
     #[inline]
@@ -80,8 +77,8 @@ impl ModLoader {
 
 #[derive(Debug, Default)]
 pub struct ModLoaderCfg {
-    cfg: Ini,
-    cfg_dir: PathBuf,
+    data: Ini,
+    dir: PathBuf,
     section: Option<String>,
 }
 
@@ -91,16 +88,16 @@ impl ModLoaderCfg {
             return new_io_error!(ErrorKind::InvalidInput, "section can not be none");
         }
 
-        let cfg = get_or_setup_cfg(cfg_dir, &LOADER_SECTIONS)?;
+        let data = get_or_setup_cfg(cfg_dir, &LOADER_SECTIONS)?;
         Ok(ModLoaderCfg {
-            cfg,
-            cfg_dir: PathBuf::from(cfg_dir),
+            data,
+            dir: PathBuf::from(cfg_dir),
             section: section.map(String::from),
         })
     }
 
     pub fn get_load_delay(&self) -> std::io::Result<u32> {
-        match IniProperty::<u32>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[0]) {
+        match IniProperty::<u32>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[0]) {
             Ok(delay_time) => Ok(delay_time.value),
             Err(err) => Err(err.add_msg(format!(
                 "Found an unexpected character saved in \"{}\"",
@@ -110,7 +107,7 @@ impl ModLoaderCfg {
     }
 
     pub fn get_show_terminal(&self) -> std::io::Result<bool> {
-        match IniProperty::<bool>::read(&self.cfg, LOADER_SECTIONS[0], LOADER_KEYS[1]) {
+        match IniProperty::<bool>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[1]) {
             Ok(delay_time) => Ok(delay_time.value),
             Err(err) => Err(err.add_msg(format!(
                 "Found an unexpected character saved in \"{}\"",
@@ -121,12 +118,12 @@ impl ModLoaderCfg {
 
     #[inline]
     pub fn mut_section(&mut self) -> &mut ini::Properties {
-        self.cfg.section_mut(self.section.as_ref()).unwrap()
+        self.data.section_mut(self.section.as_ref()).unwrap()
     }
 
     #[inline]
     fn section(&self) -> &ini::Properties {
-        self.cfg.section(self.section.as_ref()).unwrap()
+        self.data.section(self.section.as_ref()).unwrap()
     }
 
     #[inline]
@@ -179,11 +176,11 @@ impl ModLoaderCfg {
 
     #[inline]
     pub fn path(&self) -> &Path {
-        &self.cfg_dir
+        &self.dir
     }
 
     pub fn write_to_file(&self) -> std::io::Result<()> {
-        self.cfg.write_to_file_opt(&self.cfg_dir, EXT_OPTIONS)
+        self.data.write_to_file_opt(&self.dir, EXT_OPTIONS)
     }
 
     /// updates the load order values in `Some("loadorder")` so they are always `0..`  

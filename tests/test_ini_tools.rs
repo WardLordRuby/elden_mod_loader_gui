@@ -14,7 +14,7 @@ mod tests {
             parser::{IniProperty, RegMod, Setup},
             writer::*,
         },
-        INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_SECTIONS, OFF_STATE,
+        Cfg, INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_SECTIONS, OFF_STATE,
     };
 
     use crate::common::{new_cfg_with_sections, GAME_DIR};
@@ -293,7 +293,8 @@ mod tests {
         // -------------------------------------sync_keys() runs from inside RegMod::collect()------------------------------------------------
         // ----this deletes any keys that do not have a matching state eg. (key has state but no files, or key has files but no state)-----
         // this tests delete_entry && delete_array in this case we delete "no_matching_path", "no_matching_state_1", and "no_matching_state_2"
-        let registered_mods = RegMod::collect(test_file, false).unwrap();
+        let cfg = Cfg::read(test_file).unwrap();
+        let registered_mods = cfg.collect_mods(None, false).unwrap();
         assert_eq!(registered_mods.len(), 2);
 
         // verify_state() also runs from within RegMod::collect() lets see if changed the state of the mods .dll file

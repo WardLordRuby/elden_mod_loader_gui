@@ -7,13 +7,9 @@ use std::{
 };
 
 use crate::{
-    files_not_found, get_cfg, new_io_error, toggle_files,
-    utils::ini::{
-        mod_loader::ModLoaderCfg,
-        writer::{remove_array, remove_entry},
-    },
-    FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_SECTIONS,
-    OFF_STATE, REQUIRED_GAME_FILES,
+    files_not_found, new_io_error, toggle_files,
+    utils::ini::writer::{remove_array, remove_entry},
+    Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, OFF_STATE, REQUIRED_GAME_FILES,
 };
 
 pub trait Parsable: Sized {
@@ -480,6 +476,21 @@ impl RegMod {
         }
     }
 
+    pub fn verify_state(&self, game_dir: &Path, ini_path: &Path) -> std::io::Result<()> {
+        if (!self.state && self.files.dll.iter().any(FileData::is_enabled))
+            || (self.state && self.files.dll.iter().any(FileData::is_disabled))
+        {
+            warn!(
+                "wrong file state for \"{}\" chaning file extentions",
+                self.name
+            );
+            let _ = toggle_files(game_dir, self.state, self, Some(ini_path))?;
+        }
+        Ok(())
+    }
+}
+
+impl Cfg {
     // MARK: FIXME
     // when is the best time to verify parsed data? currently we verify data after shaping it
     // the code would most likely be cleaner if we verified it apon parsing before doing any shaping
@@ -487,7 +498,11 @@ impl RegMod {
     // should we have two collections? one for deserialization(full) one for just collect and verify
 
     // collect needs to be completely recoverable, runing into an error and then returning a default is not good enough
-    pub fn collect(ini_path: &Path, skip_validation: bool) -> std::io::Result<Vec<Self>> {
+    pub fn collect_mods(
+        &self,
+        include_load_order: Option<&HashMap<String, usize>>,
+        skip_validation: bool,
+    ) -> std::io::Result<Vec<RegMod>> {
         type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
         type ModData<'a> = Vec<(
             &'a str,
@@ -556,7 +571,7 @@ impl RegMod {
 
         fn combine_map_data<'a>(
             map_data: CollectedMaps<'a>,
-            parsed_order_val: &HashMap<String, usize>,
+            parsed_order_val: Option<&HashMap<String, usize>>,
         ) -> ModData<'a> {
             let mut count = 0_usize;
             let mut mod_data = map_data
@@ -567,7 +582,10 @@ impl RegMod {
                         let split_files = SplitFiles::from(
                             file_strs.iter().map(PathBuf::from).collect::<Vec<_>>(),
                         );
-                        let load_order = LoadOrder::from(&split_files.dll, parsed_order_val);
+                        let load_order = match parsed_order_val {
+                            Some(data) => LoadOrder::from(&split_files.dll, data),
+                            None => LoadOrder::default(),
+                        };
                         if load_order.set {
                             count += 1
                         }
@@ -613,10 +631,8 @@ impl RegMod {
                 .collect()
         }
 
-        let ini = get_cfg(ini_path)?;
-
         if skip_validation {
-            let parsed_data = collect_data_unchecked(&ini);
+            let parsed_data = collect_data_unchecked(&self.data);
             Ok(parsed_data
                 .iter()
                 .map(|(n, s, f)| {
@@ -628,51 +644,36 @@ impl RegMod {
                 })
                 .collect())
         } else {
-            let parsed_data = sync_keys(&ini, ini_path)?;
+            let parsed_data = sync_keys(&self.data, &self.dir)?;
             let game_dir =
-                IniProperty::<PathBuf>::read(&ini, INI_SECTIONS[1], INI_KEYS[1], false)?.value;
+                IniProperty::<PathBuf>::read(&self.data, INI_SECTIONS[1], INI_KEYS[1], false)?
+                    .value;
             // parse_section is non critical write error | read_section is also non critical write error
-            let load_order_parsed =
-                ModLoaderCfg::read_section(&game_dir.join(LOADER_FILES[2]), LOADER_SECTIONS[1])?
-                    .parse_section()?;
-            let parsed_data = combine_map_data(parsed_data, &load_order_parsed);
+            let parsed_data = combine_map_data(parsed_data, include_load_order);
             let mut output = Vec::with_capacity(parsed_data.len());
             for (k, s, f, l) in parsed_data {
                 match &s {
                     Ok(bool) => {
                         if let Err(err) = f.file_refs().validate(Some(&game_dir)) {
                             error!("Error: {err}");
-                            remove_entry(ini_path, INI_SECTIONS[2], k).expect("Key is valid");
+                            remove_entry(&self.dir, INI_SECTIONS[2], k).expect("Key is valid");
                         } else {
                             let reg_mod = RegMod::from_split_files(k, *bool, f, l);
                             // MARK: FIXME
                             // verify_state should be ran within collect, but this call is too late, we should handle verification earilier
                             // when sync keys hits an error we should give it a chance to correct by calling verify_state before it deletes an entry
-                            reg_mod.verify_state(&game_dir, ini_path)?;
+                            reg_mod.verify_state(&game_dir, &self.dir)?;
                             output.push(reg_mod)
                         }
                     }
                     Err(err) => {
                         error!("Error: {err}");
-                        remove_entry(ini_path, INI_SECTIONS[2], k).expect("Key is valid");
+                        remove_entry(&self.dir, INI_SECTIONS[2], k).expect("Key is valid");
                     }
                 }
             }
             Ok(output)
         }
-    }
-
-    pub fn verify_state(&self, game_dir: &Path, ini_path: &Path) -> std::io::Result<()> {
-        if (!self.state && self.files.dll.iter().any(FileData::is_enabled))
-            || (self.state && self.files.dll.iter().any(FileData::is_disabled))
-        {
-            warn!(
-                "wrong file state for \"{}\" chaning file extentions",
-                self.name
-            );
-            let _ = toggle_files(game_dir, self.state, self, Some(ini_path))?;
-        }
-        Ok(())
     }
 }
 

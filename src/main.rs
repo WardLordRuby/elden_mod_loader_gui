@@ -6,7 +6,7 @@ use elden_mod_loader_gui::{
     utils::{
         ini::{
             mod_loader::{ModLoader, ModLoaderCfg, Countable},
-            parser::{file_registered, IniProperty, RegMod, Setup, ErrorClone},
+            parser::{file_registered, IniProperty, RegMod, Setup},
             writer::*,
         },
         installer::{remove_mod_files, InstallData, scan_for_mods}
@@ -17,7 +17,7 @@ use i_slint_backend_winit::WinitWindowAccessor;
 use log::{error, info, warn, debug};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel, Timer};
 use std::{
-    ffi::OsStr, io::ErrorKind, path::{Path, PathBuf}, rc::Rc, sync::{
+    collections::HashMap, ffi::OsStr, io::ErrorKind, path::{Path, PathBuf}, rc::Rc, sync::{
         atomic::{AtomicU32, Ordering},
         OnceLock,
     }
@@ -35,6 +35,7 @@ static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::ne
 
 fn main() -> Result<(), slint::PlatformError> {
     env_logger::init();
+    
     slint::platform::set_platform(Box::new(
         i_slint_backend_winit::Backend::new().expect("This app is being run on windows"),
     ))
@@ -76,44 +77,76 @@ fn main() -> Result<(), slint::PlatformError> {
                 None
             }
         };
-        let ini = ini.unwrap_or_else(|| {
-            warn!("Ini not setup correctly. Creating new Ini");
-            new_cfg(current_ini).unwrap_or_else(|err| {
-                // io::Write error
-                debug!("error 2");
-                errors.push(err);
-                ini::Ini::new()
-            })
-        });
+        let ini = match ini {
+            Some(ini_data) => Cfg::from(ini_data, current_ini),
+            None => {
+                Cfg::read(current_ini).unwrap_or_else(|err| {
+                    // io::write error
+                    debug!("error 2");
+                    errors.push(err);
+                    Cfg { data: ini::Ini::new(), dir: current_ini.to_owned() }
+                })
+            }
+        };
 
         let game_verified: bool;
+        let mod_loader: ModLoader;
+        let mut mod_loader_cfg: ModLoaderCfg;
         let mut reg_mods = None;
-        let game_dir = match attempt_locate_game(current_ini, &ini) {
+        let order_data: HashMap<String, usize>;
+        let game_dir = match ini.attempt_locate_game() {
             Ok(path_result) => match path_result {
                 PathResult::Full(path) => {
-                    match RegMod::collect(current_ini, false) {
-                    Ok(mod_data) => {
-                        game_verified = true;
-                        reg_mods = Some(mod_data);
-                        Some(path)
-                    }
-                    Err(err) => {
-                        // io::Write error | PermissionDenied
+                    mod_loader = ModLoader::properties(&path).unwrap_or_else(|err| {
                         debug!("error 3");
-                        errors.push(err.clone_err());
-                        game_verified = true;
-                        Some(path)
+                        errors.push(err);
+                        ModLoader::default()
+                    });
+                    if mod_loader.installed() {
+                        mod_loader_cfg = ModLoaderCfg::read_section(mod_loader.path(), LOADER_SECTIONS[1]).unwrap_or_else(|err| {
+                            debug!("error 4");
+                            errors.push(err);
+                            ModLoaderCfg::default()
+                        });
+                    } else {
+                        mod_loader_cfg = ModLoaderCfg::default();
                     }
-                }},
+                    match mod_loader_cfg.parse_section() {
+                        Ok(data) => order_data = data,
+                        Err(err) => {
+                            debug!("error 5");
+                            errors.push(err);
+                            order_data = HashMap::new()
+                        }
+                    };
+                    match ini.collect_mods( Some(&order_data), false) {
+                        Ok(mod_data) => {
+                            reg_mods = Some(mod_data);
+                        }
+                        Err(err) => {
+                            // io::Write error | PermissionDenied
+                            debug!("error 6");
+                            errors.push(err);
+                        }
+                    };
+                    game_verified = true;
+                    Some(path)
+                },
                 PathResult::Partial(path) | PathResult::None(path) => {
+                    mod_loader_cfg = ModLoaderCfg::default();
+                    mod_loader = ModLoader::default();
+                    order_data = HashMap::new();
                     game_verified = false;
                     Some(path)
                 }
             },
             Err(err) => {
                 // io::Write error
-                debug!("error 4");
+                debug!("error 7");
                 errors.push(err);
+                mod_loader_cfg = ModLoaderCfg::default();
+                mod_loader = ModLoader::default();
+                order_data = HashMap::new();
                 game_verified = false;
                 None
             }
@@ -127,13 +160,13 @@ fn main() -> Result<(), slint::PlatformError> {
             Ok(bool) => ui.global::<SettingsLogic>().set_dark_mode(bool.value),
             Err(err) => {
                 // io::Read error
-                debug!("error 5");
+                debug!("error 8");
                 errors.push(err);
                 ui.global::<SettingsLogic>().set_dark_mode(true);
                 save_bool(current_ini, INI_SECTIONS[0], INI_KEYS[0], true)
                     // io::Write error
                     .unwrap_or_else(|err| {
-                        debug!("error 6");
+                        debug!("error 9");
                         errors.push(err)
                     });
             }
@@ -150,24 +183,16 @@ fn main() -> Result<(), slint::PlatformError> {
         );
         let _ = get_or_update_game_dir(Some(game_dir.clone().unwrap_or_default()));
 
-        let mod_loader: ModLoader;
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
-            mod_loader = ModLoader::default();
         } else {
-            let game_dir = game_dir.as_ref().expect("game dir verified");
-            mod_loader = ModLoader::properties(game_dir).unwrap_or_else(|err| {
-                debug!("error 7");
-                errors.push(err);
-                ModLoader::default()
-            });
             deserialize_current_mods(
                 &if let Some(mod_data) = reg_mods {
                     mod_data 
                 } else { 
-                    RegMod::collect(current_ini, !mod_loader.installed()).unwrap_or_else(|err| {
+                    ini.collect_mods(Some(&order_data),!mod_loader.installed()).unwrap_or_else(|err| {
                         // io::Error from toggle files | ErrorKind::InvalidInput - did not pass len check | io::Write error
-                        debug!("error 8");
+                        debug!("error 10");
                         errors.push(err);
                         vec![RegMod::default()]
                     })
@@ -177,39 +202,38 @@ fn main() -> Result<(), slint::PlatformError> {
 
             if mod_loader.installed() {
                 ui.global::<SettingsLogic>().set_loader_installed(true);
-                let loader_cfg = ModLoaderCfg::read_section(mod_loader.path(), LOADER_SECTIONS[0]).unwrap();
-                let delay = loader_cfg.get_load_delay().unwrap_or_else(|_| {
+                let delay = mod_loader_cfg.get_load_delay().unwrap_or_else(|_| {
                     // parse error ErrorKind::InvalidData
                     let err = std::io::Error::new(ErrorKind::InvalidData, format!(
                         "Found an unexpected character saved in \"{}\" Reseting to default value",
                         LOADER_KEYS[0]
                     ));
                     error!("{err}");
-                    debug!("error 9");
+                    debug!("error 11");
                     errors.push(err);
                     save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[0], DEFAULT_LOADER_VALUES[0])
                     .unwrap_or_else(|err| {
                         // io::write error
                         error!("{err}");
-                        debug!("error 10");
+                        debug!("error 12");
                         errors.push(err);
                     });
                     DEFAULT_LOADER_VALUES[0].parse().unwrap()
                 });
-                let show_terminal = loader_cfg.get_show_terminal().unwrap_or_else(|_| {
+                let show_terminal = mod_loader_cfg.get_show_terminal().unwrap_or_else(|_| {
                     // parse error ErrorKind::InvalidData
                     let err = std::io::Error::new(ErrorKind::InvalidData, format!(
                         "Found an unexpected character saved in \"{}\" Reseting to default value",
                         LOADER_KEYS[1]
                     ));
                     error!("{err}");
-                    debug!("error 11");
+                    debug!("error 13");
                     errors.push(err);
                     save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[1], DEFAULT_LOADER_VALUES[1])
                     .unwrap_or_else(|err| {
                         // io::write error
                         error!("{err}");
-                        debug!("error 12");
+                        debug!("error 14");
                         errors.push(err);
                     });
                     false
@@ -242,27 +266,17 @@ fn main() -> Result<(), slint::PlatformError> {
                         } else if game_verified {
                             ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
                             let _ = receive_msg().await;
-                            match mods_registered(IniOption::Ini(ini)) {
-                                Ok(n) => {
-                                    if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), current_ini, n).await {
-                                        ui.display_msg(&err.to_string());
-                                    };
-                                }
-                                Err(err) => ui.display_msg(&err.to_string())
-                            }
+                            if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), &ini).await {
+                                ui.display_msg(&err.to_string());
+                            };
                         }
                     } else if game_verified {
                         if !mod_loader.installed() {
                             ui.display_msg(&format!("This tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease install files to \"{}\"\nand relaunch Elden Mod Loader GUI", get_or_update_game_dir(None).display()));
-                        }
-                        match mods_registered(IniOption::Ini(ini)) {
-                            Ok(0) => {
-                                if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), current_ini, 0).await {
-                                    ui.display_msg(&err.to_string());
-                                };
+                        } else if mods_registered(&ini.data) == 0 {
+                            if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), &ini).await {
+                                ui.display_msg(&err.to_string());
                             }
-                            Ok(_) => (),
-                            Err(err) => ui.display_msg(&err.to_string()),
                         }
                     } else {
                         ui.display_msg(
@@ -278,11 +292,17 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
         move |mod_name| {
-            let current_ini = get_ini_dir();
             let ui = ui_handle.unwrap();
+            let ini = match Cfg::read(get_ini_dir()) {
+                Ok(ini_data) => ini_data,
+                Err(err) => {
+                    ui.display_msg(&err.to_string());
+                    return;
+                }
+            };
             let format_key = mod_name.trim().replace(' ', "_");
             let mut results: Vec<std::io::Result<()>> = Vec::with_capacity(2);
-            let registered_mods = RegMod::collect(current_ini, false).unwrap_or_else(|err| {
+            let registered_mods = ini.collect_mods(None, false).unwrap_or_else(|err| {
                 results.push(Err(err));
                 vec![RegMod::default()]
             });
@@ -350,7 +370,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 let state = !files.iter().all(FileData::is_disabled);
                 results.push(save_bool(
-                    current_ini,
+                    &ini.dir,
                     INI_SECTIONS[2],
                     &format_key,
                     state,
@@ -358,14 +378,14 @@ fn main() -> Result<(), slint::PlatformError> {
                 match files.len() {
                     0 => return,
                     1 => results.push(save_path(
-                        current_ini,
+                        &ini.dir,
                         INI_SECTIONS[3],
                         &format_key,
                         files[0].as_path(),
                     )),
                     2.. => {
                         let path_refs = files.iter().map(|p| p.as_path()).collect::<Vec<_>>();
-                        results.push(save_paths(current_ini, INI_SECTIONS[3], &format_key, &path_refs))
+                        results.push(save_paths(&ini.dir, INI_SECTIONS[3], &format_key, &path_refs))
                     },
                 }
                 if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
@@ -373,29 +393,29 @@ fn main() -> Result<(), slint::PlatformError> {
                     // If something fails to save attempt to create a corrupt entry so
                     // sync keys will take care of any invalid ini entries
                     let _ =
-                    remove_entry(current_ini, INI_SECTIONS[2], &format_key);
+                    remove_entry(&ini.dir, INI_SECTIONS[2], &format_key);
                 }
                 let new_mod = RegMod::new(&format_key, state, files);
                 
                 new_mod
-                .verify_state(&game_dir, current_ini)
+                .verify_state(&game_dir, &ini.dir)
                 .unwrap_or_else(|err| {
                     // Toggle files returned an error lets try it again
-                    if new_mod.verify_state(&game_dir, current_ini).is_err() {
+                    if new_mod.verify_state(&game_dir, &ini.dir).is_err() {
                         ui.display_msg(&err.to_string());
                         let _ = remove_entry(
-                            current_ini,
+                            &ini.dir,
                             INI_SECTIONS[2],
                             &new_mod.name,
                         );
                     };
                 });
-                ui.global::<MainLogic>()
-                .set_line_edit_text(SharedString::new());
+                ui.global::<MainLogic>().set_line_edit_text(SharedString::new());
+                let order_data = order_data_or_default(ui.as_weak(), None);
                 deserialize_current_mods(
-                    &RegMod::collect(current_ini, false).unwrap_or_else(|_| {
+                    &ini.collect_mods(Some(&order_data), false).unwrap_or_else(|_| {
                         // if error lets try it again and see if we can get sync-keys to cleanup any errors
-                        match RegMod::collect(current_ini, false) {
+                        match ini.collect_mods( None, false) {
                             Ok(mods) => mods,
                             Err(err) => {
                                 ui.display_msg(&err.to_string());
@@ -411,7 +431,13 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move || {
             let ui = ui_handle.unwrap();
-            let current_ini = get_ini_dir();
+            let ini = match Cfg::read(get_ini_dir()) {
+                Ok(ini_data) => ini_data,
+                Err(err) => {
+                    ui.display_msg(&err.to_string());
+                    return;
+                }
+            };
             slint::spawn_local(async move {
                 let game_dir = get_or_update_game_dir(None);
                 let path_result = get_user_folder(&game_dir);
@@ -438,8 +464,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 };
                 match files_not_found(&try_path, &REQUIRED_GAME_FILES) {
                     Ok(not_found) => if not_found.is_empty() {
-                        let result = save_path(current_ini, INI_SECTIONS[1], INI_KEYS[1], &try_path);
-                        if result.is_err() && save_path(current_ini, INI_SECTIONS[1], INI_KEYS[1], &try_path).is_err() {
+                        let result = save_path(&ini.dir, INI_SECTIONS[1], INI_KEYS[1], &try_path);
+                        if result.is_err() && save_path(&ini.dir, INI_SECTIONS[1], INI_KEYS[1], &try_path).is_err() {
                             let err = result.unwrap_err();
                             error!("Failed to save directory. {err}");
                             ui.display_msg(&err.to_string());
@@ -456,14 +482,9 @@ fn main() -> Result<(), slint::PlatformError> {
                         if mod_loader.installed() {
                             ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
                             let _ = receive_msg().await;
-                            match mods_registered(IniOption::Path(current_ini)) {
-                                Ok(n) => {
-                                    if let Err(err) = confirm_scan_mods(ui.as_weak(), &try_path, current_ini, n).await {
-                                        ui.display_msg(&err.to_string());
-                                    };
-                                }
-                                Err(err) => ui.display_msg(&err.to_string())
-                            }
+                            if let Err(err) = confirm_scan_mods(ui.as_weak(), &try_path, &ini).await {
+                                ui.display_msg(&err.to_string());
+                            };
                         } else {
                             ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
                         }
@@ -488,15 +509,21 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |key, state| -> bool {
             let ui = ui_handle.unwrap();
-            let current_ini = get_ini_dir();
+            let ini = match Cfg::read(get_ini_dir()) {
+                Ok(ini_data) => ini_data,
+                Err(err) => {
+                    ui.display_msg(&err.to_string());
+                    return !state;
+                }
+            };
             let game_dir = get_or_update_game_dir(None);
             let format_key = key.replace(' ', "_");
-            match RegMod::collect(current_ini, false) {
+            match ini.collect_mods(None, false) {
                 Ok(reg_mods) => {
                     if let Some(found_mod) =
                         reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
                     {
-                        let result = toggle_files(&game_dir, state, found_mod, Some(current_ini));
+                        let result = toggle_files(&game_dir, state, found_mod, Some(&ini.dir));
                         if result.is_ok() {
                             return state;
                         }
@@ -508,10 +535,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 Err(err) => ui.display_msg(&err.to_string()),
             }
+            let order_data = order_data_or_default(ui.as_weak(), None);
             deserialize_current_mods(
-                &RegMod::collect(current_ini, false).unwrap_or_else(|_| {
+                &ini.collect_mods(Some(&order_data), false).unwrap_or_else(|_| {
                     // if error lets try it again and see if we can get sync-keys to cleanup any errors
-                    match RegMod::collect(current_ini, false) {
+                    match ini.collect_mods(None, false) {
                         Ok(mods) => mods,
                         Err(err) => {
                             ui.display_msg(&err.to_string());
@@ -534,8 +562,14 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |key| {
             let ui = ui_handle.unwrap();
-            let current_ini = get_ini_dir();
-            let registered_mods = match RegMod::collect(current_ini, false) {
+            let ini = match Cfg::read(get_ini_dir()) {
+                Ok(ini_data) => ini_data,
+                Err(err) => {
+                    ui.display_msg(&err.to_string());
+                    return;
+                }
+            };
+            let registered_mods = match ini.collect_mods(None, false) {
                 Ok(data) => data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -600,18 +634,18 @@ fn main() -> Result<(), slint::PlatformError> {
                         let new_data_refs = found_mod.files.add_other_files_to_files(&new_data);
                         if found_mod.files.len() == 1 {
                             results.push(remove_entry(
-                                current_ini,
+                                &ini.dir,
                                 INI_SECTIONS[3],
                                 &found_mod.name,
                             ));
                         } else {
-                            results.push(remove_array(current_ini, &found_mod.name));
+                            results.push(remove_array(&ini.dir, &found_mod.name));
                         }
-                        results.push(save_paths(current_ini, INI_SECTIONS[3], &found_mod.name, &new_data_refs));
+                        results.push(save_paths(&ini.dir, INI_SECTIONS[3], &found_mod.name, &new_data_refs));
                         if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
                             ui.display_msg(&err.to_string());
                             let _ = remove_entry(
-                                current_ini,
+                                &ini.dir,
                                 INI_SECTIONS[2],
                                 &format_key,
                             );
@@ -620,15 +654,15 @@ fn main() -> Result<(), slint::PlatformError> {
                         let updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data_owned);
                         
                         updated_mod
-                            .verify_state(&game_dir, current_ini)
+                            .verify_state(&game_dir, &ini.dir)
                             .unwrap_or_else(|err| {
                                 if updated_mod
-                                    .verify_state(&game_dir, current_ini)
+                                    .verify_state(&game_dir, &ini.dir)
                                     .is_err()
                                 {
                                     ui.display_msg(&err.to_string());
                                     let _ = remove_entry(
-                                        current_ini,
+                                        &ini.dir,
                                         INI_SECTIONS[2],
                                         &updated_mod.name,
                                     );
@@ -638,9 +672,10 @@ fn main() -> Result<(), slint::PlatformError> {
                         if !results.iter().any(|r| r.is_err()) {
                             ui.display_msg(&format!("Sucessfully added {} file(s) to {}", num_files, format_key));
                         }
+                        let order_data = order_data_or_default(ui.as_weak(), None);
                         deserialize_current_mods(
-                            &RegMod::collect(current_ini, false).unwrap_or_else(|_| {
-                                match RegMod::collect(current_ini, false) {
+                            &ini.collect_mods(Some(&order_data), false).unwrap_or_else(|_| {
+                                match ini.collect_mods(None, false) {
                                     Ok(mods) => mods,
                                     Err(err) => {
                                         ui.display_msg(&err.to_string());
@@ -662,14 +697,20 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |key| {
             let ui = ui_handle.unwrap();
-            let current_ini = get_ini_dir();
+            let ini = match Cfg::read(get_ini_dir()) {
+                Ok(ini_data) => ini_data,
+                Err(err) => {
+                    ui.display_msg(&err.to_string());
+                    return;
+                }
+            };
             let format_key = key.replace(' ', "_");
             ui.display_confirm(&format!("Are you sure you want to de-register: \"{key}\""), false);
             slint::spawn_local(async move {
                 if receive_msg().await != Message::Confirm {
                     return
                 }
-                let mut reg_mods = match RegMod::collect(current_ini, false) {
+                let mut reg_mods = match ini.collect_mods(None, false) {
                     Ok(reg_mods) => reg_mods,
                     Err(err) => {
                         ui.display_msg(&err.to_string());
@@ -682,7 +723,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     reg_mods.iter_mut().find(|reg_mod| format_key == reg_mod.name)
                 {
                     if found_mod.files.dll.iter().any(FileData::is_disabled) {
-                        match toggle_files(&game_dir, true, found_mod, Some(current_ini)) {
+                        match toggle_files(&game_dir, true, found_mod, Some(&ini.dir)) {
                             Ok(files) => {
                                 found_mod.files.dll = files;
                                 found_mod.state = true;
@@ -694,7 +735,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }
                     // we can let sync keys take care of removing files from ini
-                    remove_entry(current_ini, INI_SECTIONS[2], &found_mod.name)
+                    remove_entry(&ini.dir, INI_SECTIONS[2], &found_mod.name)
                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                     let ui_handle = ui.as_weak();
                     match confirm_remove_mod(ui_handle, &game_dir, found_mod).await {
@@ -713,9 +754,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg(&format!("{err}\nRemoving invalid entries"))
                 };
                 ui.global::<MainLogic>().set_current_subpage(0);
+                let order_data = order_data_or_default(ui.as_weak(), None);
                 deserialize_current_mods(
-                    &RegMod::collect(current_ini, false).unwrap_or_else(|_| {
-                        match RegMod::collect(current_ini, false) {
+                    &ini.collect_mods(Some(&order_data),  false).unwrap_or_else(|_| {
+                        match ini.collect_mods(None, false) {
                             Ok(mods) => mods,
                             Err(err) => {
                                 ui.display_msg(&err.to_string());
@@ -771,15 +813,9 @@ fn main() -> Result<(), slint::PlatformError> {
         move |state| -> bool {
             let ui = ui_handle.unwrap();
             let value = if state { "1" } else { "0" };
-            let ext_ini = match ModLoader::properties(&get_or_update_game_dir(None)) {
-                Ok(ini) => ini.own_path(),
-                Err(err) => {
-                    ui.display_msg(&err.to_string());
-                    return !state
-                }
-            };
+            let ext_ini = get_loader_ini_dir();
             let mut result = state;
-            save_value_ext(&ext_ini, LOADER_SECTIONS[0], LOADER_KEYS[1], value).unwrap_or_else(
+            save_value_ext(ext_ini, LOADER_SECTIONS[0], LOADER_KEYS[1], value).unwrap_or_else(
                 |err| {
                     ui.display_msg(&err.to_string());
                     result = !state;
@@ -792,15 +828,9 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |time| {
             let ui = ui_handle.unwrap();
-            let ext_ini = match ModLoader::properties(&get_or_update_game_dir(None)) {
-                Ok(ini) => ini.own_path(),
-                Err(err) => {
-                    ui.display_msg(&err.to_string());
-                    return
-                }
-            };
+            let ext_ini = get_loader_ini_dir();
             ui.global::<MainLogic>().invoke_force_app_focus();
-            if let Err(err) = save_value_ext(&ext_ini, LOADER_SECTIONS[0], LOADER_KEYS[0], &time) {
+            if let Err(err) = save_value_ext(ext_ini, LOADER_SECTIONS[0], LOADER_KEYS[0], &time) {
                 ui.display_msg(&format!("Failed to set load delay\n\n{err}"));
                 return;
             }
@@ -866,16 +896,17 @@ fn main() -> Result<(), slint::PlatformError> {
         move || {
             let ui = ui_handle.unwrap();
             slint::spawn_local(async move {
-                let current_ini = get_ini_dir();
                 let game_dir = get_or_update_game_dir(None);
-                match mods_registered(IniOption::Path(current_ini)) {
-                    Ok(n) => {
-                        if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir, current_ini, n).await {
-                            ui.display_msg(&err.to_string());
-                        };
+                let ini = match Cfg::read(get_ini_dir()) {
+                    Ok(ini_data) => ini_data,
+                    Err(err) => {
+                        ui.display_msg(&err.to_string());
+                        return;
                     }
-                    Err(err) => ui.display_msg(&err.to_string())
-                }
+                };
+                if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir, &ini).await {
+                    ui.display_msg(&err.to_string());
+                };
             }).unwrap();
         }
     });
@@ -884,9 +915,9 @@ fn main() -> Result<(), slint::PlatformError> {
         move |state, key, value| -> i32 {
             let ui = ui_handle.unwrap();
             let error = 42069_i32;
-            let cfg_dir = get_or_update_game_dir(None).join(LOADER_FILES[2]);
+            let cfg_dir = get_loader_ini_dir();
             let mut result: i32 = if state { 1 } else { -1 };
-            let mut load_order = match ModLoaderCfg::read_section(&cfg_dir, LOADER_SECTIONS[1]) {
+            let mut load_order = match ModLoaderCfg::read_section(cfg_dir, LOADER_SECTIONS[1]) {
                 Ok(data) => data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -919,8 +950,8 @@ fn main() -> Result<(), slint::PlatformError> {
         move |to_k, from_k, value| -> i32 {
             let ui = ui_handle.unwrap();
             let mut result = 0_i32;
-            let cfg_dir = get_or_update_game_dir(None).join(LOADER_FILES[2]);
-            let mut load_order = match ModLoaderCfg::read_section(&cfg_dir, LOADER_SECTIONS[1]) {
+            let cfg_dir = get_loader_ini_dir();
+            let mut load_order = match ModLoaderCfg::read_section(cfg_dir, LOADER_SECTIONS[1]) {
                 Ok(data) => data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -949,7 +980,15 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move || {
             let ui = ui_handle.unwrap();
-            deserialize_current_mods(&RegMod::collect(get_ini_dir(), false).unwrap_or_else(|err| {
+            let ini = match Cfg::read(get_ini_dir()) {
+                Ok(ini_data) => ini_data,
+                Err(err) => {
+                    ui.display_msg(&err.to_string());
+                    return;
+                }
+            };
+            let order_data = order_data_or_default(ui.as_weak(), None);
+            deserialize_current_mods(&ini.collect_mods(Some(&order_data),  false).unwrap_or_else(|err| {
                 ui.display_msg(&err.to_string());
                 vec![RegMod::default()]
             }), ui.as_weak());
@@ -1032,6 +1071,13 @@ fn get_ini_dir() -> &'static PathBuf {
     })
 }
 
+fn get_loader_ini_dir() -> &'static PathBuf {
+    static LOADER_CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
+    LOADER_CONFIG_PATH.get_or_init(|| {
+        get_or_update_game_dir(None).join(LOADER_FILES[2])
+    })
+}
+
 fn get_or_update_game_dir(update: Option<PathBuf>) -> tokio::sync::RwLockReadGuard<'static, std::path::PathBuf> {
     static GAME_DIR: OnceLock<RwLock<PathBuf>> = OnceLock::new();
 
@@ -1081,6 +1127,26 @@ fn open_text_files(ui_handle: slint::Weak<App>, files: Vec<std::ffi::OsString>) 
                 error!("Thread panicked! {err:?}");
                 ui.display_msg(&format!("{err:?}"));
             }
+        }
+    }
+}
+
+fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) -> HashMap<String, usize> {
+    let ui = ui_handle.unwrap();
+    let path: &Path;
+    if let Some(dir) = from_path {
+        path = dir
+    } else { path = get_loader_ini_dir() };
+    match ModLoaderCfg::read_section(path, LOADER_SECTIONS[1]) {
+        Ok(mut data) => {
+            data.parse_section().unwrap_or_else(|err| {
+                ui.display_msg(&err.to_string());
+                HashMap::new()
+            })
+        },
+        Err(err) => {
+            ui.display_msg(&err.to_string());
+            HashMap::new()
         }
     }
 }
@@ -1257,31 +1323,19 @@ async fn confirm_remove_mod(
     remove_mod_files(game_dir, reg_mod)
 }
 
-enum IniOption<'a> {
-    Ini(ini::Ini),
-    Path(&'a Path),
-}
-
-fn mods_registered(input_ini: IniOption) -> std::io::Result<usize> {
-    let ini = match input_ini {
-        IniOption::Ini(ini) => ini,
-        IniOption::Path(ini_file) => {
-            match get_or_setup_cfg(ini_file, &INI_SECTIONS) {
-                Ok(ini) => ini,
-                Err(err) => return Err(err),
-            }
-        }
-    };
+/// returns the number of registered mods currently saved in the ".ini"  
+/// this can't error if you pass in a `IniOption::Ini` 
+fn mods_registered(ini: &ini::Ini) -> usize {
     let empty_ini = ini.section(INI_SECTIONS[2]).is_none() || ini.section(INI_SECTIONS[2]).unwrap().is_empty();
-    if empty_ini { Ok(0) } else { Ok(ini.section(INI_SECTIONS[2]).unwrap().len()) }
+    if empty_ini { 0 } else { ini.section(INI_SECTIONS[2]).unwrap().len() }
 }
 
 async fn confirm_scan_mods(
     ui_weak: slint::Weak<App>,
     game_dir: &Path,
-    ini_file: &Path,
-    mods_registered: usize) -> std::io::Result<()>{
+    ini: &Cfg) -> std::io::Result<()> {
     let ui = ui_weak.unwrap();
+    let mods_registered = mods_registered(&ini.data);
 
     ui.display_confirm("Would you like to attempt to auto-import already installed mods to Elden Mod Loader GUI?", true);
     if receive_msg().await != Message::Confirm {
@@ -1296,26 +1350,32 @@ async fn confirm_scan_mods(
         let dark_mode = ui.global::<SettingsLogic>().get_dark_mode();
         // MARK: TODO
         // need to check if a deleted mod was in the disabled state and then toggle if so
-        std::fs::remove_file(ini_file)?;
-        new_cfg(ini_file)?;
-        save_bool(ini_file, INI_SECTIONS[0], INI_KEYS[0], dark_mode)?;
-        save_path(ini_file, INI_SECTIONS[1], INI_KEYS[1], game_dir)?;
+        std::fs::remove_file(&ini.dir)?;
+        new_cfg(&ini.dir)?;
+        save_bool(&ini.dir, INI_SECTIONS[0], INI_KEYS[0], dark_mode)?;
+        save_path(&ini.dir, INI_SECTIONS[1], INI_KEYS[1], game_dir)?;
     }
-    match scan_for_mods(game_dir, ini_file) {
+    match scan_for_mods(game_dir, &ini.dir) {
         Ok(len) => {
+            let ini = match Cfg::read(&ini.dir) {
+                Ok(ini_data) => ini_data,
+                Err(err) => {
+                    ui.display_msg(&err.to_string());
+                    return Err(err);
+                }
+            };
             ui.global::<MainLogic>().set_current_subpage(0);
             let mod_loader = ModLoader::properties(game_dir).unwrap_or_default();
+            let order_data = order_data_or_default(ui.as_weak(), Some(mod_loader.path()));
             deserialize_current_mods(
-                &RegMod::collect(ini_file, !mod_loader.installed()).unwrap_or_else(|err| {
+                &ini.collect_mods(Some(&order_data), !mod_loader.installed()).unwrap_or_else(|err| {
                     ui.display_msg(&err.to_string());
                     vec![RegMod::default()]
                 }),ui.as_weak()
             );
             ui.display_msg(&format!("Successfully Found {len} mod(s)"));
         }
-        Err(err) => if err.kind() != ErrorKind::ConnectionAborted {
-            ui.display_msg(&format!("Error: {err}"));
-        }
+        Err(err) => ui.display_msg(&format!("Error: {err}")),
     };
     Ok(())
 }
