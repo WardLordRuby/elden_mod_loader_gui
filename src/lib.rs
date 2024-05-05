@@ -66,11 +66,6 @@ macro_rules! new_io_error {
     };
 }
 
-pub enum IniOption<'a> {
-    Ini(&'a ini::Ini),
-    Path(&'a Path),
-}
-
 pub struct PathErrors {
     pub ok_paths_short: Vec<PathBuf>,
     pub err_paths_long: Vec<PathBuf>,
