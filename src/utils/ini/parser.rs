@@ -394,6 +394,10 @@ impl SplitFiles {
         path_refs
     }
 
+    pub fn dll_refs(&self) -> Vec<&Path> {
+        self.dll.iter().map(|f| f.as_path()).collect()
+    }
+
     /// returns references to `input_files` + `self.config` + `self.other`
     pub fn add_other_files_to_files<'a>(&'a self, files: &'a [PathBuf]) -> Vec<&'a Path> {
         let mut path_refs = Vec::with_capacity(files.len() + self.other_files_len());

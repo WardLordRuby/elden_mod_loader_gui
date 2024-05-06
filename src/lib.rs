@@ -350,7 +350,6 @@ pub struct Cfg {
     pub data: Ini,
     pub dir: PathBuf,
 }
-
 pub enum PathResult {
     Full(PathBuf),
     Partial(PathBuf),
@@ -370,6 +369,11 @@ impl Cfg {
             data,
             dir: PathBuf::from(ini_path),
         })
+    }
+
+    pub fn update(&mut self) -> std::io::Result<()> {
+        self.data = get_or_setup_cfg(&self.dir, &INI_SECTIONS)?;
+        Ok(())
     }
 
     pub fn attempt_locate_game(&mut self) -> std::io::Result<PathResult> {

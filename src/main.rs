@@ -301,7 +301,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move |mod_name| {
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
-            let ini = match Cfg::read(ini_dir) {
+            let mut ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -419,9 +419,11 @@ fn main() -> Result<(), slint::PlatformError> {
                     };
                 });
                 ui.global::<MainLogic>().set_line_edit_text(SharedString::new());
-                drop(ini);
+                ini.update().unwrap_or_else(|err| {
+                    ui.display_msg(&err.to_string());
+                    ini = Cfg::default();
+                });
                 let order_data = order_data_or_default(ui.as_weak(), None);
-                let ini = Cfg::read(ini_dir).unwrap_or_default();
                 deserialize_current_mods(
                     &ini.collect_mods(Some(&order_data), false).unwrap_or_else(|_| {
                         // if error lets try it again and see if we can get sync-keys to cleanup any errors
@@ -517,7 +519,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move |key, state| -> bool {
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
-            let ini = match Cfg::read(ini_dir) {
+            let mut ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -543,10 +545,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 Err(err) => ui.display_msg(&err.to_string()),
             }
-            drop(ini);
-            let ini = Cfg::read(ini_dir).unwrap_or_else(|err| {
+            ini.update().unwrap_or_else(|err| {
                 ui.display_msg(&err.to_string());
-                Cfg::default()
+                ini = Cfg::default();
             });
             let order_data = order_data_or_default(ui.as_weak(), None);
             deserialize_current_mods(
@@ -576,7 +577,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move |key| {
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
-            let ini = match Cfg::read(ini_dir) {
+            let mut ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -686,10 +687,9 @@ fn main() -> Result<(), slint::PlatformError> {
                         if !results.iter().any(|r| r.is_err()) {
                             ui.display_msg(&format!("Sucessfully added {} file(s) to {}", num_files, format_key));
                         }
-                        drop(ini);
-                        let ini = Cfg::read(ini_dir).unwrap_or_else(|err| {
+                        ini.update().unwrap_or_else(|err| {
                             ui.display_msg(&err.to_string());
-                            Cfg::default()
+                            ini = Cfg::default();
                         });
                         let order_data = order_data_or_default(ui.as_weak(), None);
                         deserialize_current_mods(
@@ -717,7 +717,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move |key| {
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
-            let ini = match Cfg::read(ini_dir) {
+            let mut ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -737,7 +737,6 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 };
-                drop(ini);
                 let game_dir = get_or_update_game_dir(None);
                 if let Some(found_mod) =
                     reg_mods.iter_mut().find(|reg_mod| format_key == reg_mod.name)
@@ -774,8 +773,11 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg(&format!("{err}\nRemoving invalid entries"))
                 };
                 ui.global::<MainLogic>().set_current_subpage(0);
+                ini.update().unwrap_or_else(|err| {
+                    ui.display_msg(&err.to_string());
+                    ini = Cfg::default();
+                });
                 let order_data = order_data_or_default(ui.as_weak(), None);
-                let ini = Cfg::read(ini_dir).unwrap_or_default();
                 deserialize_current_mods(
                     &ini.collect_mods(Some(&order_data),  false).unwrap_or_else(|_| {
                         match ini.collect_mods(None, false) {
@@ -1366,24 +1368,24 @@ async fn confirm_scan_mods(
         }
     };
 
-    let mods_registered = mods_registered(&ini.data);
-    let empty_ini = mods_registered == 0;
+    let num_registered = mods_registered(&ini.data);
+    let empty_ini = num_registered == 0;
     if !empty_ini {
         ui.display_confirm("Warning: This action will reset current registered mods, are you sure you want to continue?", true);
         if receive_msg().await != Message::Confirm {
             return Ok(());
         };
         let dark_mode = ui.global::<SettingsLogic>().get_dark_mode();
-        // MARK: TODO
-        // need to check if a deleted mod was in the disabled state and then toggle if so
+
         std::fs::remove_file(&ini.dir)?;
         new_cfg(&ini.dir)?;
         save_bool(&ini.dir, INI_SECTIONS[0], INI_KEYS[0], dark_mode)?;
         save_path(&ini.dir, INI_SECTIONS[1], INI_KEYS[1], game_dir)?;
     }
+    let new_ini: Cfg;
     match scan_for_mods(game_dir, &ini.dir) {
         Ok(len) => {
-            let ini = match Cfg::read(&ini.dir) {
+            new_ini = match Cfg::read(&ini.dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -1394,14 +1396,29 @@ async fn confirm_scan_mods(
             let mod_loader = ModLoader::properties(game_dir).unwrap_or_default();
             let order_data = order_data_or_default(ui.as_weak(), Some(mod_loader.path()));
             deserialize_current_mods(
-                &ini.collect_mods(Some(&order_data), !mod_loader.installed()).unwrap_or_else(|err| {
+                &new_ini.collect_mods(Some(&order_data), !mod_loader.installed()).unwrap_or_else(|err| {
                     ui.display_msg(&err.to_string());
                     vec![RegMod::default()]
                 }),ui.as_weak()
             );
             ui.display_msg(&format!("Successfully Found {len} mod(s)"));
         }
-        Err(err) => ui.display_msg(&format!("Error: {err}")),
+        Err(err) => {
+            ui.display_msg(&format!("Error: {err}"));
+            new_ini = Cfg::default();
+        },
     };
+    if new_ini.dir != Path::new("") && num_registered != mods_registered(&new_ini.data) {
+        let mut old_mods = ini.collect_mods(None, false)?;
+        old_mods.retain(|m| m.files.dll.iter().any(FileData::is_disabled));
+        if old_mods.is_empty() { return Ok(()) }
+        
+        let new_mods = new_ini.collect_mods(None, false)?;
+        let all_new_dlls = new_mods.iter().flat_map(|m| m.files.dll_refs()).collect::<Vec<_>>();
+        old_mods.retain(|m| !m.files.dll.iter().any(|f| all_new_dlls.contains(&f.as_path())));
+        if old_mods.is_empty() { return Ok(()) }
+
+        old_mods.iter().try_for_each(|m| toggle_files(game_dir, true, m, None).map(|_| ()))?;
+    }
     Ok(())
 }
