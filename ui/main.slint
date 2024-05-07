@@ -3,6 +3,7 @@ import { SettingsPage, ModDetailsPage } from "sub-pages.slint";
 import { MainLogic, SettingsLogic, Page, ColorPalette, Formatting } from "common.slint";
 
 export component MainPage inherits Page {
+    property <bool> update-toggle: true;
     has-back-button: false;
     title: @tr("Mods");
     description: @tr("Edit state of registered mods here");
@@ -15,6 +16,7 @@ export component MainPage inherits Page {
     callback swap-tab;
     callback edit-mod(int, int);
     callback update-mod-index(int, int);
+    callback redraw-checkboxes;
     focus-line-edit => { input-mod.focus() }
     focus-settings => { app-settings.focus-settings-scope() }
     swap-tab => { mod-settings.current-tab = mod-settings.current-tab == 0 ? 1 : 0 }
@@ -25,6 +27,10 @@ export component MainPage inherits Page {
         mod-settings.mod-index = i;
         MainLogic.current-subpage = 2
     }
+    redraw-checkboxes => {
+        update-toggle = false;
+        update-toggle = true;
+    }
 
     VerticalLayout {
         y: 27px;
@@ -32,11 +38,11 @@ export component MainPage inherits Page {
         padding: Formatting.side-padding;
         padding-bottom: Formatting.side-padding / 2;
 
-        reg-mod-box := GroupBox {
+        if update-toggle : reg-mod-box := GroupBox {
             title: @tr("Registered-Mods:");
             enabled: SettingsLogic.loader-installed && !SettingsLogic.loader-disabled;
 
-            list-view := ListView {
+            ListView {
                 for mod[idx] in MainLogic.current-mods:  re := Rectangle {
                     height: 31px;
                     border-radius: Formatting.rectangle-radius;

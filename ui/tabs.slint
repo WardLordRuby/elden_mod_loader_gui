@@ -44,6 +44,7 @@ export component ModDetails inherits Tab {
 
 export component ModEdit inherits Tab {
     in property <int> mod-index;
+    property <bool> update-toggle: true;
     property <bool> has-config: MainLogic.current-mods[mod-index].config-files.length > 0;
     property <int> selected-order: MainLogic.current-mods[mod-index].order.at;
     property <int> selected-index: MainLogic.current-mods[mod-index].order.i;
@@ -62,6 +63,7 @@ export component ModEdit inherits Tab {
             enabled: MainLogic.current-mods[mod-index].dll-files.length > 0 && SettingsLogic.loader-installed;
 
             function init-selected-index() {
+                MainLogic.current-mods[mod-index].order.at = 0;
                 if MainLogic.current-mods[mod-index].dll-files.length != 1 {
                     MainLogic.current-mods[mod-index].order.i = -1;
                 }
@@ -75,41 +77,43 @@ export component ModEdit inherits Tab {
             HorizontalLayout {
                 row: 1;
                 padding-top: Formatting.default-padding;
+
+                function redraw-elements() {
+                    update-toggle = false;
+                    update-toggle = true;
+                }
+
                 load-order := Switch {
                     text: @tr("Set Load Order");
-                    enabled: load-order-box.enabled;
+                    enabled: MainLogic.current-mods[mod-index].dll-files.length > 0 && SettingsLogic.loader-installed;
                     checked: MainLogic.current-mods[mod-index].order.set;
                     toggled => {
                         if self.checked {
                             MainLogic.current-mods[mod-index].order.at = MainLogic.orders-set + 1;
                             if selected-index != -1 && selected-order > 0 {
                                 // Front end `order.at` is 1 based and back end is 0 based
-                                temp = MainLogic.add-remove-order(self.checked, selected-dll, selected-order - 1);
+                                temp = MainLogic.add-remove-order(self.checked, selected-dll, mod-index);
                                 if temp != 42069 {
                                     MainLogic.orders-set = MainLogic.orders-set + temp;
-                                    MainLogic.current-mods[mod-index].order.set = self.checked;
                                 } else {
                                     self.checked = !self.checked;
                                     MainLogic.force-deserialize()
                                 }
                                 temp = 0
                             }
+                            redraw-elements()
                         } else {
                             if selected-index != -1 && selected-order > 0 {
-                                temp = MainLogic.add-remove-order(self.checked, selected-dll, selected-order - 1);
+                                temp = MainLogic.add-remove-order(self.checked, selected-dll, mod-index);
                                 if temp != 42069 {
                                     MainLogic.orders-set = MainLogic.orders-set + temp;
-                                    init-selected-index()
                                 } else {
                                     self.checked = !self.checked;
                                     MainLogic.force-deserialize()
                                 }
                             }
-                            if temp != 42069 {
-                                MainLogic.current-mods[mod-index].order.set = self.checked;
-                                MainLogic.current-mods[mod-index].order.at = 0;
-                            }
-                            temp = 0
+                            temp = 0;
+                            redraw-elements()
                         }
                     }
                 }
@@ -121,13 +125,9 @@ export component ModEdit inherits Tab {
                 
                 function modify-file(file: string, i: int) {
                     if file != selected-dll && selected-order > 0 {
-                        temp = MainLogic.modify-order(file, selected-dll, selected-order - 1);
+                        temp = MainLogic.modify-order(file, selected-dll, selected-order - 1, mod-index, i);
                         if temp != -1 {
                             MainLogic.orders-set = MainLogic.orders-set + temp;
-                            MainLogic.current-mods[mod-index].order.i = i;
-                            if temp == 1 {
-                                MainLogic.current-mods[mod-index].order.set = true;
-                            }
                         } else {
                             init-selected-index();
                             MainLogic.force-deserialize()
@@ -138,12 +138,14 @@ export component ModEdit inherits Tab {
                 }
                 function modify-index(v: int) {
                     if selected-index != -1 && v > 0 {
-                        temp =  MainLogic.modify-order(selected-dll, selected-dll, v - 1);
+                        temp =  MainLogic.modify-order(selected-dll, selected-dll, v - 1, mod-index, selected-index);
                         if temp != -1 {
                             MainLogic.orders-set = MainLogic.orders-set + temp
                         } else {
                             MainLogic.force-deserialize()
                         }
+                    } else {
+                        MainLogic.current-mods[mod-index].order.at = v
                     }
                     if temp != -1 {
                         MainLogic.current-mods[mod-index].order.at = v
@@ -152,13 +154,7 @@ export component ModEdit inherits Tab {
                 }
 
                 // Might be able to remove this hack after properly having sorting data parsed
-                if load-order.checked : ComboBox {
-                    enabled: load-order.checked;
-                    current-index: selected-index;
-                    model: MainLogic.current-mods[mod-index].dll-files;
-                    selected(file) => { modify-file(file, self.current-index) }
-                }
-                if !load-order.checked : ComboBox {
+                if update-toggle : ComboBox {
                     enabled: load-order.checked;
                     current-index: selected-index;
                     model: MainLogic.current-mods[mod-index].dll-files;
@@ -167,15 +163,7 @@ export component ModEdit inherits Tab {
 
                 // MARK: TODO
                 // Create a focus scope to handle up and down arrow inputs
-                if load-order.checked : SpinBox {
-                    width: 106px;
-                    enabled: load-order.checked;
-                    minimum: 1;
-                    maximum: MainLogic.orders-set;
-                    value: selected-order;
-                    edited(int) => { modify-index(int) }
-                }
-                if !load-order.checked : SpinBox {
+                if update-toggle : SpinBox {
                     width: 106px;
                     enabled: load-order.checked;
                     minimum: 1;

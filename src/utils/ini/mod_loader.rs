@@ -135,7 +135,7 @@ impl ModLoaderCfg {
     }
 
     #[inline]
-    fn iter(&self) -> ini::PropertyIter {
+    pub fn iter(&self) -> ini::PropertyIter {
         self.section().iter()
     }
 
@@ -172,6 +172,11 @@ impl ModLoaderCfg {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.section().is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.section().len()
     }
 
     #[inline]

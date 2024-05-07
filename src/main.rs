@@ -15,9 +15,9 @@ use elden_mod_loader_gui::{
 };
 use i_slint_backend_winit::WinitWindowAccessor;
 use log::{error, info, warn, debug};
-use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel, Timer};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, VecModel};
 use std::{
-    collections::HashMap, ffi::OsStr, io::ErrorKind, path::{Path, PathBuf}, rc::Rc, sync::{
+    collections::{HashMap, HashSet}, ffi::OsStr, io::ErrorKind, path::{Path, PathBuf}, rc::Rc, sync::{
         atomic::{AtomicU32, Ordering},
         OnceLock,
     }
@@ -552,15 +552,11 @@ fn main() -> Result<(), slint::PlatformError> {
             let order_data = order_data_or_default(ui.as_weak(), None);
             deserialize_current_mods(
                 &ini.collect_mods(Some(&order_data), false).unwrap_or_else(|_| {
-                    // if error lets try it again and see if we can get sync-keys to cleanup any errors
-                    match ini.collect_mods(None, false) {
-                        Ok(mods) => mods,
-                        Err(err) => {
-                            ui.display_msg(&err.to_string());
+                    ini.collect_mods( Some(&order_data), false).unwrap_or_else(|err| {
+                        ui.display_msg(&err.to_string());
                             vec![RegMod::default()]
-                        }
-                    }
-                }), ui.as_weak()
+                    })
+                }),ui.as_weak()
             );
             !state
         }
@@ -694,13 +690,10 @@ fn main() -> Result<(), slint::PlatformError> {
                         let order_data = order_data_or_default(ui.as_weak(), None);
                         deserialize_current_mods(
                             &ini.collect_mods(Some(&order_data), false).unwrap_or_else(|_| {
-                                match ini.collect_mods(None, false) {
-                                    Ok(mods) => mods,
-                                    Err(err) => {
-                                        ui.display_msg(&err.to_string());
+                                ini.collect_mods( Some(&order_data), false).unwrap_or_else(|err| {
+                                    ui.display_msg(&err.to_string());
                                         vec![RegMod::default()]
-                                    }
-                                }
+                                })
                             }),ui.as_weak()
                         );
                     }
@@ -779,14 +772,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 });
                 let order_data = order_data_or_default(ui.as_weak(), None);
                 deserialize_current_mods(
-                    &ini.collect_mods(Some(&order_data),  false).unwrap_or_else(|_| {
-                        match ini.collect_mods(None, false) {
-                            Ok(mods) => mods,
-                            Err(err) => {
-                                ui.display_msg(&err.to_string());
+                    &ini.collect_mods(Some(&order_data), false).unwrap_or_else(|_| {
+                        ini.collect_mods( Some(&order_data), false).unwrap_or_else(|err| {
+                            ui.display_msg(&err.to_string());
                                 vec![RegMod::default()]
-                            }
-                        }
+                        })
                     }),ui.as_weak()
                 );
             }).unwrap();
@@ -943,7 +933,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let load_orders = load_order.mut_section();
             let stable_k = match state {
                 true => {
-                    load_orders.insert(&key, &value);
+                    load_orders.insert(&key, &value.to_string());
                     Some(key.as_str())
                 }
                 false => {
@@ -958,12 +948,20 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.display_msg(&format!("Failed to write to \"mod_loader_config.ini\"\n{err}"));
                 result = error;
             });
+            let model = ui.global::<MainLogic>().get_current_mods();
+            let mut selected_mod = model.row_data(value as usize).unwrap();
+            selected_mod.order.set = state;
+            model.set_row_data(value as usize, selected_mod);
+            if let Err(err) = model.update_order(&mut load_order,  value, ui.as_weak()) {
+                ui.display_msg(&err.to_string());
+                return error;
+            };
             result
         }   
     });
     ui.global::<MainLogic>().on_modify_order({
         let ui_handle = ui.as_weak();
-        move |to_k, from_k, value| -> i32 {
+        move |to_k, from_k, value, row, dll_i| -> i32 {
             let ui = ui_handle.unwrap();
             let mut result = 0_i32;
             let cfg_dir = get_loader_ini_dir();
@@ -976,12 +974,12 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             let load_orders = load_order.mut_section();
             if to_k != from_k && load_orders.contains_key(&from_k) {
-                load_orders.remove(from_k);
-                load_orders.append(&to_k, value)
+                load_orders.remove(&from_k);
+                load_orders.append(&to_k, value.to_string())
             } else if load_orders.contains_key(&to_k) {
-                load_orders.insert(&to_k, value)
+                load_orders.insert(&to_k, value.to_string())
             } else {
-                load_orders.append(&to_k, value);
+                load_orders.append(&to_k, value.to_string());
                 result = 1
             };
             
@@ -989,6 +987,26 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.display_msg(&format!("Failed to write to \"mod_loader_config.ini\"\n{err}"));
                 if !result.is_negative() { result = -1 }
             });
+            if to_k != from_k {
+                let model = ui.global::<MainLogic>().get_current_mods();
+                let mut selected_mod = model.row_data(row as usize).unwrap();
+                selected_mod.order.i = dll_i;
+                if !selected_mod.order.set { selected_mod.order.set = true }
+                model.set_row_data(row as usize, selected_mod);
+                if let Err(err) = model.update_order(&mut load_order, row, ui.as_weak()) {
+                    ui.display_msg(&err.to_string());
+                    return -1;
+                };
+            } else if value != row {
+                let model = ui.global::<MainLogic>().get_current_mods();
+                let mut curr_row = model.row_data(row as usize).unwrap();
+                let mut replace_row = model.row_data(value as usize).unwrap();
+                std::mem::swap(&mut curr_row.order.at, &mut replace_row.order.at);
+                model.set_row_data(row as usize, replace_row);
+                model.set_row_data(value as usize, curr_row);
+                ui.invoke_update_mod_index(value, 1);
+                ui.invoke_redraw_checkboxes();
+            }
             result
         }
     });
@@ -1004,16 +1022,90 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             let order_data = order_data_or_default(ui.as_weak(), None);
-            deserialize_current_mods(&ini.collect_mods(Some(&order_data),  false).unwrap_or_else(|err| {
-                ui.display_msg(&err.to_string());
-                vec![RegMod::default()]
-            }), ui.as_weak());
+            deserialize_current_mods(
+                &ini.collect_mods(Some(&order_data), false).unwrap_or_else(|_| {
+                    ini.collect_mods( Some(&order_data), false).unwrap_or_else(|err| {
+                        ui.display_msg(&err.to_string());
+                            vec![RegMod::default()]
+                    })
+                }),ui.as_weak()
+            );
             info!("deserialized after encountered error");
         }
     });
 
     ui.invoke_focus_app();
     ui.run()
+}
+
+trait Sortable {
+    fn update_order(&self, cfg: &mut ModLoaderCfg, selected_row: i32, ui_handle: slint::Weak<App>) -> std::io::Result<()>;
+}
+
+impl Sortable for ModelRc<DisplayMod> {
+    fn update_order(&self, cfg: &mut ModLoaderCfg, selected_row: i32, ui_handle: slint::Weak<App>) -> std::io::Result<()> {
+        let ui = ui_handle.unwrap();
+        let order_map = cfg.parse_section()?;
+
+        let mut unsorted_idx = (0..self.row_count()).collect::<Vec<_>>();
+        let selected_key = self.row_data(selected_row as usize).unwrap().name;
+        let mut i = 0_usize;
+        let mut selected_i = 0_i32;
+        let mut no_order_count = 0_usize;
+        let mut seen_names = HashSet::new();
+        while !unsorted_idx.is_empty() {
+            if i >= unsorted_idx.len() {
+                i = 0
+            }
+            let unsorted_i = unsorted_idx[i];
+            let mut curr_row = self.row_data(unsorted_i).unwrap();
+            let curr_key = curr_row.dll_files.row_data(curr_row.order.i as usize);
+            let new_order: Option<&usize>;
+            if curr_key.is_some() && {new_order = order_map.get(&curr_key.unwrap().to_string()); new_order}.is_some() {
+                let new_order = new_order.unwrap();
+                curr_row.order.at = *new_order as i32 + 1;
+                if curr_row.name == selected_key {
+                    selected_i = *new_order as i32;
+                }
+                if unsorted_i == *new_order {
+                    self.set_row_data(*new_order, curr_row);
+                    unsorted_idx.swap_remove(i);
+                    continue;
+                }
+                if let Some(index) = unsorted_idx.iter().position(|&x| x == *new_order) {
+                    let swap_row = self.row_data(*new_order).unwrap();
+                    if swap_row.name == selected_key {
+                        selected_i = unsorted_i as i32;
+                    }
+                    self.set_row_data(*new_order, curr_row);
+                    self.set_row_data(unsorted_i, swap_row);
+                    unsorted_idx.swap_remove(index);
+                    continue;
+                }
+            } else {
+                curr_row.order.at = 0;
+                if curr_row.dll_files.row_count() != 1 {
+                    curr_row.order.i = -1;
+                }
+                if curr_row.name == selected_key {
+                    selected_i = unsorted_i as i32;
+                }
+                if !seen_names.contains(&curr_row.name) {
+                    seen_names.insert(curr_row.name.clone());
+                    no_order_count += 1;
+                }
+                self.set_row_data(unsorted_i, curr_row);
+                if no_order_count >= unsorted_idx.len() {
+                    // alphabetical sort would go here
+                    break;
+                }
+                i += 1;
+            }
+        }
+        ui.invoke_update_mod_index(selected_i, 1);
+        ui.invoke_redraw_checkboxes();
+        Ok(())
+    }
 }
 
 impl App {
@@ -1204,17 +1296,13 @@ fn deserialize_current_mods(mods: &[RegMod], ui_handle: slint::Weak<App>) {
     ui.global::<MainLogic>().set_orders_set(mods.order_count() as i32);
 }
 
-// MARK: TODO
-// need to use ModelNotify::row_changed to handle updating page info on change
-// ui.invoke_update_mod_index(1, 1);
-
 async fn install_new_mod(
     name: &str,
     files: Vec<PathBuf>,
     game_dir: &Path,
-    ui_weak: slint::Weak<App>,
+    ui_handle: slint::Weak<App>,
 ) -> std::io::Result<Vec<PathBuf>> {
-    let ui = ui_weak.unwrap();
+    let ui = ui_handle.unwrap();
     let mod_name = name.trim();
     ui.display_confirm(
         &format!(
@@ -1226,7 +1314,7 @@ async fn install_new_mod(
         return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled");
     }
     match InstallData::new(mod_name, files, game_dir) {
-        Ok(data) => add_dir_to_install_data(data, ui_weak).await,
+        Ok(data) => add_dir_to_install_data(data, ui_handle).await,
         Err(err) => Err(err)
     }
 }
@@ -1235,24 +1323,24 @@ async fn install_new_files_to_mod(
     mod_data: &RegMod,
     files: Vec<PathBuf>,
     game_dir: &Path,
-    ui_weak: slint::Weak<App>,
+    ui_handle: slint::Weak<App>,
 ) -> std::io::Result<Vec<PathBuf>> {
-    let ui = ui_weak.unwrap();
+    let ui = ui_handle.unwrap();
     ui.display_confirm("Selected files are not installed? Would you like to try and install them?", true);
     if receive_msg().await != Message::Confirm {
         return new_io_error!(ErrorKind::ConnectionAborted, "Did not select to install files");
     };
     match InstallData::amend(mod_data, files, game_dir) {
-        Ok(data) => confirm_install(data, ui_weak).await,
+        Ok(data) => confirm_install(data, ui_handle).await,
         Err(err) => Err(err)
     }
 }
 
 async fn add_dir_to_install_data(
     mut install_files: InstallData,
-    ui_weak: slint::Weak<App>,
+    ui_handle: slint::Weak<App>,
 ) -> std::io::Result<Vec<PathBuf>> {
-    let ui = ui_weak.unwrap();
+    let ui = ui_handle.unwrap();
     ui.display_confirm(&format!(
         "Current Files to install:\n{}\n\nWould you like to add a directory eg. Folder containing a config file?", 
         install_files.display_paths), true);
@@ -1280,7 +1368,7 @@ async fn add_dir_to_install_data(
                 ui.display_msg(&format!("Error:\n\n{err}"));
                 let _ = receive_msg().await;
                 let future = async {
-                    add_dir_to_install_data(install_files, ui_weak).await
+                    add_dir_to_install_data(install_files, ui_handle).await
                 };
                 let reselect_dir = Box::pin(future);
                 reselect_dir.await
@@ -1288,15 +1376,15 @@ async fn add_dir_to_install_data(
                 new_io_error!(ErrorKind::Other, format!("Error: Could not Install\n\n{err}"))
             }
         }
-        true => confirm_install(install_files, ui_weak).await,
+        true => confirm_install(install_files, ui_handle).await,
     }
 }
 
 async fn confirm_install(
     install_files: InstallData,
-    ui_weak: slint::Weak<App>,
+    ui_handle: slint::Weak<App>,
 ) -> std::io::Result<Vec<PathBuf>> {
-    let ui = ui_weak.unwrap();
+    let ui = ui_handle.unwrap();
     ui.display_confirm(
         &format!(
             "Confirm install of mod \"{}\"\n\nSelected files:\n{}\n\nInstall at:\n{}",
@@ -1321,9 +1409,9 @@ async fn confirm_install(
 }
 
 async fn confirm_remove_mod(
-    ui_weak: slint::Weak<App>,
+    ui_handle: slint::Weak<App>,
     game_dir: &Path, reg_mod: &RegMod) -> std::io::Result<()> {
-    let ui = ui_weak.unwrap();
+    let ui = ui_handle.unwrap();
     let install_dir = match reg_mod.files.file_refs().iter().min_by_key(|file| file.ancestors().count()) {
         Some(path) => game_dir.join(parent_or_err(path)?),
         None => PathBuf::from("Error: Failed to display a parent_dir"),
@@ -1347,10 +1435,10 @@ fn mods_registered(ini: &ini::Ini) -> usize {
 }
 
 async fn confirm_scan_mods(
-    ui_weak: slint::Weak<App>,
+    ui_handle: slint::Weak<App>,
     game_dir: &Path,
     ini: Option<Cfg>) -> std::io::Result<()> {
-    let ui = ui_weak.unwrap();
+    let ui = ui_handle.unwrap();
     
     ui.display_confirm("Would you like to attempt to auto-import already installed mods to Elden Mod Loader GUI?", true);
     if receive_msg().await != Message::Confirm {
@@ -1396,9 +1484,11 @@ async fn confirm_scan_mods(
             let mod_loader = ModLoader::properties(game_dir).unwrap_or_default();
             let order_data = order_data_or_default(ui.as_weak(), Some(mod_loader.path()));
             deserialize_current_mods(
-                &new_ini.collect_mods(Some(&order_data), !mod_loader.installed()).unwrap_or_else(|err| {
-                    ui.display_msg(&err.to_string());
-                    vec![RegMod::default()]
+                &ini.collect_mods(Some(&order_data), false).unwrap_or_else(|_| {
+                    ini.collect_mods( Some(&order_data), false).unwrap_or_else(|err| {
+                        ui.display_msg(&err.to_string());
+                            vec![RegMod::default()]
+                    })
                 }),ui.as_weak()
             );
             ui.display_msg(&format!("Successfully Found {len} mod(s)"));
@@ -1412,7 +1502,7 @@ async fn confirm_scan_mods(
         let mut old_mods = ini.collect_mods(None, false)?;
         old_mods.retain(|m| m.files.dll.iter().any(FileData::is_disabled));
         if old_mods.is_empty() { return Ok(()) }
-        
+
         let new_mods = new_ini.collect_mods(None, false)?;
         let all_new_dlls = new_mods.iter().flat_map(|m| m.files.dll_refs()).collect::<Vec<_>>();
         old_mods.retain(|m| !m.files.dll.iter().any(|f| all_new_dlls.contains(&f.as_path())));

@@ -503,6 +503,8 @@ pub fn remove_mod_files(game_dir: &Path, reg_mod: &RegMod) -> std::io::Result<()
             Ok(())
         }
     })?;
+    // MARK: DEBUGME
+    // this isn't working
     if reg_mod.order.set {
         let file_name = file_name_or_err(&reg_mod.files.dll[reg_mod.order.i])?;
         remove_entry(
