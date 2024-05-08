@@ -9,10 +9,12 @@ use crate::{
     does_dir_contain, file_name_or_err, new_io_error, parent_or_err,
     utils::ini::{
         parser::RegMod,
-        writer::{remove_entry, save_bool, save_path, save_paths},
+        writer::{save_bool, save_path, save_paths},
     },
-    FileData, INI_SECTIONS, LOADER_SECTIONS,
+    FileData, INI_SECTIONS,
 };
+
+use super::ini::writer::remove_order_entry;
 
 /// Returns the deepest occurance of a directory that contains at least 1 file  
 /// Use parent_or_err for a direct binding to what is one level up
@@ -457,7 +459,7 @@ impl InstallData {
 
 pub fn remove_mod_files(
     game_dir: &Path,
-    loader_path: &Path,
+    loader_dir: &Path,
     reg_mod: &RegMod,
 ) -> std::io::Result<()> {
     let remove_files = reg_mod
@@ -508,15 +510,7 @@ pub fn remove_mod_files(
     })?;
 
     if reg_mod.order.set {
-        let file_name = file_name_or_err(&reg_mod.files.dll[reg_mod.order.i])?;
-        remove_entry(
-            loader_path,
-            LOADER_SECTIONS[1],
-            file_name.to_str().ok_or(std::io::Error::new(
-                ErrorKind::InvalidData,
-                format!("{file_name:?} is not valid UTF-8"),
-            ))?,
-        )?;
+        remove_order_entry(reg_mod, loader_dir)?;
     }
     Ok(())
 }

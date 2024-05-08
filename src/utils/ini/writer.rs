@@ -7,8 +7,9 @@ use std::{
 };
 
 use crate::{
-    file_name_or_err, get_cfg, parent_or_err, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS,
-    INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
+    file_name_or_err, get_cfg, parent_or_err, utils::ini::parser::RegMod, FileData,
+    DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_KEYS,
+    LOADER_SECTIONS,
 };
 
 const WRITE_OPTIONS: WriteOption = WriteOption {
@@ -136,4 +137,16 @@ pub fn remove_entry(file_path: &Path, section: Option<&str>, key: &str) -> std::
         ),
     ))?;
     config.write_to_file_opt(file_path, WRITE_OPTIONS)
+}
+
+pub fn remove_order_entry(entry: &RegMod, loader_dir: &Path) -> std::io::Result<()> {
+    let file_name = file_name_or_err(&entry.files.dll[entry.order.i])?;
+    let file_name = file_name.to_str().ok_or(std::io::Error::new(
+        ErrorKind::InvalidData,
+        format!("{file_name:?} is not valid UTF-8"),
+    ))?;
+    let file_data = FileData::from(file_name);
+    let file_name = format!("{}{}", file_data.name, file_data.extension);
+    remove_entry(loader_dir, LOADER_SECTIONS[1], &file_name)?;
+    Ok(())
 }

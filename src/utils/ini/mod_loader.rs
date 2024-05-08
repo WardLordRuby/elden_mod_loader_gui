@@ -75,7 +75,7 @@ impl ModLoader {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ModLoaderCfg {
     data: Ini,
     dir: PathBuf,
@@ -238,6 +238,22 @@ impl ModLoaderCfg {
         }
         std::mem::swap(self.mut_section(), &mut new_section);
         self.write_to_file()
+    }
+
+    pub fn default(path: &Path) -> Self {
+        ModLoaderCfg {
+            data: ini::Ini::new(),
+            dir: PathBuf::from(path),
+            section: None,
+        }
+    }
+
+    pub fn empty() -> Self {
+        ModLoaderCfg {
+            data: ini::Ini::new(),
+            dir: PathBuf::new(),
+            section: None,
+        }
     }
 }
 

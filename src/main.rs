@@ -106,10 +106,10 @@ fn main() -> Result<(), slint::PlatformError> {
                         mod_loader_cfg = ModLoaderCfg::read_section(mod_loader.path(), LOADER_SECTIONS[1]).unwrap_or_else(|err| {
                             debug!("error 4");
                             errors.push(err);
-                            ModLoaderCfg::default()
+                            ModLoaderCfg::default(mod_loader.path())
                         });
                     } else {
-                        mod_loader_cfg = ModLoaderCfg::default();
+                        mod_loader_cfg = ModLoaderCfg::default(mod_loader.path());
                     }
                     match mod_loader_cfg.parse_section() {
                         Ok(data) => order_data = data,
@@ -140,7 +140,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     Some(path)
                 },
                 PathResult::Partial(path) | PathResult::None(path) => {
-                    mod_loader_cfg = ModLoaderCfg::default();
+                    mod_loader_cfg = ModLoaderCfg::empty();
                     mod_loader = ModLoader::default();
                     order_data = HashMap::new();
                     game_verified = false;
@@ -151,7 +151,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 // io::Write error
                 debug!("error 8");
                 errors.push(err);
-                mod_loader_cfg = ModLoaderCfg::default();
+                mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
                 order_data = HashMap::new();
                 game_verified = false;
@@ -724,7 +724,8 @@ fn main() -> Result<(), slint::PlatformError> {
                     return
                 }
                 let order_map: Option<HashMap<String, usize>>;
-                let loader = match ModLoaderCfg::read_section(get_loader_ini_dir(), LOADER_SECTIONS[1]) {
+                let loader_dir = get_loader_ini_dir();
+                let loader = match ModLoaderCfg::read_section(loader_dir, LOADER_SECTIONS[1]) {
                     Ok(mut data) => {
                         order_map = data.parse_section().ok();
                         data
@@ -732,7 +733,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     Err(err) => {
                         ui.display_msg(&err.to_string());
                         order_map = None;
-                        ModLoaderCfg::default()
+                        ModLoaderCfg::default(loader_dir)
                     }
                 };
                 let mut reg_mods = match ini.collect_mods(order_map.as_ref(), false) {
@@ -1462,12 +1463,19 @@ async fn confirm_scan_mods(
     
     let ini = match ini {
         Some(data) => data,
-        None => match Cfg::read(get_ini_dir()) {
-            Ok(ini_data) => ini_data,
-            Err(err) => {
-                ui.display_msg(&err.to_string());
-                return Err(err);
-            }
+        None => Cfg::read(get_ini_dir())?,
+    };
+    let order_map: Option<HashMap<String, usize>>;
+    let loader_dir = get_loader_ini_dir();
+    let loader = match ModLoaderCfg::read_section(loader_dir, LOADER_SECTIONS[1]) {
+        Ok(mut data) => {
+            order_map = data.parse_section().ok();
+            data
+        },
+        Err(err) => {
+            ui.display_msg(&err.to_string());
+            order_map = None;
+            ModLoaderCfg::default(loader_dir)
         }
     };
 
@@ -1479,7 +1487,7 @@ async fn confirm_scan_mods(
         if receive_msg().await != Message::Confirm {
             return Ok(());
         };
-        old_mods = ini.collect_mods(None, false)?;
+        old_mods = ini.collect_mods(order_map.as_ref(), false)?;
         let dark_mode = ui.global::<SettingsLogic>().get_dark_mode();
 
         std::fs::remove_file(&ini.dir)?;
@@ -1518,12 +1526,20 @@ async fn confirm_scan_mods(
         },
     };
     if new_ini.dir != Path::new("") && !old_mods.is_empty() && num_registered != mods_registered(&new_ini.data) {
-        old_mods.retain(|m| m.files.dll.iter().any(FileData::is_disabled));
+        let new_mods = new_ini.collect_mods(None, false)?;
+        let all_new_files = new_mods.iter().flat_map(|m| m.files.file_refs()).collect::<HashSet<_>>();
+        old_mods.retain(|m| !m.files.file_refs().iter().any(|&f| all_new_files.contains(f)));
         if old_mods.is_empty() { return Ok(()) }
 
-        let new_mods = new_ini.collect_mods(None, false)?;
-        let all_new_dlls = new_mods.iter().flat_map(|m| m.files.dll_refs()).collect::<Vec<_>>();
-        old_mods.retain(|m| !m.files.dll.iter().any(|f| all_new_dlls.contains(&f.as_path())));
+        old_mods.iter().try_for_each(|m| {
+            if m.order.set {
+                remove_order_entry(m, loader.path())
+            } else {
+                Ok(())
+            }
+        })?;
+        
+        old_mods.retain(|m| m.files.dll.iter().any(FileData::is_disabled));
         if old_mods.is_empty() { return Ok(()) }
 
         old_mods.iter().try_for_each(|m| toggle_files(game_dir, true, m, None).map(|_| ()))?;
