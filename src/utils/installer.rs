@@ -9,12 +9,10 @@ use crate::{
     does_dir_contain, file_name_or_err, new_io_error, parent_or_err,
     utils::ini::{
         parser::RegMod,
-        writer::{save_bool, save_path, save_paths},
+        writer::{remove_order_entry, save_bool, save_path, save_paths},
     },
     FileData, INI_SECTIONS,
 };
-
-use super::ini::writer::remove_order_entry;
 
 /// Returns the deepest occurance of a directory that contains at least 1 file  
 /// Use parent_or_err for a direct binding to what is one level up
@@ -34,6 +32,9 @@ fn get_parent_dir(input: &Path) -> std::io::Result<PathBuf> {
         }
     }
 }
+
+// MARK: TODO
+// create a directory_tree_is_empty() function for more efficent boolean checks
 
 fn check_dir_contains_files(path: &Path) -> std::io::Result<PathBuf> {
     let num_of_dirs = items_in_directory(path, FileType::Dir)?;

@@ -194,6 +194,11 @@ pub fn toggle_files(
     Ok(short_path_new)
 }
 
+// MARK: TODO
+// make get_cfg() private and move over to get_or_setup_cfg() | would just need to figure out how to set the first startup flag
+
+/// If cfg file does not exist or is not set up with provided sections this function will  
+/// create a new ".ini" file in the given path
 pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io::Result<Ini> {
     match get_cfg(from_path) {
         Ok(ini) => {
@@ -262,13 +267,15 @@ where
     }
 }
 
+/// returns a collection of references to entries in list that are not found in the supplied path  
+/// returns an empty Vec if all files were found
 pub fn files_not_found<'a, T>(in_path: &Path, list: &'a [&T]) -> std::io::Result<Vec<&'a T>>
 where
     T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash + ?Sized,
     for<'b> &'b str: std::borrow::Borrow<T>,
 {
     match does_dir_contain(in_path, Operation::Count, list) {
-        Ok(OperationResult::Count((c, _))) if c == REQUIRED_GAME_FILES.len() => Ok(Vec::new()),
+        Ok(OperationResult::Count((c, _))) if c == list.len() => Ok(Vec::new()),
         Ok(OperationResult::Count((_, found_files))) => {
             Ok(list.iter().filter(|&&e| !found_files.contains(e)).copied().collect())
         }
@@ -311,6 +318,8 @@ impl FileData<'_> {
     }
 
     #[inline]
+    /// index is only used in the _disabled_ state to locate where `OFF_STATE` begins  
+    /// saftey check to make sure `OFF_STATE` is found at the end of a `&str`
     fn state_data(path: &str) -> (bool, usize) {
         if let Some(index) = path.find(OFF_STATE) {
             (index != path.len() - OFF_STATE.len(), index)
@@ -330,14 +339,14 @@ impl FileData<'_> {
     }
 }
 
-/// Convience function to map Option None to an io Error
+/// convience function to map Option None to an io Error
 pub fn parent_or_err(path: &Path) -> std::io::Result<&Path> {
     path.parent().ok_or(std::io::Error::new(
         ErrorKind::InvalidData,
         "Could not get parent_dir",
     ))
 }
-/// Convience function to map Option None to an io Error
+/// convience function to map Option None to an io Error
 pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
     path.file_name().ok_or(std::io::Error::new(
         ErrorKind::InvalidData,
@@ -363,6 +372,7 @@ impl Cfg {
             dir: PathBuf::from(ini_path),
         }
     }
+
     pub fn read(ini_path: &Path) -> std::io::Result<Cfg> {
         let data = get_or_setup_cfg(ini_path, &INI_SECTIONS)?;
         Ok(Cfg {
@@ -374,6 +384,24 @@ impl Cfg {
     pub fn update(&mut self) -> std::io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &INI_SECTIONS)?;
         Ok(())
+    }
+
+    /// returns the number of registered mods currently saved in the ".ini"  
+    pub fn mods_registered(&self) -> usize {
+        if self.data.section(INI_SECTIONS[2]).is_none()
+            || self.data.section(INI_SECTIONS[2]).unwrap().is_empty()
+        {
+            0
+        } else {
+            self.data.section(INI_SECTIONS[2]).unwrap().len()
+        }
+    }
+
+    /// returns true if registered mods saved in the ".ini" is None  
+    #[inline]
+    pub fn mods_empty(&self) -> bool {
+        self.data.section(INI_SECTIONS[2]).is_none()
+            || self.data.section(INI_SECTIONS[2]).unwrap().is_empty()
     }
 
     pub fn attempt_locate_game(&mut self) -> std::io::Result<PathResult> {

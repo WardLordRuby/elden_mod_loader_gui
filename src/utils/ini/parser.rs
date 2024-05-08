@@ -332,7 +332,8 @@ pub struct LoadOrder {
     /// if one of `SplitFiles.dll` has a set load_order
     pub set: bool,
 
-    /// the index of the selected `mod_file` within `SplitFiles.dll`
+    /// the index of the selected `mod_file` within `SplitFiles.dll`  
+    /// derialization will set this to -1 if `set` is false and `SplitFiles.dll` is not len 1
     pub i: usize,
 
     /// current set value of `load_order`  
@@ -691,12 +692,14 @@ impl IntoIoError for ini::Error {
 }
 
 impl IntoIoError for std::str::ParseBoolError {
+    #[inline]
     fn into_io_error(self) -> std::io::Error {
         std::io::Error::new(ErrorKind::InvalidData, self.to_string())
     }
 }
 
 impl IntoIoError for std::num::ParseIntError {
+    #[inline]
     fn into_io_error(self) -> std::io::Error {
         std::io::Error::new(ErrorKind::InvalidData, self.to_string())
     }
@@ -707,6 +710,7 @@ pub trait ModError {
 }
 
 impl ModError for std::io::Error {
+    #[inline]
     fn add_msg(self, msg: String) -> std::io::Error {
         std::io::Error::new(self.kind(), format!("{msg}\n\n{self}"))
     }
@@ -717,6 +721,7 @@ pub trait ErrorClone {
 }
 
 impl ErrorClone for &std::io::Error {
+    #[inline]
     fn clone_err(self) -> std::io::Error {
         std::io::Error::new(self.kind(), self.to_string())
     }

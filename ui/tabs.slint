@@ -63,17 +63,14 @@ export component ModEdit inherits Tab {
             enabled: MainLogic.current-mods[mod-index].dll-files.length > 0 && SettingsLogic.loader-installed;
 
             function init-selected-index() {
-                MainLogic.current-mods[mod-index].order.at = 0;
-                if MainLogic.current-mods[mod-index].dll-files.length != 1 {
-                    MainLogic.current-mods[mod-index].order.i = -1;
+                if !MainLogic.current-mods[mod-index].order.set {
+                    MainLogic.current-mods[mod-index].order.at = 0;
+                    if MainLogic.current-mods[mod-index].dll-files.length != 1 {
+                        MainLogic.current-mods[mod-index].order.i = -1;
+                    }
                 }
             }
 
-            init => {
-                if !MainLogic.current-mods[mod-index].order.set {
-                    init-selected-index()
-                }
-            }
             HorizontalLayout {
                 row: 1;
                 padding-top: Formatting.default-padding;
@@ -85,7 +82,7 @@ export component ModEdit inherits Tab {
 
                 load-order := Switch {
                     text: @tr("Set Load Order");
-                    enabled: MainLogic.current-mods[mod-index].dll-files.length > 0 && SettingsLogic.loader-installed;
+                    enabled: load-order-box.enabled;
                     checked: MainLogic.current-mods[mod-index].order.set;
                     toggled => {
                         if self.checked {
@@ -157,7 +154,7 @@ export component ModEdit inherits Tab {
 
                 // Might be able to remove this hack after properly having sorting data parsed
                 if update-toggle : ComboBox {
-                    enabled: load-order.checked;
+                    enabled: load-order.checked && load-order-box.enabled;
                     current-index: selected-index;
                     model: MainLogic.current-mods[mod-index].dll-files;
                     selected(file) => { modify-file(file, self.current-index) }
@@ -167,7 +164,7 @@ export component ModEdit inherits Tab {
                 // Create a focus scope to handle up and down arrow inputs
                 if update-toggle : SpinBox {
                     width: 106px;
-                    enabled: load-order.checked;
+                    enabled: load-order.checked && load-order-box.enabled;
                     minimum: 1;
                     maximum: MainLogic.orders-set;
                     value: selected-order;

@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -129,7 +129,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             errors.push(err);
                         }
                     };
-                    if reg_mods.is_some() && reg_mods.as_ref().unwrap().len() != mods_registered(&ini.data) {
+                    if reg_mods.is_some() && reg_mods.as_ref().unwrap().len() != ini.mods_registered() {
                         ini = Cfg::read(current_ini).unwrap_or_else(|err| {
                             debug!("error 7");
                             errors.push(err);
@@ -280,7 +280,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     } else if game_verified {
                         if !mod_loader.installed() {
                             ui.display_msg(&format!("This tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease install files to \"{}\"\nand relaunch Elden Mod Loader GUI", get_or_update_game_dir(None).display()));
-                        } else if mods_registered(&ini.data) == 0 {
+                        } else if ini.mods_empty() {
                             if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(ini)).await {
                                 ui.display_msg(&err.to_string());
                             }
@@ -491,9 +491,11 @@ fn main() -> Result<(), slint::PlatformError> {
                         if mod_loader.installed() {
                             ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
                             let _ = receive_msg().await;
-                            if let Err(err) = confirm_scan_mods(ui.as_weak(), &try_path, Some(ini)).await {
-                                ui.display_msg(&err.to_string());
-                            };
+                            if ini.mods_empty() {
+                                if let Err(err) = confirm_scan_mods(ui.as_weak(), &try_path, Some(ini)).await {
+                                    ui.display_msg(&err.to_string());
+                                };
+                            }
                         } else {
                             ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
                         }
@@ -935,7 +937,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = ui_handle.unwrap();
             let error = 42069_i32;
             let cfg_dir = get_loader_ini_dir();
-            let mut result: i32 = if state { 1 } else { -1 };
+            let result: i32 = if state { 1 } else { -1 };
             let mut load_order = match ModLoaderCfg::read_section(cfg_dir, LOADER_SECTIONS[1]) {
                 Ok(data) => data,
                 Err(err) => {
@@ -957,10 +959,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     None
                 }
             };
-            load_order.update_order_entries(stable_k).unwrap_or_else(|err| {
+            if let Err(err) = load_order.update_order_entries(stable_k) {
                 ui.display_msg(&format!("Failed to write to \"mod_loader_config.ini\"\n{err}"));
-                result = error;
-            });
+                return error;
+            };
             let model = ui.global::<MainLogic>().get_current_mods();
             let mut selected_mod = model.row_data(value as usize).unwrap();
             selected_mod.order.set = state;
@@ -1007,10 +1009,12 @@ fn main() -> Result<(), slint::PlatformError> {
                 selected_mod.order.i = dll_i;
                 if !selected_mod.order.set { selected_mod.order.set = true }
                 model.set_row_data(row as usize, selected_mod);
-                if let Err(err) = model.update_order(&mut load_order, row, ui.as_weak()) {
-                    ui.display_msg(&err.to_string());
-                    return -1;
-                };
+                if value != row {
+                    if let Err(err) = model.update_order(&mut load_order, row, ui.as_weak()) {
+                        ui.display_msg(&err.to_string());
+                        return -1;
+                    };
+                }
             } else if value != row {
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut curr_row = model.row_data(row as usize).unwrap();
@@ -1384,10 +1388,9 @@ async fn add_dir_to_install_data(
             if result.len() == 1 && err.kind() == ErrorKind::InvalidInput {
                 ui.display_msg(&format!("Error:\n\n{err}"));
                 let _ = receive_msg().await;
-                let future = async {
+                let reselect_dir = Box::pin(async {
                     add_dir_to_install_data(install_files, ui_handle).await
-                };
-                let reselect_dir = Box::pin(future);
+                });
                 reselect_dir.await
             } else {
                 new_io_error!(ErrorKind::Other, format!("Error: Could not Install\n\n{err}"))
@@ -1444,12 +1447,6 @@ async fn confirm_remove_mod(
     remove_mod_files(game_dir, loader_dir, reg_mod)
 }
 
-/// returns the number of registered mods currently saved in the ".ini"  
-fn mods_registered(ini: &ini::Ini) -> usize {
-    let empty_ini = ini.section(INI_SECTIONS[2]).is_none() || ini.section(INI_SECTIONS[2]).unwrap().is_empty();
-    if empty_ini { 0 } else { ini.section(INI_SECTIONS[2]).unwrap().len() }
-}
-
 async fn confirm_scan_mods(
     ui_handle: slint::Weak<App>,
     game_dir: &Path,
@@ -1479,10 +1476,8 @@ async fn confirm_scan_mods(
         }
     };
 
-    let num_registered = mods_registered(&ini.data);
-    let empty_ini = num_registered == 0;
     let mut old_mods: Vec<RegMod>;
-    if !empty_ini {
+    if !ini.mods_empty() {
         ui.display_confirm("Warning: This action will reset current registered mods, are you sure you want to continue?", true);
         if receive_msg().await != Message::Confirm {
             return Ok(());
@@ -1525,20 +1520,23 @@ async fn confirm_scan_mods(
             new_ini = Cfg::default();
         },
     };
-    if new_ini.dir != Path::new("") && !old_mods.is_empty() && num_registered != mods_registered(&new_ini.data) {
+    if new_ini.dir != Path::new("") && !old_mods.is_empty() {
         let new_mods = new_ini.collect_mods(None, false)?;
         let all_new_files = new_mods.iter().flat_map(|m| m.files.file_refs()).collect::<HashSet<_>>();
-        old_mods.retain(|m| !m.files.file_refs().iter().any(|&f| all_new_files.contains(f)));
+        old_mods.retain(|m| m.files.dll.iter().any(|f| !all_new_files.contains(f.as_path())));
         if old_mods.is_empty() { return Ok(()) }
 
         old_mods.iter().try_for_each(|m| {
-            if m.order.set {
+            if m.order.set && !all_new_files.contains(m.files.dll[m.order.i].as_path()) {
                 remove_order_entry(m, loader.path())
             } else {
                 Ok(())
             }
         })?;
-        
+
+        old_mods.iter_mut().for_each(|m| m.files.dll.retain(|f| !all_new_files.contains(f.as_path())));
+        old_mods.retain(|m| !m.files.dll.is_empty());
+        if old_mods.is_empty() { return Ok(()) }
         old_mods.retain(|m| m.files.dll.iter().any(FileData::is_disabled));
         if old_mods.is_empty() { return Ok(()) }
 
