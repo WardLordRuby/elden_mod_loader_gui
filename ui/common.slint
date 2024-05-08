@@ -65,8 +65,8 @@ struct ButtonColors  {
 // MARK: TODO
 // make light mode look not like shit
 export global ColorPalette  {
-    out property <color> page-background-color: SettingsLogic.dark-mode ? #1b1b1b : #60a0a4;
-    out property <color> alt-page-background-color: SettingsLogic.dark-mode ? #132b4e : #747e81;
+    out property <color> page-background-color: SettingsLogic.dark-mode ? #1b1b1b : #adbabb;
+    out property <color> alt-page-background-color: SettingsLogic.dark-mode ? #132b4e : #38474e;
     out property <color> popup-background-color: SettingsLogic.dark-mode ? #00393d : #1b1b1b;
     out property <color> popup-border-color: SettingsLogic.dark-mode ? #17575c : #1b1b1b;
 
@@ -77,12 +77,12 @@ export global ColorPalette  {
         hovered: root.text-base.brighter(20%),
     };
 
-    out property <color> button-image-base: SettingsLogic.dark-mode ? #505150 : #aeaeae;
+    out property <color> button-image-base: SettingsLogic.dark-mode ? #505150 : #ffffff;
     out property <ButtonColors> button-image-colors: {
         pressed: root.button-image-base.darker(40%),
         hovered: root.button-image-base.brighter(20%),
     };
-    out property <color> button-background-base: SettingsLogic.dark-mode ? #4b4b4b83 : #6fc5ffaf;
+    out property <color> button-background-base: SettingsLogic.dark-mode ? #4b4b4b83 : #3e728b9e;
     out property <ButtonColors> button-background-colors: {
         pressed: root.button-background-base.darker(40%),
         hovered: root.button-background-base.darker(20%),

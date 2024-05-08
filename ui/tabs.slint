@@ -111,6 +111,8 @@ export component ModEdit inherits Tab {
                                     self.checked = !self.checked;
                                     MainLogic.force-deserialize()
                                 }
+                            } else {
+                                MainLogic.current-mods[mod-index].order.at = 0
                             }
                             temp = 0;
                             redraw-elements()

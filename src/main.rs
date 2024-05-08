@@ -963,6 +963,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let model = ui.global::<MainLogic>().get_current_mods();
             let mut selected_mod = model.row_data(value as usize).unwrap();
             selected_mod.order.set = state;
+            if !state { selected_mod.order.at = 0 }
             model.set_row_data(value as usize, selected_mod);
             if let Err(err) = model.update_order(&mut load_order,  value, ui.as_weak()) {
                 ui.display_msg(&err.to_string());
@@ -1060,7 +1061,7 @@ impl Sortable for ModelRc<DisplayMod> {
         let order_map = cfg.parse_section()?;
 
         let mut unsorted_idx = (0..self.row_count()).collect::<Vec<_>>();
-        let selected_key = self.row_data(selected_row as usize).unwrap().name;
+        let selected_key = self.row_data(selected_row as usize).expect("front end gives us a valid row").name;
         let mut i = 0_usize;
         let mut selected_i = 0_i32;
         let mut no_order_count = 0_usize;
@@ -1070,7 +1071,7 @@ impl Sortable for ModelRc<DisplayMod> {
                 i = 0
             }
             let unsorted_i = unsorted_idx[i];
-            let mut curr_row = self.row_data(unsorted_i).unwrap();
+            let mut curr_row = self.row_data(unsorted_i).expect("unsorted_idx is valid ranges");
             let curr_key = curr_row.dll_files.row_data(curr_row.order.i as usize);
             let new_order: Option<&usize>;
             if curr_key.is_some() && {new_order = order_map.get(&curr_key.unwrap().to_string()); new_order}.is_some() {
@@ -1095,7 +1096,6 @@ impl Sortable for ModelRc<DisplayMod> {
                     continue;
                 }
             } else {
-                curr_row.order.at = 0;
                 if curr_row.dll_files.row_count() != 1 {
                     curr_row.order.i = -1;
                 }
@@ -1301,7 +1301,11 @@ fn deserialize_current_mods(mods: &[RegMod], ui_handle: slint::Weak<App>) {
             files: ModelRc::from(files),
             config_files: ModelRc::from(config_files),
             dll_files: ModelRc::from(dll_files),
-            order: LoadOrder { at: mod_data.order.at as i32 + 1, i: mod_data.order.i as i32, set: mod_data.order.set },
+            order: LoadOrder { 
+                at: if !mod_data.order.set { 0 } else { mod_data.order.at as i32 + 1 }, 
+                i: if !mod_data.order.set && mod_data.files.dll.len() != 1 { -1 } else { mod_data.order.i as i32 },
+                set: mod_data.order.set 
+            },
         })
     }
     ui.global::<MainLogic>().set_current_mods(ModelRc::from(display_mods));
@@ -1440,7 +1444,6 @@ async fn confirm_remove_mod(
 }
 
 /// returns the number of registered mods currently saved in the ".ini"  
-/// this can't error if you pass in a `IniOption::Ini` 
 fn mods_registered(ini: &ini::Ini) -> usize {
     let empty_ini = ini.section(INI_SECTIONS[2]).is_none() || ini.section(INI_SECTIONS[2]).unwrap().is_empty();
     if empty_ini { 0 } else { ini.section(INI_SECTIONS[2]).unwrap().len() }
@@ -1470,17 +1473,21 @@ async fn confirm_scan_mods(
 
     let num_registered = mods_registered(&ini.data);
     let empty_ini = num_registered == 0;
+    let mut old_mods: Vec<RegMod>;
     if !empty_ini {
         ui.display_confirm("Warning: This action will reset current registered mods, are you sure you want to continue?", true);
         if receive_msg().await != Message::Confirm {
             return Ok(());
         };
+        old_mods = ini.collect_mods(None, false)?;
         let dark_mode = ui.global::<SettingsLogic>().get_dark_mode();
 
         std::fs::remove_file(&ini.dir)?;
         new_cfg(&ini.dir)?;
         save_bool(&ini.dir, INI_SECTIONS[0], INI_KEYS[0], dark_mode)?;
         save_path(&ini.dir, INI_SECTIONS[1], INI_KEYS[1], game_dir)?;
+    } else {
+        old_mods = Vec::new();
     }
     let new_ini: Cfg;
     match scan_for_mods(game_dir, &ini.dir) {
@@ -1496,8 +1503,8 @@ async fn confirm_scan_mods(
             let mod_loader = ModLoader::properties(game_dir).unwrap_or_default();
             let order_data = order_data_or_default(ui.as_weak(), Some(mod_loader.path()));
             deserialize_current_mods(
-                &ini.collect_mods(Some(&order_data), false).unwrap_or_else(|_| {
-                    ini.collect_mods( Some(&order_data), false).unwrap_or_else(|err| {
+                &new_ini.collect_mods(Some(&order_data), false).unwrap_or_else(|_| {
+                    new_ini.collect_mods( Some(&order_data), false).unwrap_or_else(|err| {
                         ui.display_msg(&err.to_string());
                             vec![RegMod::default()]
                     })
@@ -1510,8 +1517,7 @@ async fn confirm_scan_mods(
             new_ini = Cfg::default();
         },
     };
-    if new_ini.dir != Path::new("") && num_registered != mods_registered(&new_ini.data) {
-        let mut old_mods = ini.collect_mods(None, false)?;
+    if new_ini.dir != Path::new("") && !old_mods.is_empty() && num_registered != mods_registered(&new_ini.data) {
         old_mods.retain(|m| m.files.dll.iter().any(FileData::is_disabled));
         if old_mods.is_empty() { return Ok(()) }
 
