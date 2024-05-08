@@ -723,7 +723,19 @@ fn main() -> Result<(), slint::PlatformError> {
                 if receive_msg().await != Message::Confirm {
                     return
                 }
-                let mut reg_mods = match ini.collect_mods(None, false) {
+                let order_map: Option<HashMap<String, usize>>;
+                let loader = match ModLoaderCfg::read_section(get_loader_ini_dir(), LOADER_SECTIONS[1]) {
+                    Ok(mut data) => {
+                        order_map = data.parse_section().ok();
+                        data
+                    },
+                    Err(err) => {
+                        ui.display_msg(&err.to_string());
+                        order_map = None;
+                        ModLoaderCfg::default()
+                    }
+                };
+                let mut reg_mods = match ini.collect_mods(order_map.as_ref(), false) {
                     Ok(reg_mods) => reg_mods,
                     Err(err) => {
                         ui.display_msg(&err.to_string());
@@ -750,7 +762,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     remove_entry(ini_dir, INI_SECTIONS[2], &found_mod.name)
                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
                     let ui_handle = ui.as_weak();
-                    match confirm_remove_mod(ui_handle, &game_dir, found_mod).await {
+                    match confirm_remove_mod(ui_handle, &game_dir, loader.path(), found_mod).await {
                         Ok(_) => ui.display_msg(&format!("Successfully removed all files associated with the previously registered mod \"{key}\"")),
                         Err(err) => {
                             match err.kind() {
@@ -1410,7 +1422,7 @@ async fn confirm_install(
 
 async fn confirm_remove_mod(
     ui_handle: slint::Weak<App>,
-    game_dir: &Path, reg_mod: &RegMod) -> std::io::Result<()> {
+    game_dir: &Path, loader_dir: &Path, reg_mod: &RegMod) -> std::io::Result<()> {
     let ui = ui_handle.unwrap();
     let install_dir = match reg_mod.files.file_refs().iter().min_by_key(|file| file.ancestors().count()) {
         Some(path) => game_dir.join(parent_or_err(path)?),
@@ -1424,7 +1436,7 @@ async fn confirm_remove_mod(
     if receive_msg().await != Message::Confirm {
         return new_io_error!(ErrorKind::ConnectionAborted, format!("Mod files are still installed at \"{}\"", install_dir.display()));
     };
-    remove_mod_files(game_dir, reg_mod)
+    remove_mod_files(game_dir, loader_dir, reg_mod)
 }
 
 /// returns the number of registered mods currently saved in the ".ini"  

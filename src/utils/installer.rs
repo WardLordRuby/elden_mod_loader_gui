@@ -8,7 +8,6 @@ use std::{
 use crate::{
     does_dir_contain, file_name_or_err, new_io_error, parent_or_err,
     utils::ini::{
-        mod_loader::ModLoader,
         parser::RegMod,
         writer::{remove_entry, save_bool, save_path, save_paths},
     },
@@ -456,7 +455,11 @@ impl InstallData {
     }
 }
 
-pub fn remove_mod_files(game_dir: &Path, reg_mod: &RegMod) -> std::io::Result<()> {
+pub fn remove_mod_files(
+    game_dir: &Path,
+    loader_path: &Path,
+    reg_mod: &RegMod,
+) -> std::io::Result<()> {
     let remove_files = reg_mod
         .files
         .file_refs()
@@ -503,12 +506,11 @@ pub fn remove_mod_files(game_dir: &Path, reg_mod: &RegMod) -> std::io::Result<()
             Ok(())
         }
     })?;
-    // MARK: DEBUGME
-    // this isn't working
+
     if reg_mod.order.set {
         let file_name = file_name_or_err(&reg_mod.files.dll[reg_mod.order.i])?;
         remove_entry(
-            ModLoader::properties(game_dir)?.path(),
+            loader_path,
             LOADER_SECTIONS[1],
             file_name.to_str().ok_or(std::io::Error::new(
                 ErrorKind::InvalidData,
