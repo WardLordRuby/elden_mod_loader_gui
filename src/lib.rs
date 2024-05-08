@@ -1,6 +1,7 @@
 pub mod utils {
     pub mod installer;
     pub mod ini {
+        pub mod mod_loader;
         pub mod parser;
         pub mod writer;
     }
@@ -9,15 +10,17 @@ pub mod utils {
 use ini::Ini;
 use log::{error, info, trace, warn};
 use utils::ini::{
-    parser::{IniProperty, RegMod},
-    writer::{remove_array, save_bool, save_path, save_path_bufs},
+    parser::{IniProperty, IntoIoError, RegMod, Setup},
+    writer::{new_cfg, remove_array, save_bool, save_path, save_paths},
 };
 
 use std::{
+    collections::HashSet,
     io::ErrorKind,
     path::{Path, PathBuf},
 };
 
+// changing the order of any of the following consts would not be good
 const DEFAULT_GAME_DIR: [&str; 6] = [
     "Program Files (x86)",
     "Steam",
@@ -26,16 +29,35 @@ const DEFAULT_GAME_DIR: [&str; 6] = [
     "ELDEN RING",
     "Game",
 ];
+
 pub const REQUIRED_GAME_FILES: [&str; 3] = [
     "eldenring.exe",
     "oo2core_6_win64.dll",
     "eossdk-win64-shipping.dll",
 ];
 
-pub const LOADER_FILES: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll"];
-pub const LOADER_FILES_DISABLED: [&str; 2] = ["mod_loader_config.ini", "dinput8.dll.disabled"];
+pub const OFF_STATE: &str = ".disabled";
+
+pub const INI_NAME: &str = "EML_gui_config.ini";
+pub const INI_SECTIONS: [Option<&str>; 4] = [
+    Some("app-settings"),
+    Some("paths"),
+    Some("registered-mods"),
+    Some("mod-files"),
+];
+pub const INI_KEYS: [&str; 2] = ["dark_mode", "game_dir"];
+pub const DEFAULT_INI_VALUES: [&str; 1] = ["true"];
+pub const ARRAY_KEY: &str = "array[]";
+pub const ARRAY_VALUE: &str = "array";
+
+pub const LOADER_FILES: [&str; 3] = [
+    "dinput8.dll.disabled",
+    "dinput8.dll",
+    "mod_loader_config.ini",
+];
 pub const LOADER_SECTIONS: [Option<&str>; 2] = [Some("modloader"), Some("loadorder")];
 pub const LOADER_KEYS: [&str; 2] = ["load_delay", "show_terminal"];
+pub const DEFAULT_LOADER_VALUES: [&str; 2] = ["5000", "0"];
 
 #[macro_export]
 macro_rules! new_io_error {
@@ -60,16 +82,14 @@ impl PathErrors {
 
 pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>, PathErrors> {
     let mut results = PathErrors::new(paths.len());
-    paths
-        .iter()
-        .for_each(|path| match path.strip_prefix(remove) {
-            Ok(file) => {
-                results.ok_paths_short.push(PathBuf::from(file));
-            }
-            Err(_) => {
-                results.err_paths_long.push(PathBuf::from(path));
-            }
-        });
+    paths.iter().for_each(|path| match path.strip_prefix(remove) {
+        Ok(file) => {
+            results.ok_paths_short.push(PathBuf::from(file));
+        }
+        Err(_) => {
+            results.err_paths_long.push(PathBuf::from(path));
+        }
+    });
     if results.err_paths_long.is_empty() {
         Ok(results.ok_paths_short)
     } else {
@@ -77,50 +97,7 @@ pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>
     }
 }
 
-#[derive(Default)]
-pub struct ModLoader {
-    pub installed: bool,
-    pub disabled: bool,
-    pub cfg: PathBuf,
-}
-
-pub fn elden_mod_loader_properties(game_dir: &Path) -> std::io::Result<ModLoader> {
-    let disabled: bool;
-    let cfg: PathBuf;
-    let installed = match does_dir_contain(game_dir, Operation::All, &LOADER_FILES) {
-        Ok(true) => {
-            info!("Found mod loader files");
-            cfg = game_dir.join(LOADER_FILES[0]);
-            disabled = false;
-            true
-        }
-        Ok(false) => {
-            warn!("Checking if mod loader is disabled");
-            match does_dir_contain(game_dir, Operation::All, &LOADER_FILES_DISABLED) {
-                Ok(true) => {
-                    info!("Found mod loader files in the disabled state");
-                    cfg = game_dir.join(LOADER_FILES[0]);
-                    disabled = true;
-                    true
-                }
-                Ok(false) => {
-                    error!("Mod Loader Files not found in selected path");
-                    cfg = PathBuf::new();
-                    disabled = false;
-                    false
-                }
-                Err(err) => return Err(err),
-            }
-        }
-        Err(err) => return Err(err),
-    };
-    Ok(ModLoader {
-        installed,
-        disabled,
-        cfg,
-    })
-}
-
+/// returns all the modified _partial_paths_
 pub fn toggle_files(
     game_dir: &Path,
     new_state: bool,
@@ -132,20 +109,19 @@ pub fn toggle_files(
         file_paths
             .iter()
             .map(|path| {
-                let off_state = ".disabled";
                 let file_name = match path.file_name() {
                     Some(name) => name,
                     None => path.as_os_str(),
                 };
                 let mut new_name = file_name.to_string_lossy().to_string();
-                if let Some(index) = new_name.to_lowercase().find(off_state) {
+                if let Some(index) = new_name.to_lowercase().find(OFF_STATE) {
                     if new_state {
-                        new_name.replace_range(index..index + off_state.len(), "");
+                        new_name.replace_range(index..index + OFF_STATE.len(), "");
                     }
                 } else if !new_state {
-                    new_name.push_str(off_state);
+                    new_name.push_str(OFF_STATE);
                 }
-                let mut new_path = path.clone();
+                let mut new_path = PathBuf::from(path);
                 new_path.set_file_name(new_name);
                 new_path
             })
@@ -166,13 +142,10 @@ pub fn toggle_files(
             );
         }
 
-        paths
-            .iter()
-            .zip(new_paths.iter())
-            .try_for_each(|(path, new_path)| {
-                std::fs::rename(path, new_path)?;
-                Ok(())
-            })
+        paths.iter().zip(new_paths.iter()).try_for_each(|(path, new_path)| {
+            std::fs::rename(path, new_path)?;
+            Ok(())
+        })
     }
     fn update_cfg(
         num_file: &usize,
@@ -182,18 +155,18 @@ pub fn toggle_files(
         save_file: &Path,
     ) -> std::io::Result<()> {
         if *num_file == 1 {
-            save_path(save_file, Some("mod-files"), key, path_to_save[0])?;
+            save_path(save_file, INI_SECTIONS[3], key, path_to_save[0])?;
         } else {
             remove_array(save_file, key)?;
-            save_path_bufs(save_file, key, path_to_save)?;
+            save_paths(save_file, INI_SECTIONS[3], key, path_to_save)?;
         }
-        save_bool(save_file, Some("registered-mods"), key, state)?;
+        save_bool(save_file, INI_SECTIONS[2], key, state)?;
         Ok(())
     }
-    let num_rename_files = reg_mod.files.len();
-    let num_total_files = num_rename_files + reg_mod.other_files_len();
+    let num_rename_files = reg_mod.files.dll.len();
+    let num_total_files = num_rename_files + reg_mod.files.other_files_len();
 
-    let file_paths = std::sync::Arc::new(reg_mod.files.clone());
+    let file_paths = std::sync::Arc::new(reg_mod.files.dll.clone());
     let file_paths_clone = file_paths.clone();
     let game_dir_clone = game_dir.to_path_buf();
 
@@ -203,8 +176,8 @@ pub fn toggle_files(
         std::thread::spawn(move || join_paths(&game_dir_clone, &file_paths_clone));
 
     let short_path_new = new_short_paths_thread.join().unwrap_or(Vec::new());
-    let all_short_paths = reg_mod.add_other_files_to_files(&short_path_new);
-    let full_path_new = join_paths(Path::new(game_dir), &short_path_new);
+    let all_short_paths = reg_mod.files.add_other_files_to_files(&short_path_new);
+    let full_path_new = join_paths(game_dir, &short_path_new);
     let full_path_original = original_full_paths_thread.join().unwrap_or(Vec::new());
 
     rename_files(&num_rename_files, &full_path_original, &full_path_new)?;
@@ -221,32 +194,96 @@ pub fn toggle_files(
     Ok(short_path_new)
 }
 
-pub fn get_cfg(input_file: &Path) -> std::io::Result<Ini> {
-    Ini::load_from_file_noescape(input_file)
-        .map_err(|err| std::io::Error::new(ErrorKind::AddrNotAvailable, err))
+// MARK: TODO
+// make get_cfg() private and move over to get_or_setup_cfg() | would just need to figure out how to set the first startup flag
+
+/// If cfg file does not exist or is not set up with provided sections this function will  
+/// create a new ".ini" file in the given path
+pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io::Result<Ini> {
+    match get_cfg(from_path) {
+        Ok(ini) => {
+            if ini.is_setup(sections) {
+                trace!("{:?} found, and is already setup", from_path.file_name());
+                return Ok(ini);
+            }
+            trace!(
+                "ini: {:?} is not setup, creating new",
+                from_path.file_name()
+            );
+        }
+        Err(err) => error!("{err} : {:?}", from_path.file_name()),
+    };
+    new_cfg(from_path)
+}
+
+pub fn get_cfg(from_path: &Path) -> std::io::Result<Ini> {
+    Ini::load_from_file_noescape(from_path).map_err(|err| err.into_io_error())
 }
 
 pub enum Operation {
     All,
     Any,
+    Count,
 }
 
-pub fn does_dir_contain(path: &Path, operation: Operation, list: &[&str]) -> std::io::Result<bool> {
+pub enum OperationResult<'a, T: ?Sized> {
+    Bool(bool),
+    Count((usize, HashSet<&'a T>)),
+}
+
+/// `Operation::All` and `Operation::Any` map to `OperationResult::bool(_result_)`  
+/// `Operation::Count` maps to `OperationResult::Count((_num_found_, _HashSet<_&input_list_>))`  
+/// when matching you will always have to `_ => unreachable()` for the return type you will never get
+pub fn does_dir_contain<'a, T>(
+    path: &Path,
+    operation: Operation,
+    list: &'a [&T],
+) -> std::io::Result<OperationResult<'a, T>>
+where
+    T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash + ?Sized,
+    for<'b> &'b str: std::borrow::Borrow<T>,
+{
     let entries = std::fs::read_dir(path)?;
     let file_names = entries
-        .map(|entry| Ok(entry?.file_name()))
-        .collect::<std::io::Result<Vec<std::ffi::OsString>>>()?;
+        .filter_map(|entry| Some(entry.ok()?.file_name()))
+        .collect::<Vec<_>>();
+    let str_names = file_names.iter().filter_map(|f| f.to_str()).collect::<HashSet<_>>();
 
-    let result = match operation {
-        Operation::All => list
-            .iter()
-            .all(|check_file| file_names.iter().any(|file_name| file_name == check_file)),
-        Operation::Any => list
-            .iter()
-            .any(|check_file| file_names.iter().any(|file_name| file_name == check_file)),
-    };
-    Ok(result)
+    match operation {
+        Operation::All => Ok(OperationResult::Bool(
+            list.iter().all(|&check_file| str_names.contains(check_file)),
+        )),
+        Operation::Any => Ok(OperationResult::Bool(
+            list.iter().any(|&check_file| str_names.contains(check_file)),
+        )),
+        Operation::Count => {
+            let collection = list
+                .iter()
+                .filter(|&check_file| str_names.contains(check_file))
+                .copied()
+                .collect::<HashSet<_>>();
+            Ok(OperationResult::Count((collection.len(), collection)))
+        }
+    }
 }
+
+/// returns a collection of references to entries in list that are not found in the supplied path  
+/// returns an empty Vec if all files were found
+pub fn files_not_found<'a, T>(in_path: &Path, list: &'a [&T]) -> std::io::Result<Vec<&'a T>>
+where
+    T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash + ?Sized,
+    for<'b> &'b str: std::borrow::Borrow<T>,
+{
+    match does_dir_contain(in_path, Operation::Count, list) {
+        Ok(OperationResult::Count((c, _))) if c == list.len() => Ok(Vec::new()),
+        Ok(OperationResult::Count((_, found_files))) => {
+            Ok(list.iter().filter(|&&e| !found_files.contains(e)).copied().collect())
+        }
+        Err(err) => Err(err),
+        _ => unreachable!(),
+    }
+}
+
 pub struct FileData<'a> {
     pub name: &'a str,
     pub extension: &'a str,
@@ -254,9 +291,11 @@ pub struct FileData<'a> {
 }
 
 impl FileData<'_> {
+    /// To get an accurate FileData.name function input needs .file_name() called before hand  
+    /// FileData.extension && FileData.enabled are accurate with any &Path str as input
     pub fn from(name: &str) -> FileData {
-        match name.find(".disabled") {
-            Some(index) => {
+        match FileData::state_data(name) {
+            (false, index) => {
                 let first_split = name.split_at(name[..index].rfind('.').expect("is file"));
                 FileData {
                     name: first_split.0,
@@ -267,8 +306,7 @@ impl FileData<'_> {
                     enabled: false,
                 }
             }
-
-            None => {
+            (true, _) => {
                 let split = name.split_at(name.rfind('.').expect("is file"));
                 FileData {
                     name: split.0,
@@ -279,20 +317,36 @@ impl FileData<'_> {
         }
     }
 
-    pub fn is_enabled(path: &Path) -> std::io::Result<bool> {
-        let file_name = file_name_or_err(path)?.to_string_lossy();
-        Ok(FileData::from(&file_name).enabled)
+    #[inline]
+    /// index is only used in the _disabled_ state to locate where `OFF_STATE` begins  
+    /// saftey check to make sure `OFF_STATE` is found at the end of a `&str`
+    fn state_data(path: &str) -> (bool, usize) {
+        if let Some(index) = path.find(OFF_STATE) {
+            (index != path.len() - OFF_STATE.len(), index)
+        } else {
+            (true, 0)
+        }
+    }
+
+    #[inline]
+    pub fn is_enabled<T: AsRef<Path>>(path: &T) -> bool {
+        FileData::state_data(&path.as_ref().to_string_lossy()).0
+    }
+
+    #[inline]
+    pub fn is_disabled<T: AsRef<Path>>(path: &T) -> bool {
+        !FileData::state_data(&path.as_ref().to_string_lossy()).0
     }
 }
 
-/// Convience function to map Option None to an io Error
+/// convience function to map Option None to an io Error
 pub fn parent_or_err(path: &Path) -> std::io::Result<&Path> {
     path.parent().ok_or(std::io::Error::new(
         ErrorKind::InvalidData,
         "Could not get parent_dir",
     ))
 }
-/// Convience function to map Option None to an io Error
+/// convience function to map Option None to an io Error
 pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
     path.file_name().ok_or(std::io::Error::new(
         ErrorKind::InvalidData,
@@ -300,65 +354,87 @@ pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
     ))
 }
 
+#[derive(Debug, Default)]
+pub struct Cfg {
+    pub data: Ini,
+    pub dir: PathBuf,
+}
 pub enum PathResult {
     Full(PathBuf),
     Partial(PathBuf),
     None(PathBuf),
 }
-pub fn attempt_locate_game(file_name: &Path) -> std::io::Result<PathResult> {
-    let config: Ini = match get_cfg(file_name) {
-        Ok(ini) => {
-            trace!(
-                "Success: (attempt_locate_game) Read ini from \"{}\"",
-                file_name.display()
-            );
-            ini
+
+impl Cfg {
+    pub fn from(ini: Ini, ini_path: &Path) -> Self {
+        Cfg {
+            data: ini,
+            dir: PathBuf::from(ini_path),
         }
-        Err(err) => {
-            error!(
-                "Failure: (attempt_locate_game) Could not complete. Could not read ini from \"{}\"",
-                file_name.display()
-            );
-            error!("Error: {err}");
-            return Ok(PathResult::None(PathBuf::new()));
-        }
-    };
-    if let Some(path) = IniProperty::<PathBuf>::read(&config, Some("paths"), "game_dir", false)
-        .and_then(|ini_property| {
-            match does_dir_contain(&ini_property.value, Operation::All, &REQUIRED_GAME_FILES) {
-                Ok(true) => Some(ini_property.value),
-                Ok(false) => {
-                    error!(
-                        "{}",
-                        format!(
-                            "Required Game files not found in:\n\"{}\"",
-                            ini_property.value.display()
-                        )
-                    );
-                    None
-                }
-                Err(err) => {
-                    error!("Error: {err}");
-                    None
-                }
-            }
+    }
+
+    pub fn read(ini_path: &Path) -> std::io::Result<Cfg> {
+        let data = get_or_setup_cfg(ini_path, &INI_SECTIONS)?;
+        Ok(Cfg {
+            data,
+            dir: PathBuf::from(ini_path),
         })
-    {
-        info!("Success: \"game_dir\" from ini is valid");
-        return Ok(PathResult::Full(path));
     }
-    let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
-    if does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES).unwrap_or(false) {
-        info!("Success: located \"game_dir\" on drive");
-        save_path(file_name, Some("paths"), "game_dir", try_locate.as_path())?;
-        return Ok(PathResult::Full(try_locate));
+
+    pub fn update(&mut self) -> std::io::Result<()> {
+        self.data = get_or_setup_cfg(&self.dir, &INI_SECTIONS)?;
+        Ok(())
     }
-    if try_locate.components().count() > 1 {
-        info!("Partial \"game_dir\" found");
-        return Ok(PathResult::Partial(try_locate));
+
+    /// returns the number of registered mods currently saved in the ".ini"  
+    pub fn mods_registered(&self) -> usize {
+        if self.data.section(INI_SECTIONS[2]).is_none()
+            || self.data.section(INI_SECTIONS[2]).unwrap().is_empty()
+        {
+            0
+        } else {
+            self.data.section(INI_SECTIONS[2]).unwrap().len()
+        }
     }
-    warn!("Could not locate \"game_dir\"");
-    Ok(PathResult::None(try_locate))
+
+    /// returns true if registered mods saved in the ".ini" is None  
+    #[inline]
+    pub fn mods_empty(&self) -> bool {
+        self.data.section(INI_SECTIONS[2]).is_none()
+            || self.data.section(INI_SECTIONS[2]).unwrap().is_empty()
+    }
+
+    pub fn attempt_locate_game(&mut self) -> std::io::Result<PathResult> {
+        if let Ok(path) =
+            IniProperty::<PathBuf>::read(&self.data, INI_SECTIONS[1], INI_KEYS[1], false)
+        {
+            info!("Success: \"game_dir\" from ini is valid");
+            return Ok(PathResult::Full(path.value));
+        }
+        let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
+        if matches!(
+            does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES),
+            Ok(OperationResult::Bool(true))
+        ) {
+            info!("Success: located \"game_dir\" on drive");
+            save_path(
+                &self.dir,
+                INI_SECTIONS[1],
+                INI_KEYS[1],
+                try_locate.as_path(),
+            )?;
+            self.data
+                .with_section(INI_SECTIONS[1])
+                .set(INI_KEYS[1], try_locate.to_string_lossy().to_string());
+            return Ok(PathResult::Full(try_locate));
+        }
+        if try_locate.components().count() > 1 {
+            info!("Partial \"game_dir\" found");
+            return Ok(PathResult::Partial(try_locate));
+        }
+        warn!("Could not locate \"game_dir\"");
+        Ok(PathResult::None(try_locate))
+    }
 }
 
 fn attempt_locate_dir(target_path: &[&str]) -> std::io::Result<PathBuf> {

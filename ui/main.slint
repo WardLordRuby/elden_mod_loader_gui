@@ -1,8 +1,9 @@
 import { CheckBox, GroupBox, ListView, LineEdit, Button } from "std-widgets.slint";
-import { SettingsPage, ModDetailsPage } from "subpages.slint";
-import { MainLogic, SettingsLogic, Page, ColorPalette } from "common.slint";
+import { SettingsPage, ModDetailsPage } from "sub-pages.slint";
+import { MainLogic, SettingsLogic, Page, ColorPalette, Formatting } from "common.slint";
 
 export component MainPage inherits Page {
+    property <bool> update-toggle: true;
     has-back-button: false;
     title: @tr("Mods");
     description: @tr("Edit state of registered mods here");
@@ -11,27 +12,40 @@ export component MainPage inherits Page {
     // height: 400px;
 
     callback focus-line-edit;
-    callback edit-mod(int);
+    callback focus-settings;
+    callback swap-tab;
+    callback edit-mod(int, int);
+    callback update-mod-index(int, int);
+    callback redraw-checkboxes;
     focus-line-edit => { input-mod.focus() }
-    edit-mod(i) => {
+    focus-settings => { app-settings.focus-settings-scope() }
+    swap-tab => { mod-settings.current-tab = mod-settings.current-tab == 0 ? 1 : 0 }
+
+    update-mod-index(i, t) => { edit-mod(i, t) }
+    edit-mod(i, t) => {
+        mod-settings.current-tab = t;
         mod-settings.mod-index = i;
         MainLogic.current-subpage = 2
+    }
+    redraw-checkboxes => {
+        update-toggle = false;
+        update-toggle = true;
     }
 
     VerticalLayout {
         y: 27px;
         height: parent.height - self.y;
-        preferred-width: 460px;
-        padding: 8px;
+        padding: Formatting.side-padding;
+        padding-bottom: Formatting.side-padding / 2;
 
-        reg-mod-box := GroupBox {
+        if update-toggle : reg-mod-box := GroupBox {
             title: @tr("Registered-Mods:");
-            enabled: MainLogic.game-path-valid && !SettingsLogic.loader-disabled;
+            enabled: SettingsLogic.loader-installed && !SettingsLogic.loader-disabled;
 
-            list-view := ListView {
+            ListView {
                 for mod[idx] in MainLogic.current-mods:  re := Rectangle {
                     height: 31px;
-                    border-radius: 10px;
+                    border-radius: Formatting.rectangle-radius;
                     // ----- ------mod-boxes need to have a max text length-------------
                     // implmented a static way to elide text adding displayname property
                     mod-box := CheckBox {
@@ -40,18 +54,15 @@ export component MainPage inherits Page {
                         checked: mod.enabled;
                         enabled: reg-mod-box.enabled;
                         toggled => {
-                            MainLogic.if-err-bool = self.checked;
-                            MainLogic.current-mods[idx].enabled = self.checked;
-                            MainLogic.toggleMod(mod.name, self.checked);
-                            if (MainLogic.if-err-bool != self.checked) {
-                                self.checked = MainLogic.if-err-bool;
-                                MainLogic.current-mods[idx].enabled = MainLogic.if-err-bool;
+                            MainLogic.current-mods[idx].enabled = MainLogic.toggle-mod(mod.name, self.checked);
+                            if MainLogic.current-mods[idx].enabled != self.checked {
+                                self.checked = !self.checked;
                             }
                         }
                     }
                     im := Image {
-                        x: 274px;
-                        y: 6px;
+                        x: 282px;
+                        y: 5px;
                         image-fit: contain;
                         height: 20px;
                         source: @image-url("assets/arrow.png");
@@ -61,7 +72,7 @@ export component MainPage inherits Page {
                             x: mod-box.width - 284px;
                             height: 28px;
                             width: root.width - mod-box.width;
-                            clicked => { edit-mod(idx) }
+                            clicked => { edit-mod(idx, 0) }
                         }
                     }
                     states [
@@ -78,37 +89,31 @@ export component MainPage inherits Page {
             }
         }
         add-mod-box := GroupBox {
-            height: 88px;
+            height: Formatting.group-box-r1-height;
             title: @tr("Add Mod");
-            enabled: MainLogic.game-path-valid;
+            enabled: SettingsLogic.loader-installed;
             FocusScope {
+                enabled: add-mod-box.enabled;
                 key-pressed(event) => {
                     if (event.text == Key.Escape) {
                         MainLogic.force-app-focus()
                     }
-                    // && doesn't work in slint conditonal statements
                     if (event.text == Key.Tab) {
-                        if (input-mod.has-focus) {
-                            add-mod.focus()
-                        } else {
-                            input-mod.focus()
-                        }
+                        input-mod.has-focus ? add-mod.focus() : input-mod.focus()
                     }
                     accept
                 }
                 HorizontalLayout {
-                    spacing: 7px;
+                    spacing: Formatting.button-spacing;
                     input-mod := LineEdit {
-                        height: 35px;
-                        preferred-width: 100px;
-                        horizontal-alignment: left;
+                        height: Formatting.default-element-height;
                         placeholder-text: @tr("Mod Name");
                         enabled: add-mod-box.enabled;
                         text <=> MainLogic.line-edit-text;
                     }
                     add-mod := Button {
-                        width: 89px;
-                        height: 35px;
+                        height: Formatting.default-element-height;
+                        width: 95px;
                         text: @tr("Select Files");
                         primary: !SettingsLogic.dark-mode;
                         enabled: add-mod-box.enabled;
@@ -125,7 +130,7 @@ export component MainPage inherits Page {
             }
         }
     }
-    SettingsPage {
+    app-settings := SettingsPage {
         x: MainLogic.current-subpage == 1 ? 0 : parent.width + parent.x + 2px;
         animate x { duration: 150ms; easing: ease; }
     }

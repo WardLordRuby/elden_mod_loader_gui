@@ -1,29 +1,29 @@
-import { GroupBox, Button, HorizontalBox, Switch, LineEdit } from "std-widgets.slint";
-import { MainLogic, SettingsLogic, Page } from "common.slint";
+import { GroupBox, Button, Switch, LineEdit } from "std-widgets.slint";
+import { MainLogic, SettingsLogic, Page, Formatting } from "common.slint";
 
 export component SettingsPage inherits Page {
-    property <length> horizontal-box-width: self.width - 15px;
     has-back-button: true;
     title: @tr("Settings");
     description: @tr("Set path to eldenring.exe and app settings here");
 
+    callback focus-settings-scope;
+    focus-settings-scope => { load-delay.focus() }
+
     VerticalLayout {
         y: 34px;
         height: parent.height - self.y;
-        padding-left: 8px;
-        padding-right: 0;
-        spacing: 0px;
+        padding-left: Formatting.side-padding;
         alignment: space-between;
         
         GroupBox {
             title: @tr("General");
             height: 70px;
+            width: Formatting.group-box-width;
             
             HorizontalLayout {
-                padding-top: 7px;
-                padding-left: 6px;
-                padding-right: 6px;
-                width: horizontal-box-width;
+                padding-top: Formatting.side-padding / 2;
+                padding-left: Formatting.side-padding;
+                padding-right: Formatting.side-padding;
                 Switch {
                     text: @tr("Dark Mode");
                     checked <=> SettingsLogic.dark-mode;
@@ -44,12 +44,12 @@ export component SettingsPage inherits Page {
         GroupBox {
             title: @tr("Game Path");
             height: 110px;
+            width: Formatting.group-box-width;
             
-            HorizontalBox {
+            HorizontalLayout {
                 row: 1;
-                width: horizontal-box-width;
-                padding-top: 3px;
-                padding-bottom: 0;
+                padding-top: 2px;
+                padding-left: Formatting.side-padding;
                 
                 Text {
                     vertical-alignment: center;
@@ -58,14 +58,14 @@ export component SettingsPage inherits Page {
                     text: SettingsLogic.game-path;
                 }
             }
-            HorizontalBox {
+            HorizontalLayout {
                 row: 2;
-                padding-top: 9px;
-                padding-bottom: 0;
-                width: horizontal-box-width;
+                padding-top: Formatting.side-padding + 1px;
+                padding-right: Formatting.side-padding;
+                spacing: Formatting.button-spacing;
                 alignment: end;
                 Button { 
-                    width: 45px;
+                    width: 42px;
                     height: 30px;
                     icon: @image-url("assets/folder.png");
                     colorize-icon: true;
@@ -73,7 +73,7 @@ export component SettingsPage inherits Page {
                     clicked => { SettingsLogic.open-game-dir() }
                 }
                 Button { 
-                    width: 105px;
+                    width: 106px;
                     height: 30px;
                     primary: !SettingsLogic.dark-mode;
                     text: @tr("Set Path");
@@ -84,15 +84,10 @@ export component SettingsPage inherits Page {
         FocusScope {
             key-pressed(event) => {
                 if (event.text == Key.Escape) {
-                    MainLogic.force-app-focus()
+                    root.back()
                 }
-                // && doesn't work in slint conditonal statements
                 if (event.text == Key.Tab) {
-                    if (load-delay.has-focus) {
-                        set-delay.focus()
-                    } else {
-                        load-delay.focus()
-                    }
+                    load-delay.has-focus ? set-delay.focus() : load-delay.focus()
                 }
                 accept
             }
@@ -100,42 +95,48 @@ export component SettingsPage inherits Page {
             GroupBox {
                 title: @tr("Mod Loader Options");
                 enabled: SettingsLogic.loader-installed;
-                height: 150px;
+                width: Formatting.group-box-width;
+                height: 140px;
 
-                HorizontalBox {
+                HorizontalLayout {
                     row: 1;
-                    padding-top: 4px;
-                    padding-left: 2px;
-                    padding-bottom: 5px;
-                    width: horizontal-box-width;
+                    padding-left: Formatting.side-padding - 2px;
                     Switch {
                         text: @tr("Show Terminal");
                         enabled: SettingsLogic.loader-installed;
                         checked <=> SettingsLogic.show-terminal;
-                        toggled => { SettingsLogic.toggle-terminal(self.checked) }
+                        toggled => {
+                            SettingsLogic.show-terminal = SettingsLogic.toggle-terminal(self.checked);
+                            if SettingsLogic.show-terminal != self.checked {
+                                self.checked = !self.checked;
+                            } 
+                        }
                     }
                 }
-                HorizontalBox {
+                HorizontalLayout {
                     row: 2;
-                    padding-top: 4px;
-                    padding-left: 2px;
-                    padding-bottom: 5px;
-                    
-                    width: horizontal-box-width;
+                    padding-top: Formatting.side-padding;
+                    padding-left: Formatting.side-padding - 2px;
                     Switch {
                         text: @tr("Disable All mods");
                         enabled: SettingsLogic.loader-installed;
                         checked <=> SettingsLogic.loader-disabled;
-                        toggled => { SettingsLogic.toggle-all(self.checked) }
+                        toggled => {
+                            SettingsLogic.loader-disabled = SettingsLogic.toggle-all(self.checked);
+                            if SettingsLogic.loader-disabled != self.checked {
+                                self.checked = !self.checked;
+                            }
+                        }
                     }
                 }
-                HorizontalBox {
+                HorizontalLayout {
                     row: 3;
-                    padding-left: 2px;
-                    padding-bottom: 8px;
-                    width: horizontal-box-width;
+                    padding-top: Formatting.side-padding + 2px;
+                    padding-right: Formatting.side-padding;
+                    padding-bottom: Formatting.side-padding / 2;
+                    spacing: Formatting.button-spacing;
                     load-delay := LineEdit {
-                        width: 128px;
+                        width: 132px;
                         height: 30px;
                         horizontal-alignment: right;
                         enabled: SettingsLogic.loader-installed;

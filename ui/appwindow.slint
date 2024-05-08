@@ -1,5 +1,5 @@
 import { MainPage } from "main.slint";
-import { MainLogic, SettingsLogic, DisplayMod, ColorPalette, Message } from "common.slint";
+import { MainLogic, SettingsLogic, DisplayMod, ColorPalette, Message, Formatting } from "common.slint";
 import { StandardButton } from "std-widgets.slint";
 
 export { MainLogic, SettingsLogic, DisplayMod }
@@ -13,14 +13,16 @@ export component App inherits Window {
     // popup-window-width = text-width + dialog boarder
     property <length> popup-window-width: msg-size.width + 13px;
     // window-height = main-page-height -? page-title-height
-    property <length> window-height: mp.height - 48px;
+    property <length> window-height: mp.height - Formatting.header-height;
     property <length> popup-window-x-pos: {
-        if ((mp.width - popup-window-width) / 2) < 10px {
-            10px
+        if ((mp.width - popup-window-width) / 2) < Formatting.side-padding - 1px {
+            Formatting.side-padding - 1px
         } else {
             (mp.width - popup-window-width) / 2
         }
     };
+    // Still possible to run into the - px range
+    // only noticed on startup popups
     property <length> popup-window-y-pos: {
         if ((window-height - popup-window-height) / 2) < 0px {
             60px
@@ -33,16 +35,19 @@ export component App inherits Window {
     // property <string> debug-msg: "height calc: " + popup-window-y-pos / 1px + "\nPage Height: " + debug-mp-height / 1px + "\nDialog Height: " + popup-window-height / 1px;
     title: @tr("Elden Mod Loader");
     icon: @image-url("assets/EML-icon.png");
-    // preferred-height: 381px;
-    min-height: 381px;
-    min-width: 315px;
-    max-width: 315px;
+    preferred-height: Formatting.app-preferred-height;
+    min-height: Formatting.app-preferred-height;
+    min-width: Formatting.app-width;
+    max-width: Formatting.app-width;
     
-    mp := MainPage {}
-
     callback focus-app;
     callback show-error-popup;
     callback show-confirm-popup;
+    callback update-mod-index(int, int);
+    callback redraw-checkboxes;
+
+    redraw-checkboxes => { mp.redraw-checkboxes() }
+    update-mod-index(i, t) => { mp.update-mod-index(i, t) }
     focus-app => { fs.focus() }
     show-error-popup => {
         popup-visible = true;
@@ -50,12 +55,10 @@ export component App inherits Window {
     }
     show-confirm-popup => {
         popup-visible = true;
-        if (!alt-std-buttons) {
-            confirm-popup.show()
-        } else {
-            confirm-popup-2.show()
-        }
+        alt-std-buttons ? confirm-popup-2.show() : confirm-popup.show()
     }
+    
+    mp := MainPage {}
 
     msg-size := Text {
         visible: false;
@@ -189,7 +192,17 @@ export component App inherits Window {
             }
             if (event.text == Key.Tab) {
                 if (!popup-visible) {
-                    mp.focus-line-edit()
+                    if (MainLogic.current-subpage == 0) {
+                        if (MainLogic.game-path-valid) {
+                            mp.focus-line-edit()
+                        }
+                    } else if (MainLogic.current-subpage == 1) {
+                        if (SettingsLogic.loader-installed) {
+                            mp.focus-settings()
+                        }
+                    } else if (MainLogic.current-subpage == 2) {
+                        mp.swap-tab()
+                    }
                 }
             }
             accept

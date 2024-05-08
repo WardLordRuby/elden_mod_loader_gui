@@ -6,14 +6,11 @@ use std::{
     path::Path,
 };
 
-use crate::{get_cfg, parent_or_err};
-
-pub const INI_SECTIONS: [&str; 4] = [
-    "[app-settings]",
-    "[paths]",
-    "[registered-mods]",
-    "[mod-files]",
-];
+use crate::{
+    file_name_or_err, get_cfg, parent_or_err, utils::ini::parser::RegMod, DEFAULT_INI_VALUES,
+    DEFAULT_LOADER_VALUES, INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
+    OFF_STATE,
+};
 
 const WRITE_OPTIONS: WriteOption = WriteOption {
     escape_policy: EscapePolicy::Nothing,
@@ -21,74 +18,94 @@ const WRITE_OPTIONS: WriteOption = WriteOption {
     kv_separator: "=",
 };
 
-const EXT_OPTIONS: WriteOption = WriteOption {
+pub const EXT_OPTIONS: WriteOption = WriteOption {
     escape_policy: EscapePolicy::Nothing,
     line_separator: LineSeparator::CRLF,
     kv_separator: " = ",
 };
 
-pub fn save_path_bufs(file_name: &Path, key: &str, files: &[&Path]) -> std::io::Result<()> {
-    let mut config: Ini = get_cfg(file_name)?;
+pub fn save_paths(
+    file_path: &Path,
+    section: Option<&str>,
+    key: &str,
+    files: &[&Path],
+) -> std::io::Result<()> {
+    let mut config: Ini = get_cfg(file_path)?;
     let save_paths = files
         .iter()
         .map(|path| path.to_string_lossy())
         .collect::<Vec<_>>()
         .join("\r\narray[]=");
     config
-        .with_section(Some("mod-files"))
+        .with_section(section)
         .set(key, format!("array\r\narray[]={save_paths}"));
-    config.write_to_file_opt(file_name, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)
 }
 
 pub fn save_path(
-    file_name: &Path,
+    file_path: &Path,
     section: Option<&str>,
     key: &str,
     path: &Path,
 ) -> std::io::Result<()> {
-    let mut config: Ini = get_cfg(file_name)?;
+    let mut config: Ini = get_cfg(file_path)?;
     config
         .with_section(section)
         .set(key, path.to_string_lossy().to_string());
-    config.write_to_file_opt(file_name, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)
 }
 
 pub fn save_bool(
-    file_name: &Path,
+    file_path: &Path,
     section: Option<&str>,
     key: &str,
     value: bool,
 ) -> std::io::Result<()> {
-    let mut config: Ini = get_cfg(file_name)?;
+    let mut config: Ini = get_cfg(file_path)?;
     config.with_section(section).set(key, value.to_string());
-    config.write_to_file_opt(file_name, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)
 }
 
 pub fn save_value_ext(
-    file_name: &Path,
+    file_path: &Path,
     section: Option<&str>,
     key: &str,
     value: &str,
 ) -> std::io::Result<()> {
-    let mut config: Ini = get_cfg(file_name)?;
+    let mut config: Ini = get_cfg(file_path)?;
     config.with_section(section).set(key, value);
-    config.write_to_file_opt(file_name, EXT_OPTIONS)
+    config.write_to_file_opt(file_path, EXT_OPTIONS)
 }
 
-pub fn new_cfg(path: &Path) -> std::io::Result<()> {
+pub fn new_cfg(path: &Path) -> std::io::Result<Ini> {
+    let file_name = file_name_or_err(path)?;
     let parent = parent_or_err(path)?;
+
     fs::create_dir_all(parent)?;
     let mut new_ini = File::create(path)?;
 
-    for section in INI_SECTIONS {
-        writeln!(new_ini, "{section}")?;
+    if file_name == LOADER_FILES[2] {
+        for (i, section) in LOADER_SECTIONS.iter().enumerate() {
+            writeln!(new_ini, "[{}]", section.unwrap())?;
+            if i == 0 {
+                for (j, _) in LOADER_KEYS.iter().enumerate() {
+                    writeln!(new_ini, "{} = {}", LOADER_KEYS[j], DEFAULT_LOADER_VALUES[j])?
+                }
+            }
+        }
+    } else {
+        for (i, section) in INI_SECTIONS.iter().enumerate() {
+            writeln!(new_ini, "[{}]", section.unwrap())?;
+            if i == 0 {
+                writeln!(new_ini, "{}={}", INI_KEYS[i], DEFAULT_INI_VALUES[i])?
+            }
+        }
     }
-
-    Ok(())
+    get_cfg(path)
 }
 
-pub fn remove_array(file_name: &Path, key: &str) -> std::io::Result<()> {
-    let content = read_to_string(file_name)?;
+pub fn remove_array(file_path: &Path, key: &str) -> std::io::Result<()> {
+    let content = read_to_string(file_path)?;
 
     let mut skip_next_line = false;
     let mut key_found = false;
@@ -105,16 +122,13 @@ pub fn remove_array(file_name: &Path, key: &str) -> std::io::Result<()> {
         !skip_next_line
     };
 
-    let lines = content
-        .lines()
-        .filter(|&line| filter_lines(line))
-        .collect::<Vec<_>>();
+    let lines = content.lines().filter(|&line| filter_lines(line)).collect::<Vec<_>>();
 
-    write(file_name, lines.join("\r\n"))
+    write(file_path, lines.join("\r\n"))
 }
 
-pub fn remove_entry(file_name: &Path, section: Option<&str>, key: &str) -> std::io::Result<()> {
-    let mut config: Ini = get_cfg(file_name)?;
+pub fn remove_entry(file_path: &Path, section: Option<&str>, key: &str) -> std::io::Result<()> {
+    let mut config: Ini = get_cfg(file_path)?;
     config.delete_from(section, key).ok_or(std::io::Error::new(
         ErrorKind::Other,
         format!(
@@ -122,5 +136,18 @@ pub fn remove_entry(file_name: &Path, section: Option<&str>, key: &str) -> std::
             &section.expect("Passed in section should be valid")
         ),
     ))?;
-    config.write_to_file_opt(file_name, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)
+}
+
+pub fn remove_order_entry(entry: &RegMod, loader_dir: &Path) -> std::io::Result<()> {
+    let file_name = file_name_or_err(&entry.files.dll[entry.order.i])?;
+    let file_name = file_name
+        .to_str()
+        .ok_or(std::io::Error::new(
+            ErrorKind::InvalidData,
+            format!("{file_name:?} is not valid UTF-8"),
+        ))?
+        .replace(OFF_STATE, "");
+    remove_entry(loader_dir, LOADER_SECTIONS[1], &file_name)?;
+    Ok(())
 }

@@ -1,88 +1,140 @@
+pub mod common;
+
 #[cfg(test)]
 mod tests {
     use elden_mod_loader_gui::{
-        utils::ini::{parser::RegMod, writer::new_cfg},
-        *,
+        does_dir_contain, get_cfg, toggle_files,
+        utils::ini::{
+            parser::{IniProperty, RegMod},
+            writer::{new_cfg, save_path, save_paths},
+        },
+        Operation, OperationResult, INI_SECTIONS, OFF_STATE,
     };
     use std::{
-        fs::{metadata, remove_file, File},
+        fs::{self, remove_file, File},
         path::{Path, PathBuf},
     };
 
+    use crate::common::{file_exists, GAME_DIR};
+
     #[test]
     fn do_files_toggle() {
-        fn file_exists(file_path: &Path) -> bool {
-            if let Ok(metadata) = metadata(file_path) {
-                metadata.is_file()
-            } else {
-                false
-            }
-        }
-
-        let dir_to_test_files =
-            Path::new("C:\\Users\\cal_b\\Documents\\School\\code\\elden_mod_loader_gui");
-        let save_file = Path::new("test_files\\file_toggle_test.ini");
-        new_cfg(save_file).unwrap();
+        let save_file = Path::new("temp\\file_toggle_test.ini");
 
         let test_files = vec![
-            PathBuf::from("test_files\\test1.txt"),
-            PathBuf::from("test_files\\test2.bhd"),
-            PathBuf::from("test_files\\test3.dll"),
-            PathBuf::from("test_files\\test4.exe"),
-            PathBuf::from("test_files\\test5.bin"),
-            PathBuf::from("test_files\\config.ini"),
+            Path::new("test1.txt"),
+            Path::new("test2.bhd"),
+            Path::new("test3.dll"),
+            Path::new("test4.exe"),
+            Path::new("test5.bin"),
+            Path::new("config.ini"),
         ];
+        let test_key = "test_files";
+        let prefix_key = "test_dir";
+        let prefix = Path::new("temp\\");
 
-        let test_mod = RegMod::new("Test", true, test_files.clone());
-        let test_files_disabled = test_mod
+        new_cfg(save_file).unwrap();
+        save_path(save_file, INI_SECTIONS[1], prefix_key, prefix).unwrap();
+        save_paths(save_file, INI_SECTIONS[3], test_key, &test_files).unwrap();
+
+        let test_mod = RegMod::new(
+            test_key,
+            true,
+            test_files.iter().map(PathBuf::from).collect(),
+        );
+        let mut test_files_disabled = test_mod
             .files
+            .dll
             .iter()
-            .map(|file| PathBuf::from(format!("{}.disabled", file.display())))
+            .map(|file| PathBuf::from(format!("{}{OFF_STATE}", file.display())))
             .collect::<Vec<_>>();
 
-        assert_eq!(test_mod.files.len(), 4);
-        assert_eq!(test_mod.config_files.len(), 1);
-        assert_eq!(test_mod.other_files.len(), 1);
+        assert_eq!(test_mod.files.dll.len(), 1);
+        assert_eq!(test_mod.files.config.len(), 1);
+        assert_eq!(test_mod.files.other.len(), 4);
 
         for test_file in test_files.iter() {
-            File::create(test_file.to_string_lossy().to_string()).unwrap();
+            File::create(test_file).unwrap();
         }
 
-        toggle_files(
-            dir_to_test_files,
-            !test_mod.state,
-            &test_mod,
-            Some(save_file),
-        )
-        .unwrap();
+        toggle_files(Path::new(""), !test_mod.state, &test_mod, Some(save_file)).unwrap();
 
         for path_to_test in test_files_disabled.iter() {
             assert!(file_exists(path_to_test.as_path()));
         }
 
-        let test_mod = RegMod {
-            name: test_mod.name,
-            state: false,
-            files: test_files_disabled,
-            config_files: test_mod.config_files,
-            other_files: test_mod.other_files,
-        };
+        test_files_disabled.extend(test_mod.files.config);
+        test_files_disabled.extend(test_mod.files.other);
 
-        toggle_files(
-            dir_to_test_files,
-            !test_mod.state,
-            &test_mod,
-            Some(save_file),
+        let read_disabled_ini = IniProperty::<Vec<PathBuf>>::read(
+            &get_cfg(save_file).unwrap(),
+            INI_SECTIONS[3],
+            test_key,
+            prefix,
+            true,
         )
-        .unwrap();
+        .unwrap()
+        .value;
+
+        assert!(read_disabled_ini
+            .iter()
+            .all(|read| test_files_disabled.contains(read)));
+
+        let test_mod = RegMod::new(&test_mod.name, false, test_files_disabled);
+
+        toggle_files(Path::new(""), !test_mod.state, &test_mod, Some(save_file)).unwrap();
 
         for path_to_test in test_files.iter() {
-            assert!(file_exists(path_to_test.as_path()));
+            assert!(file_exists(path_to_test));
         }
 
+        let read_enabled_ini = IniProperty::<Vec<PathBuf>>::read(
+            &get_cfg(save_file).unwrap(),
+            INI_SECTIONS[3],
+            test_key,
+            prefix,
+            true,
+        )
+        .unwrap()
+        .value;
+
+        assert!(read_enabled_ini
+            .iter()
+            .all(|read| test_files.contains(&read.as_path())));
+
         for test_file in test_files.iter() {
-            remove_file(test_file.as_path()).unwrap();
+            remove_file(test_file).unwrap();
         }
         remove_file(save_file).unwrap();
+    }
+
+    #[test]
+    #[allow(unused_variables)]
+    fn does_dir_contain_work() {
+        let mods_dir = PathBuf::from(&format!("{GAME_DIR}\\mods"));
+        let entries = fs::read_dir(&mods_dir)
+            .unwrap()
+            .map(|f| f.unwrap().file_name().into_string().unwrap())
+            .collect::<Vec<_>>();
+        let num_entries = entries.len();
+
+        assert!(matches!(
+            does_dir_contain(
+                &mods_dir,
+                Operation::Count,
+                entries.iter().map(|e| e.as_ref()).collect::<Vec<_>>().as_slice()
+            ),
+            Ok(OperationResult::Count((num_entries, _)))
+        ));
+
+        assert!(matches!(
+            does_dir_contain(&mods_dir, Operation::Any, &[&entries[1]]),
+            Ok(OperationResult::Bool(true))
+        ));
+
+        assert!(matches!(
+            does_dir_contain(&mods_dir, Operation::Any, &["this_should_not_exist"]),
+            Ok(OperationResult::Bool(false))
+        ));
     }
 }

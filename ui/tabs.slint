@@ -1,0 +1,206 @@
+import { GroupBox, Button, StandardListView, Switch, ComboBox, SpinBox } from "std-widgets.slint";
+import { Tab, SettingsLogic, MainLogic, Formatting } from "common.slint";
+
+export component ModDetails inherits Tab {
+    in property <int> mod-index;
+    property <length> details-height: a.height + b.height + c.height + (3*Formatting.default-spacing);
+    VerticalLayout {
+        y: 0px;
+        padding-top: Formatting.default-padding;
+        padding-bottom: Formatting.side-padding / 2;
+        padding: Formatting.side-padding;
+        spacing: Formatting.default-spacing;
+        alignment: start;
+    
+        a := Text {
+            font-size: Formatting.font-size-h3;
+            text: @tr("Name:");
+        }
+        b := HorizontalLayout {
+            padding-left: Formatting.side-padding;
+            Text {
+                font-size: Formatting.font-size-h2;
+                wrap: word-wrap;
+                text: MainLogic.current-mods[mod-index].name;
+            }
+        }
+        c := Text {
+            font-size: Formatting.font-size-h3;
+            text: @tr("Files:");
+        }
+    }
+    StandardListView {
+        y: details-height;
+        height: root.height - details-height - Formatting.side-padding;
+        width: Formatting.group-box-width - Formatting.side-padding;
+        model: MainLogic.current-mods[mod-index].files;
+        item-pointer-event(i, event) => {
+            if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
+                MainLogic.edit-config-item(MainLogic.current-mods[mod-index].files[i])
+            }
+        }
+    }
+}
+
+export component ModEdit inherits Tab {
+    in property <int> mod-index;
+    property <bool> update-toggle: true;
+    property <bool> has-config: MainLogic.current-mods[mod-index].config-files.length > 0;
+    property <int> selected-order: MainLogic.current-mods[mod-index].order.at;
+    property <int> selected-index: MainLogic.current-mods[mod-index].order.i;
+    property <string> selected-dll: MainLogic.current-mods[mod-index].dll-files[selected-index];
+    property <length> button-width: has-config ? 96px : 105px;
+    property <LayoutAlignment> button-layout: has-config ? space-between : end;
+    VerticalLayout {
+        y: 0px;
+        padding: Formatting.side-padding;
+        padding-bottom: Formatting.side-padding / 2;
+        alignment: space-between;
+
+        load-order-box := GroupBox {
+            property <int> temp;
+            title: @tr("Load Order");
+            enabled: MainLogic.current-mods[mod-index].dll-files.length > 0 && SettingsLogic.loader-installed;
+
+            function init-selected-index() {
+                if !MainLogic.current-mods[mod-index].order.set {
+                    MainLogic.current-mods[mod-index].order.at = 0;
+                    if MainLogic.current-mods[mod-index].dll-files.length != 1 {
+                        MainLogic.current-mods[mod-index].order.i = -1;
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                row: 1;
+                padding-top: Formatting.default-padding;
+
+                function redraw-elements() {
+                    update-toggle = false;
+                    update-toggle = true;
+                }
+
+                load-order := Switch {
+                    text: @tr("Set Load Order");
+                    enabled: load-order-box.enabled;
+                    checked: MainLogic.current-mods[mod-index].order.set;
+                    toggled => {
+                        if self.checked {
+                            MainLogic.current-mods[mod-index].order.at = MainLogic.orders-set + 1;
+                            if selected-index != -1 && selected-order > 0 {
+                                // Front end `order.at` is 1 based and back end is 0 based
+                                temp = MainLogic.add-remove-order(self.checked, selected-dll, mod-index);
+                                if temp != 42069 {
+                                    MainLogic.orders-set = MainLogic.orders-set + temp;
+                                } else {
+                                    self.checked = !self.checked;
+                                    MainLogic.force-deserialize()
+                                }
+                                temp = 0
+                            }
+                            redraw-elements()
+                        } else {
+                            if selected-index != -1 && selected-order > 0 {
+                                temp = MainLogic.add-remove-order(self.checked, selected-dll, mod-index);
+                                if temp != 42069 {
+                                    MainLogic.orders-set = MainLogic.orders-set + temp;
+                                } else {
+                                    self.checked = !self.checked;
+                                    MainLogic.force-deserialize()
+                                }
+                            } else {
+                                MainLogic.current-mods[mod-index].order.at = 0
+                            }
+                            temp = 0;
+                            redraw-elements()
+                        }
+                    }
+                }
+            }
+            HorizontalLayout {
+                row: 2;
+                padding-top: Formatting.side-padding;
+                spacing: Formatting.default-spacing;
+                
+                function modify-file(file: string, i: int) {
+                    if file != selected-dll && selected-order > 0 {
+                        temp = MainLogic.modify-order(file, selected-dll, selected-order - 1, mod-index, i);
+                        if temp != -1 {
+                            MainLogic.orders-set = MainLogic.orders-set + temp;
+                        } else {
+                            init-selected-index();
+                            MainLogic.force-deserialize()
+                        }
+                        temp = 0
+                    }
+                    MainLogic.force-app-focus()
+                }
+                function modify-index(v: int) {
+                    if selected-index != -1 && v > 0 {
+                        temp =  MainLogic.modify-order(selected-dll, selected-dll, v - 1, mod-index, selected-index);
+                        if temp != -1 {
+                            MainLogic.orders-set = MainLogic.orders-set + temp
+                        } else {
+                            MainLogic.force-deserialize()
+                        }
+                    } else {
+                        MainLogic.current-mods[mod-index].order.at = v
+                    }
+                    if temp != -1 {
+                        MainLogic.current-mods[mod-index].order.at = v
+                    }
+                    temp = 0
+                }
+
+                // Might be able to remove this hack after properly having sorting data parsed
+                if update-toggle : ComboBox {
+                    enabled: load-order.checked && load-order-box.enabled;
+                    current-index: selected-index;
+                    model: MainLogic.current-mods[mod-index].dll-files;
+                    selected(file) => { modify-file(file, self.current-index) }
+                }
+
+                // MARK: TODO
+                // Create a focus scope to handle up and down arrow inputs
+                if update-toggle : SpinBox {
+                    width: 106px;
+                    enabled: load-order.checked && load-order-box.enabled;
+                    minimum: 1;
+                    maximum: MainLogic.orders-set;
+                    value: selected-order;
+                    edited(int) => { modify-index(int) }
+                }
+            }
+        }
+    
+        edit-mod-box := GroupBox {
+            title: @tr("Mod Actions");
+            height: Formatting.group-box-r1-height;
+            HorizontalLayout {
+                spacing: Formatting.button-spacing;
+                alignment: button-layout;
+                Button {
+                    width: button-width;
+                    height: Formatting.default-element-height;
+                    primary: !SettingsLogic.dark-mode;
+                    text: @tr("Add Files");
+                    clicked => { MainLogic.add-to-mod(MainLogic.current-mods[mod-index].name) }
+                }
+                if has-config : Button {
+                    width: button-width;
+                    height: Formatting.default-element-height;
+                    primary: !SettingsLogic.dark-mode;
+                    text: @tr("Edit config");
+                    clicked => { MainLogic.edit-config(MainLogic.current-mods[mod-index].config-files) }
+                }
+                Button {
+                    width: button-width;
+                    height: Formatting.default-element-height;
+                    primary: !SettingsLogic.dark-mode;
+                    text: @tr("De-register");
+                    clicked => { MainLogic.remove-mod(MainLogic.current-mods[mod-index].name) }
+                }
+            }
+        }
+    }
+}

@@ -9,9 +9,9 @@ use crate::{
     does_dir_contain, file_name_or_err, new_io_error, parent_or_err,
     utils::ini::{
         parser::RegMod,
-        writer::{save_bool, save_path, save_path_bufs},
+        writer::{remove_order_entry, save_bool, save_path, save_paths},
     },
-    FileData,
+    FileData, INI_SECTIONS,
 };
 
 /// Returns the deepest occurance of a directory that contains at least 1 file  
@@ -32,6 +32,9 @@ fn get_parent_dir(input: &Path) -> std::io::Result<PathBuf> {
         }
     }
 }
+
+// MARK: TODO
+// create a directory_tree_is_empty() function for more efficent boolean checks
 
 fn check_dir_contains_files(path: &Path) -> std::io::Result<PathBuf> {
     let num_of_dirs = items_in_directory(path, FileType::Dir)?;
@@ -132,7 +135,6 @@ fn parent_dir_from_vec(in_files: &[PathBuf]) -> std::io::Result<PathBuf> {
     }
 }
 
-#[derive(PartialEq)]
 pub enum DisplayItems {
     Limit(usize),
     All,
@@ -217,7 +219,7 @@ impl InstallData {
         file_paths: Vec<PathBuf>,
         game_dir: &Path,
     ) -> std::io::Result<Self> {
-        let amend_mod_split_file_names = amend_to.files.iter().try_fold(
+        let amend_mod_split_file_names = amend_to.files.dll.iter().try_fold(
             Vec::with_capacity(amend_to.files.len()),
             |mut acc, file| {
                 let file_name = file_name_or_err(file)?.to_string_lossy();
@@ -378,7 +380,7 @@ impl InstallData {
 
         format_loop(self, &mut files_to_display, directory, &mut cut_off_data)?;
 
-        if *cutoff != DisplayItems::None {
+        if let DisplayItems::All | DisplayItems::Limit(_) = *cutoff {
             self.display_paths = files_to_display.join("\n");
         }
 
@@ -399,7 +401,10 @@ impl InstallData {
             let game_dir = self_clone.install_dir.parent().expect("has parent");
             if valid_dir.strip_prefix(game_dir).is_ok() {
                 return new_io_error!(ErrorKind::InvalidInput, "Files are already installed");
-            } else if does_dir_contain(&valid_dir, crate::Operation::All, &["mods"])? {
+            } else if matches!(
+                does_dir_contain(&valid_dir, crate::Operation::All, &["mods"])?,
+                crate::OperationResult::Bool(true)
+            ) {
                 return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
             }
 
@@ -426,7 +431,7 @@ impl InstallData {
                 trace!("New directory selected contains unique files, entire folder will be moved");
                 match items_in_directory(&valid_dir, FileType::Dir)? == 0 {
                     true => self_clone.parent_dir = parent_or_err(&valid_dir)?.to_path_buf(),
-                    false => self_clone.parent_dir = valid_dir.clone(),
+                    false => self_clone.parent_dir.clone_from(&valid_dir),
                 }
             }
 
@@ -439,9 +444,8 @@ impl InstallData {
         });
         match jh.join() {
             Ok(result) => match result {
-                Ok(data) => {
-                    let mut new_self = data;
-                    std::mem::swap(&mut new_self, self);
+                Ok(mut data) => {
+                    std::mem::swap(&mut data, self);
                     Ok(())
                 }
                 Err(err) => Err(err),
@@ -454,13 +458,19 @@ impl InstallData {
     }
 }
 
-pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<()> {
-    let remove_files = files.iter().map(|f| game_dir.join(f)).collect::<Vec<_>>();
-
-    if remove_files
+pub fn remove_mod_files(
+    game_dir: &Path,
+    loader_dir: &Path,
+    reg_mod: &RegMod,
+) -> std::io::Result<()> {
+    let remove_files = reg_mod
+        .files
+        .file_refs()
         .iter()
-        .any(|file| !matches!(file.try_exists(), Ok(true)))
-    {
+        .map(|f| game_dir.join(f))
+        .collect::<Vec<_>>();
+
+    if remove_files.iter().any(|file| !matches!(file.try_exists(), Ok(true))) {
         return new_io_error!(
             ErrorKind::InvalidInput,
             "Could not confirm existance of all files to remove"
@@ -500,6 +510,9 @@ pub fn remove_mod_files(game_dir: &Path, files: Vec<&Path>) -> std::io::Result<(
         }
     })?;
 
+    if reg_mod.order.set {
+        remove_order_entry(reg_mod, loader_dir)?;
+    }
     Ok(())
 }
 
@@ -530,10 +543,10 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
     for file in files.iter() {
         let name = file_name_or_err(file)?.to_string_lossy();
         let file_data = FileData::from(&name);
-        if let Some(dir) = dirs
-            .iter()
-            .find(|d| d.file_name().expect("is dir") == file_data.name)
-        {
+        if file_data.extension != ".dll" {
+            continue;
+        };
+        if let Some(dir) = dirs.iter().find(|d| d.file_name().expect("is dir") == file_data.name) {
             let mut data = InstallData::new(file_data.name, vec![file.clone()], game_dir)?;
             data.import_files_from_dir(dir, &DisplayItems::None)?;
             file_sets.push(RegMod::new(
@@ -541,36 +554,24 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
                 file_data.enabled,
                 data.from_paths
                     .into_iter()
-                    .map(|p| {
-                        p.strip_prefix(game_dir)
-                            .expect("file found here")
-                            .to_path_buf()
-                    })
+                    .map(|p| p.strip_prefix(game_dir).expect("file found here").to_path_buf())
                     .collect::<Vec<_>>(),
             ));
         } else {
             file_sets.push(RegMod::new(
                 file_data.name,
                 file_data.enabled,
-                vec![file
-                    .strip_prefix(game_dir)
-                    .expect("file found here")
-                    .to_path_buf()],
+                vec![file.strip_prefix(game_dir).expect("file found here").to_path_buf()],
             ));
         }
     }
     for mod_data in &file_sets {
-        save_bool(
-            ini_file,
-            Some("registered-mods"),
-            &mod_data.name,
-            mod_data.state,
-        )?;
-        let file_refs = mod_data.file_refs();
+        save_bool(ini_file, INI_SECTIONS[2], &mod_data.name, mod_data.state)?;
+        let file_refs = mod_data.files.file_refs();
         if file_refs.len() == 1 {
-            save_path(ini_file, Some("mod-files"), &mod_data.name, file_refs[0])?;
+            save_path(ini_file, INI_SECTIONS[3], &mod_data.name, file_refs[0])?;
         } else {
-            save_path_bufs(ini_file, &mod_data.name, &file_refs)?;
+            save_paths(ini_file, INI_SECTIONS[3], &mod_data.name, &file_refs)?;
         }
         mod_data.verify_state(game_dir, ini_file)?;
     }

@@ -1,29 +1,42 @@
+struct LoadOrder {
+    set: bool,
+    i: int,
+    at: int,
+}
+
 export struct DisplayMod  {
     displayname: string,
     name: string,
     enabled: bool,
-    files: string,
-    has-config: bool,
+    files: [StandardListViewItem],
     config-files: [string],
+    dll-files: [string],
+    order: LoadOrder,
 }
 
 export enum Message { confirm, deny, esc }
 
 export global MainLogic {
-    callback toggleMod(string, bool);
+    callback toggle-mod(string, bool) -> bool;
     callback select-mod-files(string);
     callback add-to-mod(string);
     callback remove-mod(string);
     callback edit-config([string]);
+    callback edit-config-item(StandardListViewItem);
+    callback add-remove-order(bool, string, int) -> int;
+    callback modify-order(string, string, int, int, int) -> int;
     callback force-app-focus();
+    callback force-deserialize();
     callback send-message(Message);
     in property <string> line-edit-text;
-    in-out property <bool> if-err-bool;
     in-out property <bool> game-path-valid;
+    in-out property <int> orders-set;
     in-out property <int> current-subpage: 0;
-    in-out property <[DisplayMod]> current-mods: [
-        {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true, files: "\\placeholder\\path\\data\\really\\long\\paths"},
-    ];
+    in-out property <[DisplayMod]> current-mods;
+    // Placeholder data for easy live editing
+    // : [
+    //     {displayname: "Placeholder Name", name: "Placeholder Name", enabled: true, order: {set: false}},
+    // ];
 }
 
 export global SettingsLogic  {
@@ -31,10 +44,11 @@ export global SettingsLogic  {
     callback open-game-dir();
     callback scan-for-mods();
     callback toggle-theme(bool);
-    callback toggle-terminal(bool);
+    callback toggle-terminal(bool) -> bool;
     callback set-load-delay(string);
-    callback toggle-all(bool);
-    in property <string> game-path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
+    callback toggle-all(bool) -> bool;
+    in property <string> game-path;
+    // : "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
     in property <bool> loader-installed;
     in-out property <bool> dark-mode: true;
     in-out property <bool> loader-disabled;
@@ -48,8 +62,11 @@ struct ButtonColors  {
     hovered: color,
 }
 
+// MARK: TODO
+// make light mode look not like shit
 export global ColorPalette  {
-    out property <color> page-background-color: SettingsLogic.dark-mode ? #1b1b1b : #60a0a4;
+    out property <color> page-background-color: SettingsLogic.dark-mode ? #1b1b1b : #adbabb;
+    out property <color> alt-page-background-color: SettingsLogic.dark-mode ? #132b4e : #38474e;
     out property <color> popup-background-color: SettingsLogic.dark-mode ? #00393d : #1b1b1b;
     out property <color> popup-border-color: SettingsLogic.dark-mode ? #17575c : #1b1b1b;
 
@@ -60,28 +77,47 @@ export global ColorPalette  {
         hovered: root.text-base.brighter(20%),
     };
 
-    out property <color> button-image-base: SettingsLogic.dark-mode ? #505150 : #aeaeae;
+    out property <color> button-image-base: SettingsLogic.dark-mode ? #505150 : #ffffff;
     out property <ButtonColors> button-image-colors: {
         pressed: root.button-image-base.darker(40%),
         hovered: root.button-image-base.brighter(20%),
     };
-    out property <color> button-background-base: SettingsLogic.dark-mode ? #4b4b4b83 : #6fc5ffaf;
+    out property <color> button-background-base: SettingsLogic.dark-mode ? #4b4b4b83 : #3e728b9e;
     out property <ButtonColors> button-background-colors: {
         pressed: root.button-background-base.darker(40%),
         hovered: root.button-background-base.darker(20%),
     };
 }
 
+export global Formatting {
+    out property <length> app-width: 315px;
+    out property <length> app-preferred-height: 381px;
+    out property <length> header-height: 48px;
+    out property <length> tab-bar-height: 30px;
+    out property <length> default-padding: 3px;
+    out property <length> default-spacing: 3px;
+    out property <length> side-padding: 8px;
+    out property <length> button-spacing: 5px;
+    out property <length> default-element-height: 35px;
+    out property <length> rectangle-radius: 10px;
+    out property <length> group-box-width: app-width - Formatting.side-padding;
+    out property <length> group-box-r1-height: 85px;
+    out property <length> font-size-h1: 18pt;
+    out property <length> font-size-h2: 14pt;
+    out property <length> font-size-h3: 10pt;
+}
+
 export component Page inherits Rectangle {
     in property<string> title: "title";
     in property<string> description: "description";
     in property <bool> has-back-button;
-    width: 315px;
-    background: ColorPalette.page-background-color;
+    in property <bool> alt-background;
+    width: Formatting.app-width;
+    background: alt-background ? ColorPalette.alt-page-background-color : ColorPalette.page-background-color;
 
     callback back;
     callback settings;
-    back => { MainLogic.current-subpage = 0 }
+    back => { MainLogic.current-subpage = 0; MainLogic.force-app-focus() }
     settings => { MainLogic.current-subpage = 1 }
 
     TouchArea {} // Protect underneath controls
@@ -89,7 +125,7 @@ export component Page inherits Rectangle {
     HorizontalLayout {
         x: 0;
         y: 0;
-        height: 48px;
+        height: Formatting.header-height;
         padding-left: 5px;
         padding-right: 8px;
         padding-top: 8px;
@@ -99,7 +135,7 @@ export component Page inherits Rectangle {
                 source: @image-url("assets/back-arrow.png");
                 image-fit: contain;
                 colorize: ColorPalette.text-foreground-color;
-                source-clip-y: -50;
+                source-clip-y: - 50;
                 width: 30px;
                 height: 24px;
                 
@@ -111,7 +147,7 @@ export component Page inherits Rectangle {
                 }
             }
             title := Text {
-                font-size: 24px;
+                font-size: Formatting.font-size-h1;
                 max-width: root.width - 10px;
                 text: root.title;
                 color: ColorPalette.text-foreground-color;
@@ -134,7 +170,7 @@ export component Page inherits Rectangle {
         
         if (!root.has-back-button) : HorizontalLayout {
             Text {
-                font-size: 24px;
+                font-size: Formatting.font-size-h1;
                 max-width: root.width * 0.8;
                 text: root.title;
                 color: ColorPalette.text-foreground-color;
@@ -172,4 +208,82 @@ export component Page inherits Rectangle {
         }
     }
     @children
+}
+
+export component Tab inherits Rectangle {
+    background: ColorPalette.page-background-color;
+    width: Formatting.app-width;
+
+    TouchArea {} // Protect underneath controls
+
+    @children
+}
+
+component TabItem inherits Rectangle {
+    in property <bool> selected;
+    in-out property <string> text <=> label.text;
+
+    callback clicked <=> touch.clicked;
+
+    height: Formatting.tab-bar-height;
+    
+    states [
+        pressed when touch.pressed : {
+            state.opacity: 0.9;
+        }
+        hover when touch.has-hover : {
+            state.opacity: 1;
+        }
+        un-selected when !root.selected : {
+            state.opacity: 0.80;
+        }
+        selected when root.selected : {
+            state.opacity: 1;
+        }
+    ]
+    
+    state := Rectangle {
+        background: ColorPalette.page-background-color;
+        border-top-left-radius: 13px;
+        border-top-right-radius: 13px;
+
+        animate opacity { duration: 150ms; }
+    }
+
+    HorizontalLayout {
+        y: (parent.height - self.height) / 2;
+        padding: Formatting.default-padding;
+        padding-right: Formatting.side-padding;
+
+        label := Text {
+            color: ColorPalette.text-foreground-color;
+            font-size: Formatting.font-size-h3;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+         }
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+}
+
+export component TabBar inherits Rectangle {
+    in property <[string]> model: [];
+    in-out property <int> current-item: 0;
+    
+    width: Formatting.app-width;
+    height: Formatting.tab-bar-height;
+
+    HorizontalLayout {
+        alignment: start;
+        horizontal-stretch: 0;
+        for item[index] in root.model : TabItem {
+            clicked => { root.current-item = index; }
+            text: item;
+            width: root.width / root.model.length;
+            selected: index == root.current-item;
+        }
+    }
 }

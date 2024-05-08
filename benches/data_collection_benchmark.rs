@@ -1,13 +1,13 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use elden_mod_loader_gui::utils::ini::{parser::RegMod, writer::*};
+use elden_mod_loader_gui::{utils::ini::writer::*, Cfg, INI_SECTIONS};
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
     fs::remove_file,
     path::{Path, PathBuf},
 };
 
-const BENCH_TEST_FILE: &str = "test_files\\benchmark_test.ini";
+const BENCH_TEST_FILE: &str = "temp\\benchmark_test.ini";
 const NUM_ENTRIES: u32 = 25;
 
 fn populate_non_valid_ini(len: u32, file: &Path) {
@@ -18,11 +18,11 @@ fn populate_non_valid_ini(len: u32, file: &Path) {
         let paths = generate_test_paths();
         let path_refs = paths.iter().map(|p| p.as_path()).collect::<Vec<_>>();
 
-        save_bool(file, Some("registered-mods"), &key, bool_value).unwrap();
+        save_bool(file, INI_SECTIONS[2], &key, bool_value).unwrap();
         if paths.len() > 1 {
-            save_path_bufs(file, &key, &path_refs).unwrap();
+            save_paths(file, INI_SECTIONS[3], &key, &path_refs).unwrap();
         } else {
-            save_path(file, Some("mod-files"), &key, paths[0].as_path()).unwrap();
+            save_path(file, INI_SECTIONS[3], &key, paths[0].as_path()).unwrap();
         }
     }
 }
@@ -45,10 +45,11 @@ fn generate_test_paths() -> Vec<PathBuf> {
 
 fn data_collection_benchmark(c: &mut Criterion) {
     let test_file = Path::new(BENCH_TEST_FILE);
+    let ini = Cfg::read(test_file).unwrap();
     populate_non_valid_ini(NUM_ENTRIES, test_file);
 
     c.bench_function("data_collection", |b| {
-        b.iter(|| black_box(RegMod::collect(test_file, true)));
+        b.iter(|| black_box(ini.collect_mods(None, true)));
     });
     remove_file(test_file).unwrap();
 }
