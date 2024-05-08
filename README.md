@@ -31,6 +31,8 @@ as well. It is not recommended to edit this apps ini file manually.
 
 ## Features  
 
+* Set the load order of each mod  
+* Edit a text file by selecting it from the list of registered files  
 * Install mods inside the app  
 * Scan /mods/ for mods already installed to auto import  
 * Option to uninstall after de-registering a mod from within the app  
@@ -47,13 +49,14 @@ as well. It is not recommended to edit this apps ini file manually.
 
 ##### To be added:  
 
-* Dump logs to file on app crash (v0.9.35 feat)  
-* Interface to set the load order of each mod registered with the app  (v0.9.4 feat)  
+* Dump logs to file on app crash (v0.9.5 feat)  
+* Full app-tracing (v0.9.5 feat)  
 
 ## Screenshots  
 
 <div id="image-screenshots">
-    <img src="https://i.imgur.com/doMV5HU.png" width="26%" height="26%">
-    <img src="https://i.imgur.com/mFRwc4f.png" width="26%" height="26%">
-    <img src="https://i.imgur.com/Vfukaby.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/qJC5Tyy.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/vuMAqmt.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/xd0XlBC.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/GMJCNQE.png" width="26%" height="26%">
 </div>
