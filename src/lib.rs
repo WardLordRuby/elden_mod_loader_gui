@@ -354,7 +354,7 @@ pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
     ))
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Cfg {
     pub data: Ini,
     pub dir: PathBuf,
@@ -384,6 +384,13 @@ impl Cfg {
     pub fn update(&mut self) -> std::io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &INI_SECTIONS)?;
         Ok(())
+    }
+
+    pub fn default(cfg_dir: &Path) -> Self {
+        Cfg {
+            data: ini::Ini::new(),
+            dir: PathBuf::from(cfg_dir),
+        }
     }
 
     /// returns the number of registered mods currently saved in the ".ini"  

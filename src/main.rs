@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -421,7 +421,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.global::<MainLogic>().set_line_edit_text(SharedString::new());
                 ini.update().unwrap_or_else(|err| {
                     ui.display_msg(&err.to_string());
-                    ini = Cfg::default();
+                    ini = Cfg::default(ini_dir);
                 });
                 let order_data = order_data_or_default(ui.as_weak(), None);
                 deserialize_current_mods(
@@ -549,7 +549,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             ini.update().unwrap_or_else(|err| {
                 ui.display_msg(&err.to_string());
-                ini = Cfg::default();
+                ini = Cfg::default(ini_dir);
             });
             let order_data = order_data_or_default(ui.as_weak(), None);
             deserialize_current_mods(
@@ -687,7 +687,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                         ini.update().unwrap_or_else(|err| {
                             ui.display_msg(&err.to_string());
-                            ini = Cfg::default();
+                            ini = Cfg::default(ini_dir);
                         });
                         let order_data = order_data_or_default(ui.as_weak(), None);
                         deserialize_current_mods(
@@ -783,7 +783,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.global::<MainLogic>().set_current_subpage(0);
                 ini.update().unwrap_or_else(|err| {
                     ui.display_msg(&err.to_string());
-                    ini = Cfg::default();
+                    ini = Cfg::default(ini_dir);
                 });
                 let order_data = order_data_or_default(ui.as_weak(), None);
                 deserialize_current_mods(
@@ -966,7 +966,12 @@ fn main() -> Result<(), slint::PlatformError> {
             let model = ui.global::<MainLogic>().get_current_mods();
             let mut selected_mod = model.row_data(value as usize).unwrap();
             selected_mod.order.set = state;
-            if !state { selected_mod.order.at = 0 }
+            if !state {
+                selected_mod.order.at = 0;
+                if selected_mod.dll_files.row_count() != 1 {
+                    selected_mod.order.i = -1;
+                }
+            }
             model.set_row_data(value as usize, selected_mod);
             if let Err(err) = model.update_order(&mut load_order,  value, ui.as_weak()) {
                 ui.display_msg(&err.to_string());
@@ -1101,9 +1106,6 @@ impl Sortable for ModelRc<DisplayMod> {
                     continue;
                 }
             } else {
-                if curr_row.dll_files.row_count() != 1 {
-                    curr_row.order.i = -1;
-                }
                 if curr_row.name == selected_key {
                     selected_i = unsorted_i as i32;
                 }
@@ -1517,10 +1519,10 @@ async fn confirm_scan_mods(
         }
         Err(err) => {
             ui.display_msg(&format!("Error: {err}"));
-            new_ini = Cfg::default();
+            new_ini = Cfg::default(&ini.dir);
         },
     };
-    if new_ini.dir != Path::new("") && !old_mods.is_empty() {
+    if !old_mods.is_empty() {
         let new_mods = new_ini.collect_mods(None, false)?;
         let all_new_files = new_mods.iter().flat_map(|m| m.files.file_refs()).collect::<HashSet<_>>();
         old_mods.retain(|m| m.files.dll.iter().any(|f| !all_new_files.contains(f.as_path())));

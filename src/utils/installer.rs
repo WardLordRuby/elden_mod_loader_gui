@@ -33,12 +33,9 @@ fn get_parent_dir(input: &Path) -> std::io::Result<PathBuf> {
     }
 }
 
-// MARK: TODO
-// create a directory_tree_is_empty() function for more efficent boolean checks
-
 fn check_dir_contains_files(path: &Path) -> std::io::Result<PathBuf> {
     let num_of_dirs = items_in_directory(path, FileType::Dir)?;
-    if files_in_directory_tree(path)? == 0 {
+    if directory_tree_is_empty(path)? {
         return new_io_error!(
             ErrorKind::InvalidInput,
             "No files in the selected directory"
@@ -52,7 +49,7 @@ fn check_dir_contains_files(path: &Path) -> std::io::Result<PathBuf> {
         let mut non_empty_dirs = Vec::with_capacity(num_of_dirs);
         for entry in std::fs::read_dir(path)? {
             let dir = entry?.path();
-            if files_in_directory_tree(&dir)? != 0 {
+            if !directory_tree_is_empty(&dir)? {
                 non_empty_branches += 1;
                 non_empty_dirs.push(dir);
             }
@@ -98,7 +95,7 @@ fn items_in_directory(path: &Path, f_type: FileType) -> std::io::Result<usize> {
 }
 
 fn files_in_directory_tree(directory: &Path) -> std::io::Result<usize> {
-    fn count_loop(count: &mut usize, path: &Path) -> Result<(), std::io::Error> {
+    fn count_loop(count: &mut usize, path: &Path) -> std::io::Result<()> {
         for entry in std::fs::read_dir(path)? {
             let entry = entry?;
             let metadata = entry.metadata()?;
@@ -116,6 +113,23 @@ fn files_in_directory_tree(directory: &Path) -> std::io::Result<usize> {
     let mut count: usize = 0;
     count_loop(&mut count, directory)?;
     Ok(count)
+}
+
+fn directory_tree_is_empty(directory: &Path) -> std::io::Result<bool> {
+    fn lookup_loop(path: &Path) -> std::io::Result<bool> {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            if metadata.is_symlink() {
+                return new_io_error!(ErrorKind::InvalidData, "Unsuported file type");
+            } else if metadata.is_file() || (metadata.is_dir() && !lookup_loop(&entry.path())?) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    lookup_loop(directory)
 }
 
 fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
