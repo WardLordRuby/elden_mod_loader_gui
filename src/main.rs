@@ -84,7 +84,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     // io::write error
                     debug!("error 2");
                     errors.push(err);
-                    Cfg { data: ini::Ini::new(), dir: current_ini.to_owned() }
+                    Cfg::default(current_ini)
                 })
             }
         };
@@ -93,7 +93,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let mod_loader: ModLoader;
         let mut mod_loader_cfg: ModLoaderCfg;
         let mut reg_mods = None;
-        let order_data: HashMap<String, usize>;
+        let mut order_data: HashMap<String, usize>;
         let game_dir = match ini.attempt_locate_game() {
             Ok(path_result) => match path_result {
                 PathResult::Full(path) => {
@@ -111,29 +111,43 @@ fn main() -> Result<(), slint::PlatformError> {
                     } else {
                         mod_loader_cfg = ModLoaderCfg::default(mod_loader.path());
                     }
-                    match mod_loader_cfg.parse_section() {
-                        Ok(data) => order_data = data,
+                    order_data = match mod_loader_cfg.parse_section() {
+                        Ok(data) => data,
                         Err(err) => {
                             debug!("error 5");
                             errors.push(err);
-                            order_data = HashMap::new()
+                            HashMap::new()
                         }
                     };
-                    match ini.collect_mods( Some(&order_data), false) {
-                        Ok(mod_data) => {
-                            reg_mods = Some(mod_data);
-                        }
+                    match ini.collect_mods(Some(&order_data), false) {
+                        Ok(mod_data) => reg_mods = Some(mod_data),
                         Err(err) => {
                             // io::Write error | PermissionDenied
                             debug!("error 6");
                             errors.push(err);
                         }
                     };
+                    if let Some(ref mods) = reg_mods {
+                        if let Err(err) = mod_loader_cfg.verify_keys(mods) {
+                            if err.kind() == ErrorKind::Unsupported {
+                                order_data = mod_loader_cfg.parse_into_map();
+                                match ini.collect_mods(Some(&order_data), false) {
+                                    Ok(mod_data) => reg_mods = Some(mod_data),
+                                    Err(err) => {
+                                        // io::Write error | PermissionDenied
+                                        debug!("error 7");
+                                        errors.push(err);
+                                    }
+                                };                                
+                            }
+                            errors.push(err);
+                        }
+                    }
                     if reg_mods.is_some() && reg_mods.as_ref().unwrap().len() != ini.mods_registered() {
                         ini = Cfg::read(current_ini).unwrap_or_else(|err| {
-                            debug!("error 7");
+                            debug!("error 8");
                             errors.push(err);
-                            Cfg { data: ini::Ini::new(), dir: current_ini.to_owned() }
+                            Cfg::default(current_ini)
                         })
                     }
                     game_verified = true;
@@ -149,7 +163,7 @@ fn main() -> Result<(), slint::PlatformError> {
             },
             Err(err) => {
                 // io::Write error
-                debug!("error 8");
+                debug!("error 9");
                 errors.push(err);
                 mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
@@ -167,13 +181,13 @@ fn main() -> Result<(), slint::PlatformError> {
             Ok(bool) => ui.global::<SettingsLogic>().set_dark_mode(bool.value),
             Err(err) => {
                 // io::Read error
-                debug!("error 9");
+                debug!("error 10");
                 errors.push(err);
                 ui.global::<SettingsLogic>().set_dark_mode(true);
                 save_bool(current_ini, INI_SECTIONS[0], INI_KEYS[0], true)
                     // io::Write error
                     .unwrap_or_else(|err| {
-                        debug!("error 10");
+                        debug!("error 11");
                         errors.push(err)
                     });
             }
@@ -199,7 +213,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 } else { 
                     ini.collect_mods(Some(&order_data),!mod_loader.installed()).unwrap_or_else(|err| {
                         // io::Error from toggle files | ErrorKind::InvalidInput - did not pass len check | io::Write error
-                        debug!("error 11");
+                        debug!("error 12");
                         errors.push(err);
                         vec![RegMod::default()]
                     })
@@ -216,13 +230,13 @@ fn main() -> Result<(), slint::PlatformError> {
                         LOADER_KEYS[0]
                     ));
                     error!("{err}");
-                    debug!("error 12");
+                    debug!("error 13");
                     errors.push(err);
                     save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[0], DEFAULT_LOADER_VALUES[0])
                     .unwrap_or_else(|err| {
                         // io::write error
                         error!("{err}");
-                        debug!("error 13");
+                        debug!("error 14");
                         errors.push(err);
                     });
                     DEFAULT_LOADER_VALUES[0].parse().unwrap()
@@ -234,13 +248,13 @@ fn main() -> Result<(), slint::PlatformError> {
                         LOADER_KEYS[1]
                     ));
                     error!("{err}");
-                    debug!("error 14");
+                    debug!("error 15");
                     errors.push(err);
                     save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[1], DEFAULT_LOADER_VALUES[1])
                     .unwrap_or_else(|err| {
                         // io::write error
                         error!("{err}");
-                        debug!("error 15");
+                        debug!("error 16");
                         errors.push(err);
                     });
                     false
@@ -378,7 +392,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 let state = !files.iter().all(FileData::is_disabled);
                 results.push(save_bool(
-                    &ini.dir,
+                    ini.path(),
                     INI_SECTIONS[2],
                     &format_key,
                     state,
@@ -386,14 +400,14 @@ fn main() -> Result<(), slint::PlatformError> {
                 match files.len() {
                     0 => return,
                     1 => results.push(save_path(
-                        &ini.dir,
+                        ini.path(),
                         INI_SECTIONS[3],
                         &format_key,
                         files[0].as_path(),
                     )),
                     2.. => {
                         let path_refs = files.iter().map(|p| p.as_path()).collect::<Vec<_>>();
-                        results.push(save_paths(&ini.dir, INI_SECTIONS[3], &format_key, &path_refs))
+                        results.push(save_paths(ini.path(), INI_SECTIONS[3], &format_key, &path_refs))
                     },
                 }
                 if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
@@ -401,18 +415,18 @@ fn main() -> Result<(), slint::PlatformError> {
                     // If something fails to save attempt to create a corrupt entry so
                     // sync keys will take care of any invalid ini entries
                     let _ =
-                    remove_entry(&ini.dir, INI_SECTIONS[2], &format_key);
+                    remove_entry(ini.path(), INI_SECTIONS[2], &format_key);
                 }
                 let new_mod = RegMod::new(&format_key, state, files);
                 
                 new_mod
-                .verify_state(&game_dir, &ini.dir)
+                .verify_state(&game_dir, ini.path())
                 .unwrap_or_else(|err| {
                     // Toggle files returned an error lets try it again
-                    if new_mod.verify_state(&game_dir, &ini.dir).is_err() {
+                    if new_mod.verify_state(&game_dir, ini.path()).is_err() {
                         ui.display_msg(&err.to_string());
                         let _ = remove_entry(
-                            &ini.dir,
+                            ini.path(),
                             INI_SECTIONS[2],
                             &new_mod.name,
                         );
@@ -473,8 +487,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 };
                 match files_not_found(&try_path, &REQUIRED_GAME_FILES) {
                     Ok(not_found) => if not_found.is_empty() {
-                        let result = save_path(&ini.dir, INI_SECTIONS[1], INI_KEYS[1], &try_path);
-                        if result.is_err() && save_path(&ini.dir, INI_SECTIONS[1], INI_KEYS[1], &try_path).is_err() {
+                        let result = save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[1], &try_path);
+                        if result.is_err() && save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[1], &try_path).is_err() {
                             let err = result.unwrap_err();
                             error!("Failed to save directory. {err}");
                             ui.display_msg(&err.to_string());
@@ -535,7 +549,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     if let Some(found_mod) =
                         reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
                     {
-                        let result = toggle_files(&game_dir, state, found_mod, Some(&ini.dir));
+                        let result = toggle_files(&game_dir, state, found_mod, Some(ini.path()));
                         if result.is_ok() {
                             return state;
                         }
@@ -647,18 +661,18 @@ fn main() -> Result<(), slint::PlatformError> {
                         let new_data_refs = found_mod.files.add_other_files_to_files(&new_data);
                         if found_mod.files.len() == 1 {
                             results.push(remove_entry(
-                                &ini.dir,
+                                ini.path(),
                                 INI_SECTIONS[3],
                                 &found_mod.name,
                             ));
                         } else {
-                            results.push(remove_array(&ini.dir, &found_mod.name));
+                            results.push(remove_array(ini.path(), &found_mod.name));
                         }
-                        results.push(save_paths(&ini.dir, INI_SECTIONS[3], &found_mod.name, &new_data_refs));
+                        results.push(save_paths(ini.path(), INI_SECTIONS[3], &found_mod.name, &new_data_refs));
                         if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
                             ui.display_msg(&err.to_string());
                             let _ = remove_entry(
-                                &ini.dir,
+                                ini.path(),
                                 INI_SECTIONS[2],
                                 &format_key,
                             );
@@ -667,15 +681,15 @@ fn main() -> Result<(), slint::PlatformError> {
                         let updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data_owned);
                         
                         updated_mod
-                            .verify_state(&game_dir, &ini.dir)
+                            .verify_state(&game_dir, ini.path())
                             .unwrap_or_else(|err| {
                                 if updated_mod
-                                    .verify_state(&game_dir, &ini.dir)
+                                    .verify_state(&game_dir, ini.path())
                                     .is_err()
                                 {
                                     ui.display_msg(&err.to_string());
                                     let _ = remove_entry(
-                                        &ini.dir,
+                                        ini.path(),
                                         INI_SECTIONS[2],
                                         &updated_mod.name,
                                     );
@@ -1156,6 +1170,10 @@ async fn receive_msg() -> Message {
     message
 }
 
+// MARK: FIXME
+// Need a stable file dialog before release
+// rfd will hang if user decides to create new folders or files, or select the dropdown on "open"
+
 // Slint snapshot 1.6.0 offers a way to access WindowHandle for setting parent with rfd api
 fn get_user_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
     match rfd::FileDialog::new().set_directory(path).pick_folder() {
@@ -1485,17 +1503,17 @@ async fn confirm_scan_mods(
         old_mods = ini.collect_mods(order_map.as_ref(), false)?;
         let dark_mode = ui.global::<SettingsLogic>().get_dark_mode();
 
-        std::fs::remove_file(&ini.dir)?;
-        new_cfg(&ini.dir)?;
-        save_bool(&ini.dir, INI_SECTIONS[0], INI_KEYS[0], dark_mode)?;
-        save_path(&ini.dir, INI_SECTIONS[1], INI_KEYS[1], game_dir)?;
+        std::fs::remove_file(ini.path())?;
+        new_cfg(ini.path())?;
+        save_bool(ini.path(), INI_SECTIONS[0], INI_KEYS[0], dark_mode)?;
+        save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[1], game_dir)?;
     } else {
         old_mods = Vec::new();
     }
     let new_ini: Cfg;
-    match scan_for_mods(game_dir, &ini.dir) {
+    match scan_for_mods(game_dir, ini.path()) {
         Ok(len) => {
-            new_ini = match Cfg::read(&ini.dir) {
+            new_ini = match Cfg::read(ini.path()) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -1517,7 +1535,7 @@ async fn confirm_scan_mods(
         }
         Err(err) => {
             ui.display_msg(&format!("Error: {err}"));
-            new_ini = Cfg::default(&ini.dir);
+            new_ini = Cfg::default(ini.path());
         },
     };
     if !old_mods.is_empty() {

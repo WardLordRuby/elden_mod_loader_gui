@@ -1,7 +1,7 @@
 use ini::Ini;
 use log::{trace, warn};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::ErrorKind,
     path::{Path, PathBuf},
 };
@@ -139,7 +139,48 @@ impl ModLoaderCfg {
         self.section().iter()
     }
 
-    /// Returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
+    pub fn verify_keys(&mut self, mods: &[RegMod]) -> std::io::Result<()> {
+        let valid_dlls = mods
+            .iter()
+            .flat_map(|m| {
+                m.files
+                    .dll
+                    .iter()
+                    .filter_map(|f| f.file_name()?.to_str())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<HashSet<_>>();
+        let order_count = mods.order_count();
+        let keys = self.iter().map(|(k, _)| k.to_string()).collect::<Vec<_>>();
+        let mut unknown_keys = Vec::new();
+        let mut update_order = false;
+        keys.iter().enumerate().for_each(|(i, k)| {
+            if !valid_dlls.contains(k.as_str()) {
+                unknown_keys.push(k.to_owned());
+                if i < order_count {
+                    update_order = true; 
+                    self.mut_section().remove(k);
+                    self.mut_section().append(k, "69420");
+                }
+            }
+        });
+        if !unknown_keys.is_empty() {
+            if update_order {
+                self.update_order_entries(None)?;
+                return new_io_error!(ErrorKind::Unsupported, 
+                    format!("Found load order set for files not registered with the app. The following key(s) order were changed {}", 
+                    unknown_keys.join("\n"))
+                );
+            }
+            return new_io_error!(ErrorKind::Other,
+                format!("Found load order set for the following files not registered with the app. {}", 
+                unknown_keys.join("\n"))
+            );
+        }
+        Ok(())
+    }
+
+    /// returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
     /// this function also fixes usize.parse() errors and if values are out of order
     pub fn parse_section(&mut self) -> std::io::Result<HashMap<String, usize>> {
         let map = self.parse_into_map();
@@ -163,7 +204,9 @@ impl ModLoaderCfg {
         Ok(map)
     }
 
-    fn parse_into_map(&self) -> HashMap<String, usize> {
+    /// returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
+    /// this will filter out invalid entries, do not use unless you _know_ all entries are valid  
+    pub fn parse_into_map(&self) -> HashMap<String, usize> {
         self.iter()
             .filter_map(|(k, v)| Some((k.to_string(), v.parse::<usize>().ok()?)))
             .collect::<HashMap<String, usize>>()

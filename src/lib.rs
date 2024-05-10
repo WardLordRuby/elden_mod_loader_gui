@@ -357,7 +357,7 @@ pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
 #[derive(Debug)]
 pub struct Cfg {
     pub data: Ini,
-    pub dir: PathBuf,
+    dir: PathBuf,
 }
 pub enum PathResult {
     Full(PathBuf),
@@ -391,6 +391,11 @@ impl Cfg {
             data: ini::Ini::new(),
             dir: PathBuf::from(cfg_dir),
         }
+    }
+
+    #[inline]
+    pub fn path(&self) -> &Path {
+        &self.dir
     }
 
     /// returns the number of registered mods currently saved in the ".ini"  
