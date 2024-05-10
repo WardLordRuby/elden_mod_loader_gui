@@ -187,6 +187,9 @@ impl ModLoaderCfg {
     pub fn write_to_file(&self) -> std::io::Result<()> {
         self.data.write_to_file_opt(&self.dir, EXT_OPTIONS)
     }
+    // MARK: TODO
+    // we need to account for unexpected orders that are set
+    // we either need to move them to the end or remove them from the section
 
     /// updates the load order values in `Some("loadorder")` so they are always `0..`  
     /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  

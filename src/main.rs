@@ -1073,7 +1073,7 @@ impl Sortable for ModelRc<DisplayMod> {
         let mut unsorted_idx = (0..self.row_count()).collect::<Vec<_>>();
         let selected_key = self.row_data(selected_row as usize).expect("front end gives us a valid row").name;
         let mut i = 0_usize;
-        let mut selected_i = 0_i32;
+        let mut selected_i = 0_usize;
         let mut no_order_count = 0_usize;
         let mut seen_names = HashSet::new();
         while !unsorted_idx.is_empty() {
@@ -1088,7 +1088,7 @@ impl Sortable for ModelRc<DisplayMod> {
                 let new_order = new_order.unwrap();
                 curr_row.order.at = *new_order as i32 + 1;
                 if curr_row.name == selected_key {
-                    selected_i = *new_order as i32;
+                    selected_i = *new_order;
                 }
                 if unsorted_i == *new_order {
                     self.set_row_data(*new_order, curr_row);
@@ -1098,30 +1098,28 @@ impl Sortable for ModelRc<DisplayMod> {
                 if let Some(index) = unsorted_idx.iter().position(|&x| x == *new_order) {
                     let swap_row = self.row_data(*new_order).unwrap();
                     if swap_row.name == selected_key {
-                        selected_i = unsorted_i as i32;
+                        selected_i = unsorted_i;
                     }
                     self.set_row_data(*new_order, curr_row);
                     self.set_row_data(unsorted_i, swap_row);
                     unsorted_idx.swap_remove(index);
                     continue;
                 }
-            } else {
-                if curr_row.name == selected_key {
-                    selected_i = unsorted_i as i32;
-                }
-                if !seen_names.contains(&curr_row.name) {
-                    seen_names.insert(curr_row.name.clone());
-                    no_order_count += 1;
-                }
-                self.set_row_data(unsorted_i, curr_row);
-                if no_order_count >= unsorted_idx.len() {
-                    // alphabetical sort would go here
-                    break;
-                }
-                i += 1;
             }
+            if curr_row.name == selected_key {
+                selected_i = unsorted_i;
+            }
+            if !seen_names.contains(&curr_row.name) {
+                seen_names.insert(curr_row.name.clone());
+                no_order_count += 1;
+            }
+            if no_order_count >= unsorted_idx.len() {
+                // alphabetical sort would go here
+                break;
+            }
+            i += 1;
         }
-        ui.invoke_update_mod_index(selected_i, 1);
+        ui.invoke_update_mod_index(selected_i as i32, 1);
         ui.invoke_redraw_checkboxes();
         Ok(())
     }
@@ -1528,6 +1526,8 @@ async fn confirm_scan_mods(
         old_mods.retain(|m| m.files.dll.iter().any(|f| !all_new_files.contains(f.as_path())));
         if old_mods.is_empty() { return Ok(()) }
 
+        // unsure if we want to remove order data, currently on mod removal we do not delete order data,
+        // we only delete order data on mod uninstallation
         old_mods.iter().try_for_each(|m| {
             if m.order.set && !all_new_files.contains(m.files.dll[m.order.i].as_path()) {
                 remove_order_entry(m, loader.path())
