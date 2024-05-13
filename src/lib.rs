@@ -8,7 +8,7 @@ pub mod utils {
 }
 
 use ini::Ini;
-use log::{error, info, trace, warn};
+use log::{info, trace, warn};
 use utils::ini::{
     parser::{IniProperty, IntoIoError, ModError, RegMod, Setup},
     writer::{new_cfg, remove_array, save_bool, save_path, save_paths},
@@ -200,16 +200,12 @@ pub fn toggle_files(
 /// If cfg file does not exist or is not set up with provided sections this function will  
 /// create a new ".ini" file in the given path
 pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io::Result<Ini> {
-    if let Err(err) = from_path.is_setup(sections) {
-        warn!("{err}, creating new");
-    } else {
-        match get_cfg(from_path) {
-            Ok(ini) => {
-                trace!("{:?} found, and is already setup", from_path.file_name());
-                return Ok(ini);
-            }
-            Err(err) => error!("{err} : {}", from_path.display()),
-        };
+    match from_path.is_setup(sections) {
+        Ok(ini) => {
+            trace!("{:?} found, and is already setup", from_path.file_name());
+            return Ok(ini);
+        }
+        Err(err) => warn!("{err}, creating new"),
     }
     new_cfg(from_path)
 }

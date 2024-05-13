@@ -14,7 +14,7 @@ use elden_mod_loader_gui::{
     *,
 };
 use i_slint_backend_winit::WinitWindowAccessor;
-use log::{error, info, warn, debug};
+use log::{error, info, warn};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, VecModel};
 use winit::raw_window_handle::HasWindowHandle;
 use std::{
@@ -56,23 +56,26 @@ fn main() -> Result<(), slint::PlatformError> {
         let current_ini = get_ini_dir();
         let mut errors= Vec::new();
         let first_startup: bool;
-        let ini = if let Err(err) = current_ini.is_setup(&INI_SECTIONS) {
-            // MARK: TODO
-            // create paths for these different error cases
-            first_startup = matches!(err.kind(), ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::InvalidData);
-            error!("{err}");
-            if !first_startup { errors.push(err) }
-            None
-        } else {
-            first_startup = false;
-            Some(get_cfg(current_ini).unwrap())
+        let ini = match current_ini.is_setup(&INI_SECTIONS) {
+            Ok(ini_data) => {
+                first_startup = false;
+                Some(ini_data)
+            }
+            Err(err) => {
+                // MARK: TODO
+                // create paths for these different error cases
+                first_startup = matches!(err.kind(), ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::InvalidData);
+                error!("error 1: {err}");
+                if !first_startup || err.kind() == ErrorKind::InvalidData { errors.push(err) }
+                None
+            }
         };
         let mut ini = match ini {
             Some(ini_data) => Cfg::from(ini_data, current_ini),
             None => {
                 Cfg::read(current_ini).unwrap_or_else(|err| {
                     // io::write error
-                    debug!("error 2");
+                    error!("error 2: {err}");
                     errors.push(err);
                     Cfg::default(current_ini)
                 })
@@ -88,13 +91,13 @@ fn main() -> Result<(), slint::PlatformError> {
             Ok(path_result) => match path_result {
                 PathResult::Full(path) => {
                     mod_loader = ModLoader::properties(&path).unwrap_or_else(|err| {
-                        debug!("error 3");
+                        error!("error 3: {err}");
                         errors.push(err);
                         ModLoader::default()
                     });
                     if mod_loader.installed() {
                         mod_loader_cfg = ModLoaderCfg::read_section(mod_loader.path(), LOADER_SECTIONS[1]).unwrap_or_else(|err| {
-                            debug!("error 4");
+                            error!("error 4: {err}");
                             errors.push(err);
                             ModLoaderCfg::default(mod_loader.path())
                         });
@@ -104,7 +107,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     order_data = match mod_loader_cfg.parse_section() {
                         Ok(data) => data,
                         Err(err) => {
-                            debug!("error 5");
+                            error!("error 5: {err}");
                             errors.push(err);
                             HashMap::new()
                         }
@@ -113,7 +116,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         Ok(mod_data) => reg_mods = Some(mod_data),
                         Err(err) => {
                             // io::Write error | PermissionDenied
-                            debug!("error 6");
+                            error!("error 6: {err}");
                             errors.push(err);
                         }
                     };
@@ -125,7 +128,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                     Ok(mod_data) => reg_mods = Some(mod_data),
                                     Err(err) => {
                                         // io::Write error | PermissionDenied
-                                        debug!("error 7");
+                                        error!("error 7: {err}");
                                         errors.push(err);
                                     }
                                 };                                
@@ -135,7 +138,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                     if reg_mods.is_some() && reg_mods.as_ref().unwrap().len() != ini.mods_registered() {
                         ini = Cfg::read(current_ini).unwrap_or_else(|err| {
-                            debug!("error 8");
+                            error!("error 8: {err}");
                             errors.push(err);
                             Cfg::default(current_ini)
                         })
@@ -153,7 +156,7 @@ fn main() -> Result<(), slint::PlatformError> {
             },
             Err(err) => {
                 // io::Write error
-                debug!("error 9");
+                error!("error 9: {err}");
                 errors.push(err);
                 mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
@@ -163,24 +166,23 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         };
 
-        let dark_mode = ini.get_dark_mode().unwrap_or_else(|err| {
-            error!("{err}");
-            debug!("error 10");
+        ui.global::<SettingsLogic>().set_dark_mode(ini.get_dark_mode().unwrap_or_else(|err| {
+            // parse error ErrorKind::InvalidData
+            error!("error 10: {err}");
             errors.push(err);
             DEFAULT_INI_VALUES[0].parse().unwrap()
-        });
-        ui.global::<SettingsLogic>().set_dark_mode(dark_mode);
+        }));
 
         ui.global::<MainLogic>().set_game_path_valid(game_verified);
         ui.global::<SettingsLogic>().set_game_path(
             game_dir
-                .clone()
-                .unwrap_or_default()
+                .as_ref()
+                .unwrap_or(&PathBuf::new())
                 .to_string_lossy()
                 .to_string()
                 .into(),
         );
-        let _ = get_or_update_game_dir(Some(game_dir.clone().unwrap_or_default()));
+        let _ = get_or_update_game_dir(Some(game_dir.as_ref().unwrap_or(&PathBuf::new()).to_owned()));
 
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
@@ -191,7 +193,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 } else { 
                     ini.collect_mods(Some(&order_data),!mod_loader.installed()).unwrap_or_else(|err| {
                         // io::Error from toggle files | ErrorKind::InvalidInput - did not pass len check | io::Write error
-                        debug!("error 12");
+                        error!("error 11: {err}");
                         errors.push(err);
                         vec![RegMod::default()]
                     })
@@ -203,15 +205,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.global::<SettingsLogic>().set_loader_installed(true);
                 let delay = mod_loader_cfg.get_load_delay().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
-                    error!("{err}");
-                    debug!("error 13");
+                    error!("error 12: {err}");
                     errors.push(err);
                     DEFAULT_LOADER_VALUES[0].parse().unwrap()
                 });
                 let show_terminal = mod_loader_cfg.get_show_terminal().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
-                    error!("{err}");
-                    debug!("error 15");
+                    error!("error 13: {err}");
                     errors.push(err);
                     false
                 });
@@ -1130,9 +1130,9 @@ async fn receive_msg() -> Message {
 // Need a stable file dialog before release
 // rfd will hang if user decides to create new folders or files, or select the dropdown on "open"
 
-fn get_user_folder(path: &Path, ui_handle: slint::Weak<App>) -> Result<PathBuf, std::io::Error> {
+fn get_user_folder(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<PathBuf> {
     let ui = ui_handle.unwrap();
-    ui.window().with_winit_window(|win| -> Result<PathBuf, std::io::Error> {
+    ui.window().with_winit_window(|win| -> std::io::Result<PathBuf> {
         match rfd::FileDialog::new().set_directory(path).set_parent(&win.window_handle().unwrap()).pick_folder() {
             Some(file) => Ok(file),
             None => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
@@ -1140,9 +1140,9 @@ fn get_user_folder(path: &Path, ui_handle: slint::Weak<App>) -> Result<PathBuf, 
     }).unwrap()
 }
 
-fn get_user_files(path: &Path, ui_handle: slint::Weak<App>) -> Result<Vec<PathBuf>, std::io::Error> {
+fn get_user_files(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<Vec<PathBuf>> {
     let ui = ui_handle.unwrap();
-    ui.window().with_winit_window(|win| -> Result<Vec<PathBuf>, std::io::Error> {
+    ui.window().with_winit_window(|win| -> std::io::Result<Vec<PathBuf>> {
         match rfd::FileDialog::new().set_directory(path).set_parent(&win.window_handle().unwrap()).pick_files() {
             Some(files) => match files.len() {
                 0 => new_io_error!(ErrorKind::InvalidInput, "No Files Selected"),

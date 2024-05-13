@@ -206,18 +206,18 @@ fn validate_existance(path: &Path) -> std::io::Result<()> {
 }
 
 pub trait Setup {
-    fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<()>;
+    fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<ini::Ini>;
 }
 
 impl<T: AsRef<Path>> Setup for T {
-    /// returns `Ok` if self is a path that:  
+    /// returns `Ok(ini)` if self is a path that:  
     ///     _exists_ if not returns `Err(NotFound)` or `Err(PermissionDenied)`  
     ///     _is .ini_ if not returns `Err(InvalidInput)`  
     ///     _File::open_ does not return an error  
     ///     _contains all sections_ if not returns `Err(InvalidData)`  
     ///  
     /// it is safe to call unwrap on `get_cfg(self)` if this returns `Ok`
-    fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<()> {
+    fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<ini::Ini> {
         let file_data = self.as_ref().to_string_lossy();
         let file_data = FileData::from(&file_data);
         if file_data.extension == ".ini" {
@@ -229,7 +229,7 @@ impl<T: AsRef<Path>> Setup for T {
                 .map(|s| s.unwrap())
                 .collect::<Vec<_>>();
             if not_found.is_empty() {
-                Ok(())
+                Ok(ini)
             } else {
                 new_io_error!(
                     ErrorKind::InvalidData,
