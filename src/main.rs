@@ -16,6 +16,7 @@ use elden_mod_loader_gui::{
 use i_slint_backend_winit::WinitWindowAccessor;
 use log::{error, info, warn, debug};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, VecModel};
+use winit::raw_window_handle::HasWindowHandle;
 use std::{
     collections::{HashMap, HashSet}, ffi::OsStr, io::ErrorKind, path::{Path, PathBuf}, rc::Rc, sync::{
         atomic::{AtomicU32, Ordering},
@@ -300,7 +301,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             slint::spawn_local(async move {
                 let game_dir = get_or_update_game_dir(None);
-                let file_paths = match get_user_files(&game_dir) {
+                let file_paths = match get_user_files(&game_dir, ui.as_weak()) {
                     Ok(files) => files,
                     Err(err) => {
                         info!("{err}");
@@ -418,7 +419,7 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             slint::spawn_local(async move {
                 let game_dir = get_or_update_game_dir(None);
-                let path_result = get_user_folder(&game_dir);
+                let path_result = get_user_folder(&game_dir, ui.as_weak());
                 drop(game_dir);
                 let path = match path_result {
                     Ok(path) => path,
@@ -561,7 +562,7 @@ fn main() -> Result<(), slint::PlatformError> {
             slint::spawn_local(async move {
                 let game_dir = get_or_update_game_dir(None);
                 let format_key = key.replace(' ', "_");
-                let file_paths = match get_user_files(&game_dir) {
+                let file_paths = match get_user_files(&game_dir, ui.as_weak()) {
                     Ok(paths) => paths,
                     Err(err) => {
                         error!("{err}");
@@ -1129,36 +1130,41 @@ async fn receive_msg() -> Message {
 // Need a stable file dialog before release
 // rfd will hang if user decides to create new folders or files, or select the dropdown on "open"
 
-// Slint snapshot 1.6.0 offers a way to access WindowHandle for setting parent with rfd api
-fn get_user_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
-    match rfd::FileDialog::new().set_directory(path).pick_folder() {
-        Some(file) => Ok(file),
-        None => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
-    }
+fn get_user_folder(path: &Path, ui_handle: slint::Weak<App>) -> Result<PathBuf, std::io::Error> {
+    let ui = ui_handle.unwrap();
+    ui.window().with_winit_window(|win| -> Result<PathBuf, std::io::Error> {
+        match rfd::FileDialog::new().set_directory(path).set_parent(&win.window_handle().unwrap()).pick_folder() {
+            Some(file) => Ok(file),
+            None => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
+        }
+    }).unwrap()
 }
 
-fn get_user_files(path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
-    match rfd::FileDialog::new().set_directory(path).pick_files() {
-        Some(files) => match files.len() {
-            0 => new_io_error!(ErrorKind::InvalidInput, "No Files Selected"),
-            _ => {
-                if files.iter().any(|file| {
-                    RESTRICTED_FILES.get().unwrap().iter().any(|&restricted_file| {
-                        file.file_name().expect("has valid name") == restricted_file
-                    })
-                }) {
-                    return new_io_error!(
-                        ErrorKind::InvalidData,
-                        "Error: Tried to add a restricted file"
-                    );
+fn get_user_files(path: &Path, ui_handle: slint::Weak<App>) -> Result<Vec<PathBuf>, std::io::Error> {
+    let ui = ui_handle.unwrap();
+    ui.window().with_winit_window(|win| -> Result<Vec<PathBuf>, std::io::Error> {
+        match rfd::FileDialog::new().set_directory(path).set_parent(&win.window_handle().unwrap()).pick_files() {
+            Some(files) => match files.len() {
+                0 => new_io_error!(ErrorKind::InvalidInput, "No Files Selected"),
+                _ => {
+                    if files.iter().any(|file| {
+                        RESTRICTED_FILES.get().unwrap().iter().any(|&restricted_file| {
+                            file.file_name().expect("has valid name") == restricted_file
+                        })
+                    }) {
+                        return new_io_error!(
+                            ErrorKind::InvalidData,
+                            "Error: Tried to add a restricted file"
+                        );
+                    }
+                    Ok(files)
                 }
-                Ok(files)
+            },
+            None => {
+                new_io_error!(ErrorKind::InvalidInput, "No Files Selected")
             }
-        },
-        None => {
-            new_io_error!(ErrorKind::InvalidInput, "No Files Selected")
         }
-    }
+    }).unwrap()
 }
 
 fn get_ini_dir() -> &'static PathBuf {
@@ -1340,7 +1346,7 @@ async fn add_dir_to_install_data(
         install_files.display_paths), true);
     let mut result: Vec<Result<(), std::io::Error>> = Vec::with_capacity(2);
     match receive_msg().await {
-        Message::Confirm => match get_user_folder(&install_files.parent_dir) {
+        Message::Confirm => match get_user_folder(&install_files.parent_dir, ui.as_weak()) {
             Ok(path) => {
                 install_files
                     .update_fields_with_new_dir(&path, utils::installer::DisplayItems::Limit(9))
