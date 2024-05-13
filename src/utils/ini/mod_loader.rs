@@ -7,12 +7,10 @@ use std::{
 };
 
 use crate::{
-    does_dir_contain, get_or_setup_cfg, new_io_error,
-    utils::ini::{
+    does_dir_contain, get_or_setup_cfg, new_io_error, utils::ini::{
         parser::{IniProperty, ModError, RegMod},
-        writer::{new_cfg, EXT_OPTIONS},
-    },
-    Operation, OperationResult, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
+        writer::{new_cfg, save_value_ext, EXT_OPTIONS},
+    }, Operation, OperationResult, DEFAULT_LOADER_VALUES, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS
 };
 
 #[derive(Debug, Default)]
@@ -99,20 +97,26 @@ impl ModLoaderCfg {
     pub fn get_load_delay(&self) -> std::io::Result<u32> {
         match IniProperty::<u32>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[0]) {
             Ok(delay_time) => Ok(delay_time.value),
-            Err(err) => Err(err.add_msg(format!(
-                "Found an unexpected character saved in \"{}\"",
+            Err(mut err) => {
+                err.add_msg(&format!(
+                "Found an unexpected character saved in \"{}\". Reseting to default value",
                 LOADER_KEYS[0]
-            ))),
+                ));
+                Err(save_default_val_ext(&self.dir, LOADER_SECTIONS[0], LOADER_KEYS[0], DEFAULT_LOADER_VALUES[0], err))
+            },
         }
     }
 
     pub fn get_show_terminal(&self) -> std::io::Result<bool> {
         match IniProperty::<bool>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[1]) {
             Ok(delay_time) => Ok(delay_time.value),
-            Err(err) => Err(err.add_msg(format!(
-                "Found an unexpected character saved in \"{}\"",
+            Err(mut err) => {
+                err.add_msg(&format!(
+                "Found an unexpected character saved in \"{}\". Reseting to default value",
                 LOADER_KEYS[1]
-            ))),
+                ));
+                Err(save_default_val_ext(&self.dir, LOADER_SECTIONS[0], LOADER_KEYS[1], DEFAULT_LOADER_VALUES[1], err))
+            },
         }
     }
 
@@ -230,9 +234,6 @@ impl ModLoaderCfg {
     pub fn write_to_file(&self) -> std::io::Result<()> {
         self.data.write_to_file_opt(&self.dir, EXT_OPTIONS)
     }
-    // MARK: TODO
-    // we need to account for unexpected orders that are set
-    // we either need to move them to the end or remove them from the section
 
     /// updates the load order values in `Some("loadorder")` so they are always `0..`  
     /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  
@@ -301,6 +302,14 @@ impl ModLoaderCfg {
             section: None,
         }
     }
+}
+
+fn save_default_val_ext(cfg_dir: &Path, section: Option<&str>, key: &str, default_val: &str, mut in_err: std::io::Error) -> std::io::Error {
+    save_value_ext(cfg_dir, section, key, default_val).unwrap_or_else(|err| {
+        in_err.add_msg(&format!("\n, {err}"));
+        // io::write error
+    });
+    in_err
 }
 
 pub trait Countable {

@@ -10,7 +10,7 @@ pub mod utils {
 use ini::Ini;
 use log::{error, info, trace, warn};
 use utils::ini::{
-    parser::{IniProperty, IntoIoError, RegMod, Setup},
+    parser::{IniProperty, IntoIoError, ModError, RegMod, Setup},
     writer::{new_cfg, remove_array, save_bool, save_path, save_paths},
 };
 
@@ -200,19 +200,17 @@ pub fn toggle_files(
 /// If cfg file does not exist or is not set up with provided sections this function will  
 /// create a new ".ini" file in the given path
 pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io::Result<Ini> {
-    match get_cfg(from_path) {
-        Ok(ini) => {
-            if ini.is_setup(sections) {
+    if let Err(err) = from_path.is_setup(sections) {
+        warn!("{err}, creating new");
+    } else {
+        match get_cfg(from_path) {
+            Ok(ini) => {
                 trace!("{:?} found, and is already setup", from_path.file_name());
                 return Ok(ini);
             }
-            trace!(
-                "ini: {:?} is not setup, creating new",
-                from_path.file_name()
-            );
-        }
-        Err(err) => error!("{err} : {:?}", from_path.file_name()),
-    };
+            Err(err) => error!("{err} : {}", from_path.display()),
+        };
+    }
     new_cfg(from_path)
 }
 
@@ -393,6 +391,25 @@ impl Cfg {
         }
     }
 
+    pub fn get_dark_mode(&self) -> std::io::Result<bool> {
+        match IniProperty::<bool>::read(&self.data, INI_SECTIONS[0], INI_KEYS[0]) {
+            Ok(dark_mode) => Ok(dark_mode.value),
+            Err(mut err) => {
+                err.add_msg(&format!(
+                    "Found an unexpected character saved in \"{}\". Reseting to default value",
+                    LOADER_KEYS[0]
+                ));
+                Err(save_default_val(
+                    &self.dir,
+                    INI_SECTIONS[0],
+                    INI_KEYS[0],
+                    DEFAULT_INI_VALUES[0].parse().unwrap(),
+                    err,
+                ))
+            }
+        }
+    }
+
     #[inline]
     pub fn path(&self) -> &Path {
         &self.dir
@@ -447,6 +464,20 @@ impl Cfg {
         warn!("Could not locate \"game_dir\"");
         Ok(PathResult::None(try_locate))
     }
+}
+
+fn save_default_val(
+    cfg_dir: &Path,
+    section: Option<&str>,
+    key: &str,
+    default_val: bool,
+    mut in_err: std::io::Error,
+) -> std::io::Error {
+    save_bool(cfg_dir, section, key, default_val).unwrap_or_else(|err| {
+        in_err.add_msg(&format!("\n, {err}"));
+        // io::write error
+    });
+    in_err
 }
 
 fn attempt_locate_dir(target_path: &[&str]) -> std::io::Result<PathBuf> {

@@ -5,11 +5,11 @@
 use elden_mod_loader_gui::{
     utils::{
         ini::{
-            mod_loader::{ModLoader, ModLoaderCfg, Countable},
-            parser::{file_registered, IniProperty, RegMod, Setup},
+            mod_loader::{Countable, ModLoader, ModLoaderCfg},
+            parser::{file_registered, RegMod, Setup},
             writer::*,
         },
-        installer::{remove_mod_files, InstallData, scan_for_mods}
+        installer::{remove_mod_files, scan_for_mods, InstallData}
     },
     *,
 };
@@ -53,29 +53,18 @@ fn main() -> Result<(), slint::PlatformError> {
     RESTRICTED_FILES.set(populate_restricted_files()).unwrap();
     {
         let current_ini = get_ini_dir();
-        let first_startup: bool;
         let mut errors= Vec::new();
-        let ini = match get_cfg(current_ini) {
-            Ok(ini) => {
-                if ini.is_setup(&INI_SECTIONS) {
-                    info!("Config file found at \"{}\"", current_ini.display());
-                    first_startup = false;
-                    Some(ini)
-                } else {
-                    first_startup = false;
-                    None
-                }
-            }
-            Err(err) => {
-                // io::Open error or | parse error with type ErrorKind::InvalidData
-                error!("Error: {err}");
-                if err.kind() == ErrorKind::InvalidData {
-                    debug!("error 1");
-                    errors.push(err);
-                }
-                first_startup = true;
-                None
-            }
+        let first_startup: bool;
+        let ini = if let Err(err) = current_ini.is_setup(&INI_SECTIONS) {
+            // MARK: TODO
+            // create paths for these different error cases
+            first_startup = matches!(err.kind(), ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::InvalidData);
+            error!("{err}");
+            if !first_startup { errors.push(err) }
+            None
+        } else {
+            first_startup = false;
+            Some(get_cfg(current_ini).unwrap())
         };
         let mut ini = match ini {
             Some(ini_data) => Cfg::from(ini_data, current_ini),
@@ -173,25 +162,13 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         };
 
-        match IniProperty::<bool>::read(
-            &get_cfg(current_ini).expect("ini file is verified"),
-            INI_SECTIONS[0],
-            INI_KEYS[0],
-        ) {
-            Ok(bool) => ui.global::<SettingsLogic>().set_dark_mode(bool.value),
-            Err(err) => {
-                // io::Read error
-                debug!("error 10");
-                errors.push(err);
-                ui.global::<SettingsLogic>().set_dark_mode(true);
-                save_bool(current_ini, INI_SECTIONS[0], INI_KEYS[0], true)
-                    // io::Write error
-                    .unwrap_or_else(|err| {
-                        debug!("error 11");
-                        errors.push(err)
-                    });
-            }
-        };
+        let dark_mode = ini.get_dark_mode().unwrap_or_else(|err| {
+            error!("{err}");
+            debug!("error 10");
+            errors.push(err);
+            DEFAULT_INI_VALUES[0].parse().unwrap()
+        });
+        ui.global::<SettingsLogic>().set_dark_mode(dark_mode);
 
         ui.global::<MainLogic>().set_game_path_valid(game_verified);
         ui.global::<SettingsLogic>().set_game_path(
@@ -223,40 +200,18 @@ fn main() -> Result<(), slint::PlatformError> {
 
             if mod_loader.installed() {
                 ui.global::<SettingsLogic>().set_loader_installed(true);
-                let delay = mod_loader_cfg.get_load_delay().unwrap_or_else(|_| {
+                let delay = mod_loader_cfg.get_load_delay().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
-                    let err = std::io::Error::new(ErrorKind::InvalidData, format!(
-                        "Found an unexpected character saved in \"{}\" Reseting to default value",
-                        LOADER_KEYS[0]
-                    ));
                     error!("{err}");
                     debug!("error 13");
                     errors.push(err);
-                    save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[0], DEFAULT_LOADER_VALUES[0])
-                    .unwrap_or_else(|err| {
-                        // io::write error
-                        error!("{err}");
-                        debug!("error 14");
-                        errors.push(err);
-                    });
                     DEFAULT_LOADER_VALUES[0].parse().unwrap()
                 });
-                let show_terminal = mod_loader_cfg.get_show_terminal().unwrap_or_else(|_| {
+                let show_terminal = mod_loader_cfg.get_show_terminal().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
-                    let err = std::io::Error::new(ErrorKind::InvalidData, format!(
-                        "Found an unexpected character saved in \"{}\" Reseting to default value",
-                        LOADER_KEYS[1]
-                    ));
                     error!("{err}");
                     debug!("error 15");
                     errors.push(err);
-                    save_value_ext(mod_loader.path(), LOADER_SECTIONS[0], LOADER_KEYS[1], DEFAULT_LOADER_VALUES[1])
-                    .unwrap_or_else(|err| {
-                        // io::write error
-                        error!("{err}");
-                        debug!("error 16");
-                        errors.push(err);
-                    });
                     false
                 });
 

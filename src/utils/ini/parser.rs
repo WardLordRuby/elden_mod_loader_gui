@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    files_not_found, new_io_error, toggle_files,
+    files_not_found, get_cfg, new_io_error, toggle_files,
     utils::ini::writer::{remove_array, remove_entry},
     Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, OFF_STATE, REQUIRED_GAME_FILES,
 };
@@ -164,7 +164,8 @@ impl<T: AsRef<Path>> Valitidity for [T] {
             if add_errors.is_empty() {
                 return Err(init_err);
             }
-            return Err(init_err.add_msg(add_errors));
+            init_err.add_msg(&add_errors);
+            return Err(init_err);
         }
         Ok(())
     }
@@ -205,12 +206,46 @@ fn validate_existance(path: &Path) -> std::io::Result<()> {
 }
 
 pub trait Setup {
-    fn is_setup(&self, sections: &[Option<&str>]) -> bool;
+    fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<()>;
 }
 
-impl Setup for Ini {
-    fn is_setup(&self, sections: &[Option<&str>]) -> bool {
-        sections.iter().all(|&section| self.section(section).is_some())
+impl<T: AsRef<Path>> Setup for T {
+    /// returns `Ok` if self is a path that:  
+    ///     _exists_ if not returns `Err(NotFound)` or `Err(PermissionDenied)`  
+    ///     _is .ini_ if not returns `Err(InvalidInput)`  
+    ///     _File::open_ does not return an error  
+    ///     _contains all sections_ if not returns `Err(InvalidData)`  
+    ///  
+    /// it is safe to call unwrap on `get_cfg(self)` if this returns `Ok`
+    fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<()> {
+        let file_data = self.as_ref().to_string_lossy();
+        let file_data = FileData::from(&file_data);
+        if file_data.extension == ".ini" {
+            validate_existance(self.as_ref())?;
+            let ini = get_cfg(self.as_ref())?;
+            let not_found = sections
+                .iter()
+                .filter(|&&s| ini.section(s).is_none())
+                .map(|s| s.unwrap())
+                .collect::<Vec<_>>();
+            if not_found.is_empty() {
+                Ok(())
+            } else {
+                new_io_error!(
+                    ErrorKind::InvalidData,
+                    format!(
+                        "Could not find section(s): {:?} in {}",
+                        not_found,
+                        self.as_ref().display()
+                    )
+                )
+            }
+        } else {
+            new_io_error!(
+                ErrorKind::InvalidInput,
+                format!("expected .ini found {}", file_data.extension)
+            )
+        }
     }
 }
 
@@ -706,23 +741,26 @@ impl IntoIoError for std::num::ParseIntError {
 }
 
 pub trait ModError {
-    fn add_msg(self, msg: String) -> std::io::Error;
+    fn add_msg(&mut self, msg: &str);
 }
 
 impl ModError for std::io::Error {
     #[inline]
-    fn add_msg(self, msg: String) -> std::io::Error {
-        std::io::Error::new(self.kind(), format!("{msg}\n\n{self}"))
+    fn add_msg(&mut self, msg: &str) {
+        std::mem::swap(
+            self,
+            &mut std::io::Error::new(self.kind(), format!("{msg}\n\n{self}")),
+        )
     }
 }
 
 pub trait ErrorClone {
-    fn clone_err(self) -> std::io::Error;
+    fn clone_err(&self) -> std::io::Error;
 }
 
 impl ErrorClone for &std::io::Error {
     #[inline]
-    fn clone_err(self) -> std::io::Error {
+    fn clone_err(&self) -> std::io::Error {
         std::io::Error::new(self.kind(), self.to_string())
     }
 }
