@@ -2135,6 +2135,7 @@ dependencies = [
  "once_cell",
  "pin-weak",
  "raw-window-handle 0.5.2",
+ "raw-window-handle 0.6.1",
  "rgb",
  "scoped-tls-hkt",
  "scopeguard",
@@ -3736,6 +3737,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "pin-weak",
+ "raw-window-handle 0.6.1",
  "slint-macros",
  "vtable",
 ]

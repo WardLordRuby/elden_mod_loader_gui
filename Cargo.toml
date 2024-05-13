@@ -18,7 +18,7 @@ lto = true
 
 [dependencies]
 tokio = { version = "1.37.0", features = ["sync"] }
-slint = "1.6.0"
+slint = { version = "1.6.0", features = ["raw-window-handle-06"] }
 i-slint-backend-winit = "1.6.0"
 winit = "0.29.15"
 rfd = "0.14.1"

@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -16,7 +16,6 @@ use elden_mod_loader_gui::{
 use i_slint_backend_winit::WinitWindowAccessor;
 use log::{error, info, warn};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, VecModel};
-use winit::raw_window_handle::HasWindowHandle;
 use std::{
     collections::{HashMap, HashSet}, ffi::OsStr, io::ErrorKind, path::{Path, PathBuf}, rc::Rc, sync::{
         atomic::{AtomicU32, Ordering},
@@ -1132,39 +1131,35 @@ async fn receive_msg() -> Message {
 
 fn get_user_folder(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<PathBuf> {
     let ui = ui_handle.unwrap();
-    ui.window().with_winit_window(|win| -> std::io::Result<PathBuf> {
-        match rfd::FileDialog::new().set_directory(path).set_parent(&win.window_handle().unwrap()).pick_folder() {
-            Some(file) => Ok(file),
-            None => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
-        }
-    }).unwrap()
+    match rfd::FileDialog::new().set_directory(path).set_parent(&ui.window().window_handle()).pick_folder() {
+        Some(file) => Ok(file),
+        None => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
+    }
 }
 
 fn get_user_files(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<Vec<PathBuf>> {
     let ui = ui_handle.unwrap();
-    ui.window().with_winit_window(|win| -> std::io::Result<Vec<PathBuf>> {
-        match rfd::FileDialog::new().set_directory(path).set_parent(&win.window_handle().unwrap()).pick_files() {
-            Some(files) => match files.len() {
-                0 => new_io_error!(ErrorKind::InvalidInput, "No Files Selected"),
-                _ => {
-                    if files.iter().any(|file| {
-                        RESTRICTED_FILES.get().unwrap().iter().any(|&restricted_file| {
-                            file.file_name().expect("has valid name") == restricted_file
-                        })
-                    }) {
-                        return new_io_error!(
-                            ErrorKind::InvalidData,
-                            "Error: Tried to add a restricted file"
-                        );
-                    }
-                    Ok(files)
+    match rfd::FileDialog::new().set_directory(path).set_parent(&ui.window().window_handle()).pick_files() {
+        Some(files) => match files.len() {
+            0 => new_io_error!(ErrorKind::InvalidInput, "No Files Selected"),
+            _ => {
+                if files.iter().any(|file| {
+                    RESTRICTED_FILES.get().unwrap().iter().any(|&restricted_file| {
+                        file.file_name().expect("has valid name") == restricted_file
+                    })
+                }) {
+                    return new_io_error!(
+                        ErrorKind::InvalidData,
+                        "Error: Tried to add a restricted file"
+                    );
                 }
-            },
-            None => {
-                new_io_error!(ErrorKind::InvalidInput, "No Files Selected")
+                Ok(files)
             }
+        },
+        None => {
+            new_io_error!(ErrorKind::InvalidInput, "No Files Selected")
         }
-    }).unwrap()
+    }
 }
 
 fn get_ini_dir() -> &'static PathBuf {
