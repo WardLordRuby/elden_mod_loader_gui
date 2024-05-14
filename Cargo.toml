@@ -20,14 +20,14 @@ lto = true
 tokio = { version = "1.37.0", features = ["sync"] }
 slint = { version = "1.6.0", features = ["raw-window-handle-06"] }
 i-slint-backend-winit = "1.6.0"
-winit = "0.29.15"
+winit = "0.29.4"
 rfd = "0.14.1"
 log = "0.4.21"
 env_logger = "0.11.3"
 rust-ini = "0.21.0"
 
 [build-dependencies]
-slint-build = "1.5.1"
+slint-build = "1.6.0"
 winresource = "0.1.17"
 
 [dev-dependencies]
