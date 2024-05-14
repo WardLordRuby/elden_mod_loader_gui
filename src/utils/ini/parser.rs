@@ -30,14 +30,19 @@ impl Parsable for bool {
         key: &str,
         _skip_validation: bool,
     ) -> std::io::Result<Self> {
-        match ini
-            .get_from(section, key)
-            .expect("Validated by IniProperty::is_valid")
-        {
-            "0" => Ok(false),
-            "1" => Ok(true),
-            c => c.to_lowercase().parse::<bool>().map_err(|err| err.into_io_error()),
-        }
+        parse_bool(
+            ini.get_from(section, key)
+                .expect("Validated by IniProperty::is_valid"),
+        )
+    }
+}
+
+#[inline]
+fn parse_bool(str: &str) -> std::io::Result<bool> {
+    match str {
+        "0" => Ok(false),
+        "1" => Ok(true),
+        c => c.to_lowercase().parse::<bool>().map_err(|err| err.into_io_error()),
     }
 }
 
@@ -128,7 +133,8 @@ impl Parsable for Vec<PathBuf> {
 }
 
 pub trait Valitidity {
-    /// _full_paths_ are assumed to Point to directories, where as _partial_paths_ are assumed to point to files  
+    /// _full_paths_ (stored as `PathBuf`) are assumed to Point to directories,  
+    /// where as _partial_paths_ (stored as `Vec<PathBuf>`) are assumed to point to files  
     /// if you want to validate a _partial_path_ you must supply the _path_prefix_
     fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> std::io::Result<()>;
 }
@@ -290,17 +296,23 @@ impl IniProperty<PathBuf> {
 }
 
 impl IniProperty<Vec<PathBuf>> {
-    pub fn read(
+    pub fn read<P: AsRef<Path>>(
         ini: &Ini,
         section: Option<&str>,
         key: &str,
-        path_prefix: &Path,
+        path_prefix: P,
         skip_validation: bool,
     ) -> std::io::Result<IniProperty<Vec<PathBuf>>> {
         Ok(IniProperty {
             //section: section.map(String::from),
             //key: key.to_string(),
-            value: IniProperty::is_valid(ini, section, key, skip_validation, Some(path_prefix))?,
+            value: IniProperty::is_valid(
+                ini,
+                section,
+                key,
+                skip_validation,
+                Some(path_prefix.as_ref()),
+            )?,
         })
     }
 }
@@ -515,27 +527,16 @@ impl RegMod {
 }
 
 impl Cfg {
-    // MARK: FIXME
-    // when is the best time to verify parsed data? currently we verify data after shaping it
-    // the code would most likely be cleaner if we verified it apon parsing before doing any shaping
-
-    // should we have two collections? one for deserialization(full) one for just collect and verify
-
-    // collect needs to be completely recoverable, runing into an error and then returning a default is not good enough
-    pub fn collect_mods(
+    pub fn collect_mods<P: AsRef<Path>>(
         &self,
+        game_dir: P,
         include_load_order: Option<&HashMap<String, usize>>,
         skip_validation: bool,
-    ) -> std::io::Result<Vec<RegMod>> {
+    ) -> Vec<RegMod> {
         type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
-        type ModData<'a> = Vec<(
-            &'a str,
-            Result<bool, std::str::ParseBoolError>,
-            SplitFiles,
-            LoadOrder,
-        )>;
+        type ModData<'a> = Vec<(&'a str, bool, SplitFiles, LoadOrder)>;
 
-        fn sync_keys<'a>(ini: &'a Ini, ini_path: &Path) -> std::io::Result<CollectedMaps<'a>> {
+        fn sync_keys<'a>(ini: &'a Ini, ini_path: &Path) -> CollectedMaps<'a> {
             fn collect_paths(section: &Properties) -> HashMap<&str, Vec<&str>> {
                 section
                     .iter()
@@ -569,7 +570,8 @@ impl Cfg {
 
             for key in invalid_state {
                 state_data.remove(key);
-                remove_entry(ini_path, INI_SECTIONS[2], key)?;
+                remove_entry(ini_path, INI_SECTIONS[2], key)
+                    .expect("Key is valid & ini has already been read");
                 warn!("\"{key}\" has no matching files");
             }
 
@@ -581,22 +583,25 @@ impl Cfg {
 
             for key in invalid_files {
                 if file_data.get(key).expect("key exists").len() > 1 {
-                    remove_array(ini_path, key)?;
+                    remove_array(ini_path, key).expect("Key is valid & ini has already been read");
                 } else {
-                    remove_entry(ini_path, INI_SECTIONS[3], key)?;
+                    remove_entry(ini_path, INI_SECTIONS[3], key)
+                        .expect("Key is valid & ini has already been read");
                 }
                 file_data.remove(key);
                 warn!("\"{key}\" has no matching state");
             }
 
             assert_eq!(state_data.len(), file_data.len());
-            Ok((state_data, file_data))
+            (state_data, file_data)
         }
 
-        fn combine_map_data<'a>(
-            map_data: CollectedMaps<'a>,
+        fn combine_map_data(
+            map_data: CollectedMaps,
             parsed_order_val: Option<&HashMap<String, usize>>,
-        ) -> ModData<'a> {
+            game_dir: &Path,
+            ini_dir: &Path,
+        ) -> Vec<RegMod> {
             let mut count = 0_usize;
             let mut mod_data = map_data
                 .0
@@ -615,7 +620,7 @@ impl Cfg {
                         }
                         (
                             key,
-                            state_str.to_lowercase().parse::<bool>(),
+                            parse_bool(state_str).unwrap_or(true),
                             split_files,
                             load_order,
                         )
@@ -629,6 +634,17 @@ impl Cfg {
             mod_data.sort_by_key(|(_, _, _, l)| if l.set { l.at } else { usize::MAX });
             mod_data[count..].sort_by_key(|(key, _, _, _)| *key);
             mod_data
+                .drain(..)
+                .filter_map(|d| {
+                    let curr = RegMod::from_split_files(d.0, d.1, d.2, d.3);
+                    if let Err(err) = curr.verify_state(game_dir, ini_dir) {
+                        error!("{err}");
+                        None
+                    } else {
+                        Some(curr)
+                    }
+                })
+                .collect()
         }
 
         fn collect_data_unchecked(ini: &Ini) -> Vec<(&str, &str, Vec<&str>)> {
@@ -657,46 +673,33 @@ impl Cfg {
 
         if skip_validation {
             let parsed_data = collect_data_unchecked(&self.data);
-            Ok(parsed_data
+            parsed_data
                 .iter()
                 .map(|(n, s, f)| {
                     RegMod::new(
                         n,
-                        s.to_lowercase().parse::<bool>().unwrap_or(true),
+                        parse_bool(s).unwrap_or(true),
                         f.iter().map(PathBuf::from).collect(),
                     )
                 })
-                .collect())
+                .collect()
         } else {
-            let parsed_data = sync_keys(&self.data, &self.dir)?;
-            let game_dir =
-                IniProperty::<PathBuf>::read(&self.data, INI_SECTIONS[1], INI_KEYS[1], false)?
-                    .value;
+            let parsed_data = sync_keys(&self.data, &self.dir);
             // parse_section is non critical write error | read_section is also non critical write error
-            let parsed_data = combine_map_data(parsed_data, include_load_order);
-            let mut output = Vec::with_capacity(parsed_data.len());
-            for (k, s, f, l) in parsed_data {
-                match &s {
-                    Ok(bool) => {
-                        if let Err(err) = f.file_refs().validate(Some(&game_dir)) {
-                            error!("Error: {err}");
-                            remove_entry(&self.dir, INI_SECTIONS[2], k).expect("Key is valid");
-                        } else {
-                            let reg_mod = RegMod::from_split_files(k, *bool, f, l);
-                            // MARK: FIXME
-                            // verify_state should be ran within collect, but this call is too late, we should handle verification earilier
-                            // when sync keys hits an error we should give it a chance to correct by calling verify_state before it deletes an entry
-                            reg_mod.verify_state(&game_dir, &self.dir)?;
-                            output.push(reg_mod)
-                        }
-                    }
-                    Err(err) => {
-                        error!("Error: {err}");
-                        remove_entry(&self.dir, INI_SECTIONS[2], k).expect("Key is valid");
-                    }
+            let parsed_data = combine_map_data(
+                parsed_data,
+                include_load_order,
+                game_dir.as_ref(),
+                &self.dir,
+            );
+            parsed_data.iter().for_each(|mod_data| {
+                if let Err(err) = mod_data.files.file_refs().validate(Some(&game_dir)) {
+                    error!("Error: {err}");
+                    remove_entry(&self.dir, INI_SECTIONS[2], &mod_data.name)
+                        .expect("Key is valid & ini has already been read");
                 }
-            }
-            Ok(output)
+            });
+            parsed_data
         }
     }
 }

@@ -49,7 +49,7 @@ fn data_collection_benchmark(c: &mut Criterion) {
     populate_non_valid_ini(NUM_ENTRIES, test_file);
 
     c.bench_function("data_collection", |b| {
-        b.iter(|| black_box(ini.collect_mods(None, true)));
+        b.iter(|| black_box(ini.collect_mods(Path::new(""), None, true)));
     });
     remove_file(test_file).unwrap();
 }

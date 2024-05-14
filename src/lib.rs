@@ -194,10 +194,7 @@ pub fn toggle_files(
     Ok(short_path_new)
 }
 
-// MARK: TODO
-// make get_cfg() private and move over to get_or_setup_cfg() | would just need to figure out how to set the first startup flag
-
-/// If cfg file does not exist or is not set up with provided sections this function will  
+/// if cfg file does not exist or is not set up with provided sections this function will  
 /// create a new ".ini" file in the given path
 pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io::Result<Ini> {
     match from_path.is_setup(sections) {
@@ -210,6 +207,8 @@ pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io:
     new_cfg(from_path)
 }
 
+/// returns ini read into memory, only call this if you know ini exists  
+/// if you are not sure call `get_or_setup_cfg()` or `check &path.is_setup()`  
 pub fn get_cfg(from_path: &Path) -> std::io::Result<Ini> {
     Ini::load_from_file_noescape(from_path).map_err(|err| err.into_io_error())
 }
