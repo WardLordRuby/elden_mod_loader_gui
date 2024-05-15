@@ -471,12 +471,15 @@ impl SplitFiles {
     }
 
     fn remove(&mut self, path: &Path) -> Option<PathBuf> {
-        if let Some(index) = self.config.iter().position(|f| f == path) {
-            return Some(self.config.swap_remove(index));
-        } else if let Some(index) = self.other.iter().position(|f| f == path) {
-            return Some(self.other.swap_remove(index));
-        } else if let Some(index) = self.dll.iter().position(|f| f == path) {
-            return Some(self.dll.swap_remove(index));
+        let file_data = path.to_string_lossy();
+        let file_data = FileData::from(&file_data);
+        let section = match file_data.extension {
+            ".ini" => &mut self.config,
+            ".dll" => &mut self.dll,
+            _ => &mut self.other,
+        };
+        if let Some(index) = section.iter().position(|f| f == path) {
+            return Some((*section).swap_remove(index));
         }
         None
     }
