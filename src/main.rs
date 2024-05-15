@@ -6,7 +6,7 @@ use elden_mod_loader_gui::{
     utils::{
         ini::{
             mod_loader::{Countable, ModLoader, ModLoaderCfg},
-            parser::{file_registered, RegMod, Setup},
+            parser::{file_registered, CollectedMods, RegMod, Setup},
             writer::*,
         },
         installer::{remove_mod_files, scan_for_mods, InstallData}
@@ -111,12 +111,18 @@ fn main() -> Result<(), slint::PlatformError> {
                             HashMap::new()
                         }
                     };
-                    reg_mods = Some(ini.collect_mods(&path, Some(&order_data), false));
+                    reg_mods = {
+                        let data = ini.collect_mods(&path, Some(&order_data), false);
+                        if let Some(warning) = data.warnings {
+                            errors.push(warning);
+                        }
+                        Some(data.mods)
+                    };
                     if let Some(ref mods) = reg_mods {
                         if let Err(err) = mod_loader_cfg.verify_keys(mods) {
                             if err.kind() == ErrorKind::Unsupported {
                                 order_data = mod_loader_cfg.parse_into_map();
-                                reg_mods = Some(ini.collect_mods(&path, Some(&order_data), false));
+                                reg_mods = Some(ini.collect_mods(&path, Some(&order_data), false).mods);
                             }
                             errors.push(err);
                         }
@@ -174,7 +180,7 @@ fn main() -> Result<(), slint::PlatformError> {
         } else {
             deserialize_current_mods(
                 &if let Some(mod_data) = reg_mods {
-                    mod_data 
+                    CollectedMods{ mods: mod_data, warnings: None }
                 } else { 
                     ini.collect_mods(game_dir.as_ref().expect("game verified"), Some(&order_data),!mod_loader.installed())
                 },ui.as_weak()
@@ -261,7 +267,13 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             let format_key = mod_name.trim().replace(' ', "_");
             let mut results: Vec<std::io::Result<()>> = Vec::with_capacity(2);
-            let registered_mods = ini.collect_mods(game_dir.as_path(), None, false);
+            let registered_mods = {
+                let data = ini.collect_mods(game_dir.as_path(), None, false);
+                if let Some(warning) = data.warnings {
+                    ui.display_msg(&warning.to_string());
+                }
+                data.mods
+            };
             if !results.is_empty() {
                 ui.display_msg(&results[0].as_ref().unwrap_err().to_string());
                 return;
@@ -471,7 +483,13 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             let game_dir = get_or_update_game_dir(None);
             let format_key = key.replace(' ', "_");
-            let mut reg_mods = ini.collect_mods(game_dir.as_path(), None, false);
+            let mut reg_mods = {
+                let data = ini.collect_mods(game_dir.as_path(), None, false);
+                if let Some(warning) = data.warnings {
+                    ui.display_msg(&warning.to_string());
+                }
+                data.mods
+            };
 
             if let Some(found_mod) =
                 reg_mods.iter_mut().find(|reg_mod| format_key == reg_mod.name)
@@ -517,7 +535,13 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
-            let registered_mods = ini.collect_mods(game_dir.as_path(), None, false);
+            let registered_mods = {
+                let data = ini.collect_mods(game_dir.as_path(), None, false);
+                if let Some(warning) = data.warnings {
+                    ui.display_msg(&warning.to_string());
+                }
+                data.mods
+            };
             slint::spawn_local(async move {
                 let format_key = key.replace(' ', "_");
                 let file_paths = match get_user_files(&game_dir, ui.as_weak()) {
@@ -662,7 +686,13 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 };
                 let game_dir = get_or_update_game_dir(None);
-                let mut reg_mods = ini.collect_mods(game_dir.as_path(), order_map.as_ref(), false);
+                let mut reg_mods = {
+                    let data = ini.collect_mods(game_dir.as_path(), order_map.as_ref(), false);
+                    if let Some(warning) = data.warnings {
+                        ui.display_msg(&warning.to_string());
+                    }
+                    data.mods
+                };
                 if let Some(found_mod) =
                     reg_mods.iter_mut().find(|reg_mod| format_key == reg_mod.name)
                 {
@@ -1182,8 +1212,14 @@ fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) 
     }
 }
 
-fn deserialize_current_mods(mods: &[RegMod], ui_handle: slint::Weak<App>) {
+fn deserialize_current_mods(mods: &CollectedMods, ui_handle: slint::Weak<App>) {
     let ui = ui_handle.unwrap();
+    let mods = {
+        if let Some(ref warning) = mods.warnings {
+            ui.display_msg(&warning.to_string());
+        }
+        &mods.mods
+    };
     let display_mods: Rc<VecModel<DisplayMod>> = Default::default();
     for mod_data in mods.iter() {
         let files: Rc<VecModel<slint::StandardListViewItem>> = Default::default();
@@ -1220,7 +1256,7 @@ fn deserialize_current_mods(mods: &[RegMod], ui_handle: slint::Weak<App>) {
         })
     }
     ui.global::<MainLogic>().set_current_mods(ModelRc::from(display_mods));
-    ui.global::<MainLogic>().set_orders_set(mods.order_count() as i32);
+    ui.global::<MainLogic>().set_orders_set(mods.as_slice().order_count() as i32);
 }
 
 async fn install_new_mod(
@@ -1388,7 +1424,13 @@ async fn confirm_scan_mods(
         if receive_msg().await != Message::Confirm {
             return Ok(());
         };
-        old_mods = ini.collect_mods(game_dir, order_map.as_ref(), false);
+        old_mods = {
+            let data = ini.collect_mods(game_dir, order_map.as_ref(), false);
+            if let Some(warning) = data.warnings {
+                ui.display_msg(&warning.to_string());
+            }
+            data.mods
+        };
         let dark_mode = ui.global::<SettingsLogic>().get_dark_mode();
 
         std::fs::remove_file(ini.path())?;
@@ -1422,7 +1464,13 @@ async fn confirm_scan_mods(
         },
     };
     if !old_mods.is_empty() {
-        let new_mods = new_ini.collect_mods(game_dir, None, false);
+        let new_mods = {
+            let data = new_ini.collect_mods(game_dir, None, false);
+            if let Some(warning) = data.warnings {
+                ui.display_msg(&warning.to_string());
+            }
+            data.mods
+        };
         let all_new_files = new_mods.iter().flat_map(|m| m.files.file_refs()).collect::<HashSet<_>>();
         old_mods.retain(|m| m.files.dll.iter().any(|f| !all_new_files.contains(f.as_path())));
         if old_mods.is_empty() { return Ok(()) }

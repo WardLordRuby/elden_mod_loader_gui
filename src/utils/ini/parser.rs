@@ -632,13 +632,18 @@ impl RegMod {
     }
 }
 
+pub struct CollectedMods {
+    pub mods: Vec<RegMod>,
+    pub warnings: Option<std::io::Error>,
+}
+
 impl Cfg {
     pub fn collect_mods<P: AsRef<Path>>(
         &self,
         game_dir: P,
         include_load_order: Option<&HashMap<String, usize>>,
         skip_validation: bool,
-    ) -> Vec<RegMod> {
+    ) -> CollectedMods {
         type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
         type ModData<'a> = Vec<(&'a str, bool, SplitFiles, LoadOrder)>;
 
@@ -707,8 +712,9 @@ impl Cfg {
             parsed_order_val: Option<&HashMap<String, usize>>,
             game_dir: &Path,
             ini_dir: &Path,
-        ) -> Vec<RegMod> {
+        ) -> CollectedMods {
             let mut count = 0_usize;
+            let mut warnings = Vec::new();
             let mut mod_data = map_data
                 .0
                 .iter()
@@ -739,43 +745,50 @@ impl Cfg {
 
             mod_data.sort_by_key(|(_, _, _, l)| if l.set { l.at } else { usize::MAX });
             mod_data[count..].sort_by_key(|(key, _, _, _)| *key);
-            mod_data
-                .drain(..)
-                .filter_map(|d| {
-                    let mut curr = RegMod::from_split_files(d.0, d.1, d.2, d.3);
-                    if let Err(err) = curr.verify_state(game_dir, ini_dir) {
-                        error!("{err}");
-                        None
-                    } else if let Err(mut err) =
-                        curr.files.other_file_refs().validate(Some(&game_dir))
-                    {
-                        let mut can_continue = true;
-                        let is_array = curr.files.len() > 1;
-                        for i in (0..err.errors.len()).rev() {
-                            if curr.files.remove(&err.error_paths[i]).is_some() {
-                                err.errors[i].add_msg(&format!(
-                                    "This file was removed, and is no longer associated with: {}",
-                                    curr.name
-                                ));
-                                warn!("{}", err.errors.pop().expect("valid range"));
-                            } else {
-                                error!("Error: {}", err.errors.merge());
-                                remove_entry(ini_dir, INI_SECTIONS[2], &curr.name)
-                                    .expect("Key is valid & ini has already been read");
-                                can_continue = false;
-                                break;
-                            }
-                        }
-                        if can_continue && curr.write_to_file(ini_dir, is_array).is_ok() {
-                            Some(curr)
-                        } else {
+            CollectedMods {
+                mods: mod_data.drain(..)
+                    .filter_map(|d| {
+                        let mut curr = RegMod::from_split_files(d.0, d.1, d.2, d.3);
+                        if let Err(err) = curr.verify_state(game_dir, ini_dir) {
+                            error!("{err}");
+                            warnings.push(err);
                             None
-                        }
-                    } else {
-                        Some(curr)
-                    }
-                })
-                .collect()
+                        } else if let Err(mut err) =
+                            curr.files.other_file_refs().validate(Some(&game_dir))
+                        {
+                            let mut can_continue = true;
+                            let is_array = curr.files.len() > 1;
+                            for i in (0..err.errors.len()).rev() {
+                                if let Some(file) = curr.files.remove(&err.error_paths[i]) {
+                                    err.errors[i].add_msg(&format!(
+                                        "File: {file:?} was removed, and is no longer associated with: {}",
+                                        curr.name
+                                    ));
+                                    warn!("{}", err.errors[i]);
+                                    warnings.push(err.errors.pop().expect("valid range"))
+                                } else {
+                                    let err = err.errors.merge();
+                                    error!("Error: {err}");
+                                    warnings.push(err);
+                                    remove_entry(ini_dir, INI_SECTIONS[2], &curr.name)
+                                        .expect("Key is valid & ini has already been read");
+                                    can_continue = false;
+                                    break;
+                                }
+                            }
+                            if can_continue {
+                                if let Err(err) = curr.write_to_file(ini_dir, is_array) {
+                                    error!("{err}");
+                                    None
+                                } else { Some(curr) }
+                            } else { None }
+                        } else { Some(curr) }
+                    })
+                    .collect(), 
+                warnings: if warnings.is_empty() { None } else if warnings.len() == 1 {
+                        Some(warnings.remove(0))
+                    } else { Some(warnings.merge()) }
+                }
         }
 
         fn collect_data_unchecked(ini: &Ini) -> Vec<(&str, &str, Vec<&str>)> {
@@ -804,16 +817,19 @@ impl Cfg {
 
         if skip_validation {
             let parsed_data = collect_data_unchecked(&self.data);
-            parsed_data
-                .iter()
-                .map(|(n, s, f)| {
-                    RegMod::new(
-                        n,
-                        parse_bool(s).unwrap_or(true),
-                        f.iter().map(PathBuf::from).collect(),
-                    )
-                })
-                .collect()
+            CollectedMods {
+                mods: parsed_data
+                    .iter()
+                    .map(|(n, s, f)| {
+                        RegMod::new(
+                            n,
+                            parse_bool(s).unwrap_or(true),
+                            f.iter().map(PathBuf::from).collect(),
+                        )
+                    })
+                    .collect(),
+                warnings: None,
+            }
         } else {
             let parsed_data = sync_keys(&self.data, &self.dir);
             // parse_section is non critical write error | read_section is also non critical write error

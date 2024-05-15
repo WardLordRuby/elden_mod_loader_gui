@@ -294,7 +294,7 @@ mod tests {
         // ----this deletes any keys that do not have a matching state eg. (key has state but no files, or key has files but no state)-----
         // this tests delete_entry && delete_array in this case we delete "no_matching_path", "no_matching_state_1", and "no_matching_state_2"
         let cfg = Cfg::read(test_file).unwrap();
-        let mut reg_mods = cfg.collect_mods(game_path, None, false);
+        let mut reg_mods = cfg.collect_mods(game_path, None, false).mods;
         assert_eq!(reg_mods.len(), 2);
 
         // Tests name format is correct
