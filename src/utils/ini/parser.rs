@@ -552,7 +552,7 @@ impl RegMod {
             (exists, no_exist, errors)
         }
         let (_, no_exist, errors) = count_try_verify_ouput(&self.files.dll, game_dir);
-        if no_exist > 0 && errors == 0 {
+        if no_exist != 0 && errors == 0 {
             let alt_file_state = !FileData::state_data(&self.files.dll[0].to_string_lossy()).0;
             let test_alt_state = toggle_name_state(&self.files.dll, alt_file_state);
             if test_alt_state
@@ -563,14 +563,6 @@ impl RegMod {
                 self.state = alt_file_state;
                 self.files.dll = test_alt_state;
                 self.write_to_file(ini_path, is_array)?;
-            } else if errors != 0 {
-                return new_io_error!(
-                    ErrorKind::PermissionDenied,
-                    format!(
-                        "One or more of: \"{:?}\"'s existance can neither be confirmed nor denied",
-                        self.files.dll
-                    )
-                );
             } else {
                 return new_io_error!(
                     ErrorKind::NotFound,
@@ -580,6 +572,14 @@ impl RegMod {
                     )
                 );
             }
+        } else if errors != 0 {
+            return new_io_error!(
+                ErrorKind::PermissionDenied,
+                format!(
+                    "One or more of: \"{:?}\"'s existance can neither be confirmed nor denied",
+                    self.files.dll
+                )
+            );
         }
         if (!self.state && self.files.dll.iter().any(FileData::is_enabled))
             || (self.state && self.files.dll.iter().any(FileData::is_disabled))
