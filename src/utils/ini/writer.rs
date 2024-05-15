@@ -7,9 +7,9 @@ use std::{
 };
 
 use crate::{
-    file_name_or_err, get_cfg, parent_or_err, utils::ini::parser::RegMod, DEFAULT_INI_VALUES,
-    DEFAULT_LOADER_VALUES, INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
-    OFF_STATE,
+    file_name_or_err, get_cfg, parent_or_err, utils::ini::parser::RegMod, ARRAY_KEY, ARRAY_VALUE,
+    DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_KEYS,
+    LOADER_SECTIONS, OFF_STATE,
 };
 
 const WRITE_OPTIONS: WriteOption = WriteOption {
@@ -35,10 +35,10 @@ pub fn save_paths(
         .iter()
         .map(|path| path.to_string_lossy())
         .collect::<Vec<_>>()
-        .join("\r\narray[]=");
+        .join(&format!("\r\n{ARRAY_KEY}="));
     config
         .with_section(section)
-        .set(key, format!("array\r\narray[]={save_paths}"));
+        .set(key, format!("{ARRAY_VALUE}\r\n{ARRAY_KEY}={save_paths}"));
     config.write_to_file_opt(file_path, WRITE_OPTIONS)
 }
 
@@ -111,11 +111,11 @@ pub fn remove_array(file_path: &Path, key: &str) -> std::io::Result<()> {
     let mut key_found = false;
 
     let mut filter_lines = |line: &str| {
-        if key_found && !line.starts_with("array[]") {
+        if key_found && !line.starts_with(ARRAY_KEY) {
             skip_next_line = false;
             key_found = false;
         }
-        if line.starts_with(key) && line.ends_with("array") {
+        if line.starts_with(key) && line.ends_with(ARRAY_VALUE) {
             skip_next_line = true;
             key_found = true;
         }
