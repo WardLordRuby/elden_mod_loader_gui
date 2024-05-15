@@ -893,8 +893,13 @@ trait Merge {
 }
 impl Merge for Vec<std::io::Error> {
     fn merge(&self) -> std::io::Error {
+        if self.is_empty() {
+            return std::io::Error::new(ErrorKind::InvalidInput, "Tried to merge 0 errors");
+        }
         let mut new_err: std::io::Error = self[0].clone_err();
-        (1..self.len()).for_each(|i| new_err.add_msg(&self[i].to_string()));
+        if self.len() > 1 {
+            (1..self.len()).for_each(|i| new_err.add_msg(&self[i].to_string()));
+        }
         new_err
     }
 }
