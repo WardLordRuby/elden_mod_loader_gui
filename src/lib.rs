@@ -149,6 +149,7 @@ pub fn toggle_files(
         })
     }
     let num_rename_files = reg_mod.files.dll.len();
+    let is_array = reg_mod.files.len() > 1;
 
     let file_paths = std::sync::Arc::new(reg_mod.files.dll.clone());
     let file_paths_clone = file_paths.clone();
@@ -168,7 +169,7 @@ pub fn toggle_files(
     reg_mod.files.dll = short_path_new;
     reg_mod.state = new_state;
     if let Some(file) = save_file {
-        reg_mod.write_to_file(file)?
+        reg_mod.write_to_file(file, is_array)?
     }
     Ok(())
 }

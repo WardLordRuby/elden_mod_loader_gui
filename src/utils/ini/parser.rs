@@ -127,12 +127,14 @@ impl Parsable for Vec<PathBuf> {
         if skip_validation {
             return Ok(parsed_value);
         }
-        parsed_value.validate(partial_path)?;
+        if let Err(err_data) = parsed_value.validate(partial_path) {
+            return Err(err_data.errors.merge());
+        };
         Ok(parsed_value)
     }
 }
 
-pub trait Valitidity {
+trait Valitidity {
     /// _full_paths_ (stored as `PathBuf`) are assumed to Point to directories,  
     /// where as _partial_paths_ (stored as `Vec<PathBuf>`) are assumed to point to files  
     /// if you want to validate a _partial_path_ you must supply the _path_prefix_
@@ -151,27 +153,33 @@ impl<T: AsRef<Path>> Valitidity for T {
     }
 }
 
-impl<T: AsRef<Path>> Valitidity for [T] {
-    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> std::io::Result<()> {
-        let mut add_errors = String::new();
-        let mut init_err = std::io::Error::new(ErrorKind::WriteZero, "");
+struct ValitidityError {
+    error_paths: Vec<PathBuf>,
+    errors: Vec<std::io::Error>,
+}
+
+trait ValitidityMany {
+    /// _full_paths_ (stored as `PathBuf`) are assumed to Point to directories,  
+    /// where as _partial_paths_ (stored as `Vec<PathBuf>`) are assumed to point to files  
+    /// if you want to validate a _partial_path_ you must supply the _path_prefix_
+    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> Result<(), ValitidityError>;
+}
+
+impl<T: AsRef<Path>> ValitidityMany for [T] {
+    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> Result<(), ValitidityError> {
+        let mut errors = Vec::new();
+        let mut error_paths = Vec::new();
         self.iter().for_each(|f| {
             if let Err(err) = f.validate(partial_path.as_ref()) {
-                if init_err.kind() == ErrorKind::WriteZero {
-                    init_err = err;
-                } else if add_errors.is_empty() {
-                    add_errors = err.to_string()
-                } else {
-                    add_errors.push_str(&format!("\n{err}"))
-                }
+                errors.push(err);
+                error_paths.push(f.as_ref().into());
             }
         });
-        if init_err.kind() != ErrorKind::WriteZero {
-            if add_errors.is_empty() {
-                return Err(init_err);
-            }
-            init_err.add_msg(&add_errors);
-            return Err(init_err);
+        if !errors.is_empty() {
+            return Err(ValitidityError {
+                errors,
+                error_paths,
+            });
         }
         Ok(())
     }
@@ -446,6 +454,13 @@ impl SplitFiles {
         self.dll.iter().map(|f| f.as_path()).collect()
     }
 
+    pub fn other_file_refs(&self) -> Vec<&Path> {
+        let mut path_refs = Vec::with_capacity(self.other_files_len());
+        path_refs.extend(self.config.iter().map(|f| f.as_path()));
+        path_refs.extend(self.other.iter().map(|f| f.as_path()));
+        path_refs
+    }
+
     /// returns references to `input_files` + `self.config` + `self.other`
     pub fn add_other_files_to_files<'a>(&'a self, files: &'a [PathBuf]) -> Vec<&'a Path> {
         let mut path_refs = Vec::with_capacity(files.len() + self.other_files_len());
@@ -453,6 +468,17 @@ impl SplitFiles {
         path_refs.extend(self.config.iter().map(|f| f.as_path()));
         path_refs.extend(self.other.iter().map(|f| f.as_path()));
         path_refs
+    }
+
+    fn remove(&mut self, path: &Path) -> Option<PathBuf> {
+        if let Some(index) = self.config.iter().position(|f| f == path) {
+            return Some(self.config.swap_remove(index));
+        } else if let Some(index) = self.other.iter().position(|f| f == path) {
+            return Some(self.other.swap_remove(index));
+        } else if let Some(index) = self.dll.iter().position(|f| f == path) {
+            return Some(self.dll.swap_remove(index));
+        }
+        None
     }
 
     #[inline]
@@ -513,21 +539,35 @@ impl RegMod {
     }
 
     pub fn verify_state(&mut self, game_dir: &Path, ini_path: &Path) -> std::io::Result<()> {
-        if self
-            .files
-            .dll
-            .iter()
-            .any(|f| matches!(game_dir.join(f).try_exists(), Ok(false)))
-        {
+        fn count_try_verify_ouput(paths: &[PathBuf], game_dir: &Path) -> (usize, usize, usize) {
+            let (mut exists, mut no_exist, mut errors) = (0_usize, 0_usize, 0_usize);
+            paths.iter().for_each(|p| match game_dir.join(p).try_exists() {
+                Ok(true) => exists += 1,
+                Ok(false) => no_exist += 1,
+                Err(_) => errors += 1,
+            });
+            (exists, no_exist, errors)
+        }
+        let (_, no_exist, errors) = count_try_verify_ouput(&self.files.dll, game_dir);
+        if no_exist > 0 && errors == 0 {
             let alt_file_state = !FileData::state_data(&self.files.dll[0].to_string_lossy()).0;
             let test_alt_state = toggle_name_state(&self.files.dll, alt_file_state);
             if test_alt_state
                 .iter()
                 .all(|f| matches!(game_dir.join(f).try_exists(), Ok(true)))
             {
+                let is_array = self.files.len() > 1;
                 self.state = alt_file_state;
                 self.files.dll = test_alt_state;
-                self.write_to_file(ini_path)?;
+                self.write_to_file(ini_path, is_array)?;
+            } else if errors != 0 {
+                return new_io_error!(
+                    ErrorKind::PermissionDenied,
+                    format!(
+                        "One or more of: \"{:?}\"'s existance can neither be confirmed nor denied",
+                        self.files.dll
+                    )
+                );
             } else {
                 return new_io_error!(
                     ErrorKind::NotFound,
@@ -550,24 +590,41 @@ impl RegMod {
         Ok(())
     }
 
-    pub fn write_to_file(&self, ini_path: &Path) -> std::io::Result<()> {
+    pub fn write_to_file(&self, ini_path: &Path, was_array: bool) -> std::io::Result<()> {
         save_bool(ini_path, INI_SECTIONS[2], &self.name, self.state)?;
-        if self.files.len() == 1 {
-            save_path(
+        let is_array = self.files.len() > 1;
+        match (was_array, is_array) {
+            (false, false) => save_path(
                 ini_path,
                 INI_SECTIONS[3],
                 &self.name,
                 self.files.file_refs()[0],
-            )?
-        } else {
-            remove_array(ini_path, &self.name)?;
-            save_paths(
+            )?,
+            (false, true) => save_paths(
                 ini_path,
                 INI_SECTIONS[3],
                 &self.name,
                 &self.files.file_refs(),
-            )?;
-        };
+            )?,
+            (true, false) => {
+                remove_array(ini_path, &self.name)?;
+                save_path(
+                    ini_path,
+                    INI_SECTIONS[3],
+                    &self.name,
+                    self.files.file_refs()[0],
+                )?
+            }
+            (true, true) => {
+                remove_array(ini_path, &self.name)?;
+                save_paths(
+                    ini_path,
+                    INI_SECTIONS[3],
+                    &self.name,
+                    &self.files.file_refs(),
+                )?;
+            }
+        }
         Ok(())
     }
 }
@@ -686,11 +743,31 @@ impl Cfg {
                     if let Err(err) = curr.verify_state(game_dir, ini_dir) {
                         error!("{err}");
                         None
-                    } else if let Err(err) = curr.files.file_refs().validate(Some(&game_dir)) {
-                        error!("Error: {err}");
-                        remove_entry(ini_dir, INI_SECTIONS[2], &curr.name)
-                            .expect("Key is valid & ini has already been read");
-                        None
+                    } else if let Err(mut err) =
+                        curr.files.other_file_refs().validate(Some(&game_dir))
+                    {
+                        let mut can_continue = true;
+                        let is_array = curr.files.len() > 1;
+                        for i in (0..err.errors.len()).rev() {
+                            if curr.files.remove(&err.error_paths[i]).is_some() {
+                                err.errors[i].add_msg(&format!(
+                                    "This file was removed, and is no longer associated with: {}",
+                                    curr.name
+                                ));
+                                warn!("{}", err.errors.pop().expect("valid range"));
+                            } else {
+                                error!("Error: {}", err.errors.merge());
+                                remove_entry(ini_dir, INI_SECTIONS[2], &curr.name)
+                                    .expect("Key is valid & ini has already been read");
+                                can_continue = false;
+                                break;
+                            }
+                        }
+                        if can_continue && curr.write_to_file(ini_dir, is_array).is_ok() {
+                            Some(curr)
+                        } else {
+                            None
+                        }
                     } else {
                         Some(curr)
                     }
@@ -795,7 +872,7 @@ impl ModError for std::io::Error {
     fn add_msg(&mut self, msg: &str) {
         std::mem::swap(
             self,
-            &mut std::io::Error::new(self.kind(), format!("{msg}\n\n{self}")),
+            &mut std::io::Error::new(self.kind(), format!("{self}\n{msg}")),
         )
     }
 }
@@ -804,9 +881,20 @@ pub trait ErrorClone {
     fn clone_err(&self) -> std::io::Error;
 }
 
-impl ErrorClone for &std::io::Error {
+impl ErrorClone for std::io::Error {
     #[inline]
     fn clone_err(&self) -> std::io::Error {
         std::io::Error::new(self.kind(), self.to_string())
+    }
+}
+
+trait Merge {
+    fn merge(&self) -> std::io::Error;
+}
+impl Merge for Vec<std::io::Error> {
+    fn merge(&self) -> std::io::Error {
+        let mut new_err: std::io::Error = self[0].clone_err();
+        (1..self.len()).for_each(|i| new_err.add_msg(&self[i].to_string()));
+        new_err
     }
 }
