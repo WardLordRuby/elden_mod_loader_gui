@@ -579,7 +579,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
             ));
         }
     }
-    for mod_data in &file_sets {
+    for mod_data in file_sets.iter_mut() {
         save_bool(ini_file, INI_SECTIONS[2], &mod_data.name, mod_data.state)?;
         let file_refs = mod_data.files.file_refs();
         if file_refs.len() == 1 {

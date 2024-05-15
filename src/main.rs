@@ -350,7 +350,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     let _ =
                     remove_entry(ini.path(), INI_SECTIONS[2], &format_key);
                 }
-                let new_mod = RegMod::new(&format_key, state, files);
+                let mut new_mod = RegMod::new(&format_key, state, files);
                 
                 new_mod
                 .verify_state(&game_dir, ini.path())
@@ -471,10 +471,10 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             let game_dir = get_or_update_game_dir(None);
             let format_key = key.replace(' ', "_");
-            let reg_mods = ini.collect_mods(game_dir.as_path(), None, false);
+            let mut reg_mods = ini.collect_mods(game_dir.as_path(), None, false);
 
             if let Some(found_mod) =
-                reg_mods.iter().find(|reg_mod| format_key == reg_mod.name)
+                reg_mods.iter_mut().find(|reg_mod| format_key == reg_mod.name)
             {
                 let result = toggle_files(&game_dir, state, found_mod, Some(ini.path()));
                 if result.is_ok() {
@@ -592,7 +592,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             );
                         }
                         let new_data_owned = new_data_refs.iter().map(PathBuf::from).collect();
-                        let updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data_owned);
+                        let mut updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data_owned);
                         
                         updated_mod
                             .verify_state(&game_dir, ini.path())
@@ -667,15 +667,9 @@ fn main() -> Result<(), slint::PlatformError> {
                     reg_mods.iter_mut().find(|reg_mod| format_key == reg_mod.name)
                 {
                     if found_mod.files.dll.iter().any(FileData::is_disabled) {
-                        match toggle_files(&game_dir, true, found_mod, Some(ini_dir)) {
-                            Ok(files) => {
-                                found_mod.files.dll = files;
-                                found_mod.state = true;
-                            },
-                            Err(err) => {
-                                ui.display_msg(&format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}"));
-                                return;
-                            }
+                        if let Err(err) = toggle_files(&game_dir, true, found_mod, Some(ini_dir)) {
+                            ui.display_msg(&format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}"));
+                            return;
                         }
                     }
                     // we can let sync keys take care of removing files from ini
@@ -790,8 +784,8 @@ fn main() -> Result<(), slint::PlatformError> {
             } else {
                 vec![PathBuf::from(LOADER_FILES[0])]
             };
-            let main_dll = RegMod::new("main", !state, files);
-            match toggle_files(&game_dir, !state, &main_dll, None) {
+            let mut main_dll = RegMod::new("main", !state, files);
+            match toggle_files(&game_dir, !state, &mut main_dll, None) {
                 Ok(_) => state,
                 Err(err) => {
                     ui.display_msg(&format!("{err}"));
@@ -1449,7 +1443,7 @@ async fn confirm_scan_mods(
         old_mods.retain(|m| m.files.dll.iter().any(FileData::is_disabled));
         if old_mods.is_empty() { return Ok(()) }
 
-        old_mods.iter().try_for_each(|m| toggle_files(game_dir, true, m, None).map(|_| ()))?;
+        old_mods.iter_mut().try_for_each(|m| toggle_files(game_dir, true, m, None).map(|_| ()))?;
     }
     Ok(())
 }

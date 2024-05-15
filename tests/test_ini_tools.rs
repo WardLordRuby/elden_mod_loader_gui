@@ -218,15 +218,15 @@ mod tests {
         let test_file = Path::new("temp\\test_collect_mod_data.ini");
         let game_path = Path::new(GAME_DIR);
 
-        let mod_1 = vec![
+        let mod_1_files = vec![
             PathBuf::from("mods\\UnlockTheFps.dll"),
             PathBuf::from("mods\\UnlockTheFps\\config.ini"),
         ];
-        let mod_2 = PathBuf::from("mods\\SkipTheIntro.dll");
+        let mod_2_file = PathBuf::from("mods\\SkipTheIntro.dll");
 
         // test_mod_2 state is set incorrectly
-        let test_mod_1 = RegMod::new("Unlock The Fps  ", true, mod_1);
-        let mut test_mod_2 = RegMod::new(" Skip The Intro", false, vec![mod_2]);
+        let test_mod_1 = RegMod::new("Unlock The Fps  ", true, mod_1_files);
+        let mut test_mod_2 = RegMod::new(" Skip The Intro", false, vec![mod_2_file]);
 
         {
             // Test if new_cfg will write all Sections to the file with .is_setup()
@@ -290,30 +290,42 @@ mod tests {
             save_path(test_file, INI_SECTIONS[1], INI_KEYS[1], game_path).unwrap();
         }
 
-        // -------------------------------------sync_keys() runs from inside RegMod::collect()------------------------------------------------
+        // -------------------------------------sync_keys() runs from inside Cfg.collect_mods()------------------------------------------------
         // ----this deletes any keys that do not have a matching state eg. (key has state but no files, or key has files but no state)-----
         // this tests delete_entry && delete_array in this case we delete "no_matching_path", "no_matching_state_1", and "no_matching_state_2"
         let cfg = Cfg::read(test_file).unwrap();
-        let registered_mods = cfg.collect_mods(game_path, None, false);
-        assert_eq!(registered_mods.len(), 2);
+        let mut reg_mods = cfg.collect_mods(game_path, None, false);
+        assert_eq!(reg_mods.len(), 2);
 
-        // verify_state() also runs from within RegMod::collect() lets see if changed the state of the mods .dll file
-        let mut disabled_state = game_path.join(format!(
-            "{}{}",
-            test_mod_2.files.dll[0].display(),
-            OFF_STATE
+        // Tests name format is correct
+        let mod_1 = reg_mods
+            .iter()
+            .position(|data| data.name == test_mod_1.name.trim())
+            .unwrap();
+        let mod_2 = reg_mods
+            .iter()
+            .position(|data| data.name == test_mod_2.name.trim())
+            .unwrap();
+
+        // verify_state() also runs from within Cfg.collect_mods() lets see if changed the state of the mods .dll file
+        let disabled_state = format!("{}{}", test_mod_2.files.dll[0].display(), OFF_STATE);
+        assert!(matches!(
+            game_path.join(&disabled_state).try_exists(),
+            Ok(true)
         ));
-        assert!(matches!(&disabled_state.try_exists(), Ok(true)));
-        std::mem::swap(&mut test_mod_2.files.dll[0], &mut disabled_state);
+        assert_eq!(
+            reg_mods[mod_2].files.dll,
+            vec![PathBuf::from(disabled_state)]
+        );
 
         // lets set it correctly now
-        test_mod_2.state = true;
-        test_mod_2.verify_state(game_path, test_file).unwrap();
-        std::mem::swap(&mut test_mod_2.files.dll[0], &mut disabled_state);
+        reg_mods[mod_2].state = true;
+        reg_mods[mod_2].verify_state(game_path, test_file).unwrap();
         assert!(matches!(
             game_path.join(&test_mod_2.files.dll[0]).try_exists(),
             Ok(true)
         ));
+        assert_eq!(reg_mods[mod_2].files.dll, test_mod_2.files.dll);
 
         test_mod_2.state = IniProperty::<bool>::read(
             &get_cfg(test_file).unwrap(),
@@ -323,23 +335,13 @@ mod tests {
         .unwrap()
         .value;
 
-        // Tests name format is correct
-        let reg_mod_1 = registered_mods
-            .iter()
-            .find(|data| data.name == test_mod_1.name.trim())
-            .unwrap();
-        let reg_mod_2 = registered_mods
-            .iter()
-            .find(|data| data.name == test_mod_2.name.trim())
-            .unwrap();
-
         // Tests if PathBuf and Vec<PathBuf>'s from Section("mod-files") parse correctly | these are partial paths
-        assert_eq!(test_mod_1.files.dll[0], reg_mod_1.files.dll[0]);
-        assert_eq!(test_mod_1.files.config[0], reg_mod_1.files.config[0]);
-        assert_eq!(test_mod_2.files.dll[0], reg_mod_2.files.dll[0]);
+        assert_eq!(test_mod_1.files.dll[0], reg_mods[mod_1].files.dll[0]);
+        assert_eq!(test_mod_1.files.config[0], reg_mods[mod_1].files.config[0]);
+        assert_eq!(test_mod_2.files.dll[0], reg_mods[mod_2].files.dll[0]);
 
         // Tests if bool was parsed correctly
-        assert_eq!(test_mod_1.state, reg_mod_1.state);
+        assert_eq!(test_mod_1.state, reg_mods[mod_1].state);
         assert!(test_mod_2.state);
 
         remove_file(test_file).unwrap();

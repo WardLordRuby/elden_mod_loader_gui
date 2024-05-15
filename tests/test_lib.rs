@@ -37,7 +37,7 @@ mod tests {
         save_path(save_file, INI_SECTIONS[1], prefix_key, prefix).unwrap();
         save_paths(save_file, INI_SECTIONS[3], test_key, &test_files).unwrap();
 
-        let test_mod = RegMod::new(
+        let mut test_mod = RegMod::new(
             test_key,
             true,
             test_files.iter().map(PathBuf::from).collect(),
@@ -57,7 +57,13 @@ mod tests {
             File::create(test_file).unwrap();
         }
 
-        toggle_files(Path::new(""), !test_mod.state, &test_mod, Some(save_file)).unwrap();
+        toggle_files(
+            Path::new(""),
+            !test_mod.state,
+            &mut test_mod,
+            Some(save_file),
+        )
+        .unwrap();
 
         for path_to_test in test_files_disabled.iter() {
             assert!(file_exists(path_to_test.as_path()));
@@ -80,9 +86,15 @@ mod tests {
             .iter()
             .all(|read| test_files_disabled.contains(read)));
 
-        let test_mod = RegMod::new(&test_mod.name, false, test_files_disabled);
+        let mut test_mod = RegMod::new(&test_mod.name, false, test_files_disabled);
 
-        toggle_files(Path::new(""), !test_mod.state, &test_mod, Some(save_file)).unwrap();
+        toggle_files(
+            Path::new(""),
+            !test_mod.state,
+            &mut test_mod,
+            Some(save_file),
+        )
+        .unwrap();
 
         for path_to_test in test_files.iter() {
             assert!(file_exists(path_to_test));

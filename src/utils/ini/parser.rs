@@ -7,8 +7,8 @@ use std::{
 };
 
 use crate::{
-    files_not_found, get_cfg, new_io_error, toggle_files,
-    utils::ini::writer::{remove_array, remove_entry},
+    files_not_found, get_cfg, new_io_error, toggle_files, toggle_name_state,
+    utils::ini::writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
     Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, OFF_STATE, REQUIRED_GAME_FILES,
 };
 
@@ -512,7 +512,32 @@ impl RegMod {
         }
     }
 
-    pub fn verify_state(&self, game_dir: &Path, ini_path: &Path) -> std::io::Result<()> {
+    pub fn verify_state(&mut self, game_dir: &Path, ini_path: &Path) -> std::io::Result<()> {
+        if self
+            .files
+            .dll
+            .iter()
+            .any(|f| matches!(game_dir.join(f).try_exists(), Ok(false)))
+        {
+            let alt_file_state = !FileData::state_data(&self.files.dll[0].to_string_lossy()).0;
+            let test_alt_state = toggle_name_state(&self.files.dll, alt_file_state);
+            if test_alt_state
+                .iter()
+                .all(|f| matches!(game_dir.join(f).try_exists(), Ok(true)))
+            {
+                self.state = alt_file_state;
+                self.files.dll = test_alt_state;
+                self.write_to_file(ini_path)?;
+            } else {
+                return new_io_error!(
+                    ErrorKind::NotFound,
+                    format!(
+                        "One or more of: \"{:?}\" can not be found on machine",
+                        self.files.dll
+                    )
+                );
+            }
+        }
         if (!self.state && self.files.dll.iter().any(FileData::is_enabled))
             || (self.state && self.files.dll.iter().any(FileData::is_disabled))
         {
@@ -520,8 +545,29 @@ impl RegMod {
                 "wrong file state for \"{}\" chaning file extentions",
                 self.name
             );
-            let _ = toggle_files(game_dir, self.state, self, Some(ini_path))?;
+            toggle_files(game_dir, self.state, self, Some(ini_path))?
         }
+        Ok(())
+    }
+
+    pub fn write_to_file(&self, ini_path: &Path) -> std::io::Result<()> {
+        save_bool(ini_path, INI_SECTIONS[2], &self.name, self.state)?;
+        if self.files.len() == 1 {
+            save_path(
+                ini_path,
+                INI_SECTIONS[3],
+                &self.name,
+                self.files.file_refs()[0],
+            )?
+        } else {
+            remove_array(ini_path, &self.name)?;
+            save_paths(
+                ini_path,
+                INI_SECTIONS[3],
+                &self.name,
+                &self.files.file_refs(),
+            )?;
+        };
         Ok(())
     }
 }
@@ -636,9 +682,14 @@ impl Cfg {
             mod_data
                 .drain(..)
                 .filter_map(|d| {
-                    let curr = RegMod::from_split_files(d.0, d.1, d.2, d.3);
+                    let mut curr = RegMod::from_split_files(d.0, d.1, d.2, d.3);
                     if let Err(err) = curr.verify_state(game_dir, ini_dir) {
                         error!("{err}");
+                        None
+                    } else if let Err(err) = curr.files.file_refs().validate(Some(&game_dir)) {
+                        error!("Error: {err}");
+                        remove_entry(ini_dir, INI_SECTIONS[2], &curr.name)
+                            .expect("Key is valid & ini has already been read");
                         None
                     } else {
                         Some(curr)
@@ -686,20 +737,12 @@ impl Cfg {
         } else {
             let parsed_data = sync_keys(&self.data, &self.dir);
             // parse_section is non critical write error | read_section is also non critical write error
-            let parsed_data = combine_map_data(
+            combine_map_data(
                 parsed_data,
                 include_load_order,
                 game_dir.as_ref(),
                 &self.dir,
-            );
-            parsed_data.iter().for_each(|mod_data| {
-                if let Err(err) = mod_data.files.file_refs().validate(Some(&game_dir)) {
-                    error!("Error: {err}");
-                    remove_entry(&self.dir, INI_SECTIONS[2], &mod_data.name)
-                        .expect("Key is valid & ini has already been read");
-                }
-            });
-            parsed_data
+            )
         }
     }
 }

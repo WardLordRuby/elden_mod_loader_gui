@@ -11,7 +11,7 @@ use ini::Ini;
 use log::{info, trace, warn};
 use utils::ini::{
     parser::{IniProperty, IntoIoError, ModError, RegMod, Setup},
-    writer::{new_cfg, remove_array, save_bool, save_path, save_paths},
+    writer::{new_cfg, save_bool, save_path},
 };
 
 use std::{
@@ -97,36 +97,37 @@ pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>
     }
 }
 
+/// Takes in a potential pathBuf, finds file_name name and outputs the new_state version
+pub fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
+    file_paths
+        .iter()
+        .map(|path| {
+            let file_name = match path.file_name() {
+                Some(name) => name,
+                None => path.as_os_str(),
+            };
+            let mut new_name = file_name.to_string_lossy().to_string();
+            if let Some(index) = new_name.to_lowercase().find(OFF_STATE) {
+                if new_state {
+                    new_name.replace_range(index..index + OFF_STATE.len(), "");
+                }
+            } else if !new_state {
+                new_name.push_str(OFF_STATE);
+            }
+            let mut new_path = PathBuf::from(path);
+            new_path.set_file_name(new_name);
+            new_path
+        })
+        .collect()
+}
+
 /// returns all the modified _partial_paths_
 pub fn toggle_files(
     game_dir: &Path,
     new_state: bool,
-    reg_mod: &RegMod,
+    reg_mod: &mut RegMod,
     save_file: Option<&Path>,
-) -> std::io::Result<Vec<PathBuf>> {
-    /// Takes in a potential pathBuf, finds file_name name and outputs the new_state version
-    fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
-        file_paths
-            .iter()
-            .map(|path| {
-                let file_name = match path.file_name() {
-                    Some(name) => name,
-                    None => path.as_os_str(),
-                };
-                let mut new_name = file_name.to_string_lossy().to_string();
-                if let Some(index) = new_name.to_lowercase().find(OFF_STATE) {
-                    if new_state {
-                        new_name.replace_range(index..index + OFF_STATE.len(), "");
-                    }
-                } else if !new_state {
-                    new_name.push_str(OFF_STATE);
-                }
-                let mut new_path = PathBuf::from(path);
-                new_path.set_file_name(new_name);
-                new_path
-            })
-            .collect()
-    }
+) -> std::io::Result<()> {
     fn join_paths(base_path: &Path, join_to: &[PathBuf]) -> Vec<PathBuf> {
         join_to.iter().map(|path| base_path.join(path)).collect()
     }
@@ -147,24 +148,7 @@ pub fn toggle_files(
             Ok(())
         })
     }
-    fn update_cfg(
-        num_file: &usize,
-        path_to_save: &[&Path],
-        state: bool,
-        key: &str,
-        save_file: &Path,
-    ) -> std::io::Result<()> {
-        if *num_file == 1 {
-            save_path(save_file, INI_SECTIONS[3], key, path_to_save[0])?;
-        } else {
-            remove_array(save_file, key)?;
-            save_paths(save_file, INI_SECTIONS[3], key, path_to_save)?;
-        }
-        save_bool(save_file, INI_SECTIONS[2], key, state)?;
-        Ok(())
-    }
     let num_rename_files = reg_mod.files.dll.len();
-    let num_total_files = num_rename_files + reg_mod.files.other_files_len();
 
     let file_paths = std::sync::Arc::new(reg_mod.files.dll.clone());
     let file_paths_clone = file_paths.clone();
@@ -176,22 +160,17 @@ pub fn toggle_files(
         std::thread::spawn(move || join_paths(&game_dir_clone, &file_paths_clone));
 
     let short_path_new = new_short_paths_thread.join().unwrap_or(Vec::new());
-    let all_short_paths = reg_mod.files.add_other_files_to_files(&short_path_new);
     let full_path_new = join_paths(game_dir, &short_path_new);
     let full_path_original = original_full_paths_thread.join().unwrap_or(Vec::new());
 
     rename_files(&num_rename_files, &full_path_original, &full_path_new)?;
 
-    if save_file.is_some() {
-        update_cfg(
-            &num_total_files,
-            &all_short_paths,
-            new_state,
-            &reg_mod.name,
-            save_file.expect("is some"),
-        )?;
+    reg_mod.files.dll = short_path_new;
+    reg_mod.state = new_state;
+    if let Some(file) = save_file {
+        reg_mod.write_to_file(file)?
     }
-    Ok(short_path_new)
+    Ok(())
 }
 
 /// if cfg file does not exist or is not set up with provided sections this function will  
