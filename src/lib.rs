@@ -292,10 +292,21 @@ impl FileData<'_> {
         }
     }
 
+    /// removes the off_state if the file name is in the off_state  
+    /// to get an accurate FileData.name function input needs .file_name() called before hand  
+    pub fn name_omit_off_state(name: &str) -> &str {
+        let (file_state, index) = FileData::state_data(name);
+        if file_state {
+            name
+        } else {
+            &name[..index]
+        }
+    }
+
     #[inline]
     /// index is only used in the _disabled_ state to locate where `OFF_STATE` begins  
     /// saftey check to make sure `OFF_STATE` is found at the end of a `&str`
-    fn state_data(path: &str) -> (bool, usize) {
+    pub fn state_data(path: &str) -> (bool, usize) {
         if let Some(index) = path.find(OFF_STATE) {
             (
                 index != path.chars().count() - OFF_STATE.chars().count(),
