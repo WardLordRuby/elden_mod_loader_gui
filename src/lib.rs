@@ -111,7 +111,7 @@ pub fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf
             let mut new_name = file_name.to_string_lossy().to_string();
             if let Some(index) = new_name.to_lowercase().find(OFF_STATE) {
                 if new_state {
-                    new_name.replace_range(index..index + OFF_STATE.len(), "");
+                    new_name.replace_range(index..index + OFF_STATE.chars().count(), "");
                 }
             } else if !new_state {
                 new_name.push_str(OFF_STATE);
@@ -297,7 +297,10 @@ impl FileData<'_> {
     /// saftey check to make sure `OFF_STATE` is found at the end of a `&str`
     fn state_data(path: &str) -> (bool, usize) {
         if let Some(index) = path.find(OFF_STATE) {
-            (index != path.len() - OFF_STATE.len(), index)
+            (
+                index != path.chars().count() - OFF_STATE.chars().count(),
+                index,
+            )
         } else {
             (true, 0)
         }
