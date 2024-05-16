@@ -233,26 +233,20 @@ impl InstallData {
         file_paths: Vec<PathBuf>,
         game_dir: &Path,
     ) -> std::io::Result<Self> {
-        let amend_mod_split_file_names = amend_to.files.dll.iter().try_fold(
+        let dll_names = amend_to.files.dll.iter().try_fold(
             Vec::with_capacity(amend_to.files.len()),
             |mut acc, file| {
-                let file_name = file_name_or_err(file)?.to_string_lossy();
-                let file_data = FileData::from(&file_name);
-                acc.push((
-                    String::from(file_data.name),
-                    String::from(file_data.extension),
-                ));
-                Ok::<Vec<(String, String)>, std::io::Error>(acc)
+                let file_name = file_name_or_err(file)?.to_str().ok_or(std::io::Error::new(
+                    ErrorKind::InvalidData,
+                    "File name is not valid unicode",
+                ))?;
+                acc.push(FileData::from(file_name).name);
+                Ok::<Vec<&str>, std::io::Error>(acc)
             },
         )?;
         let mut install_dir = game_dir.join("mods");
-        let dll_files = amend_mod_split_file_names
-            .iter()
-            .filter(|(_, ext)| ext == ".dll")
-            .map(|(file_name, _)| file_name)
-            .collect::<Vec<_>>();
-        if dll_files.len() == 1 {
-            install_dir = install_dir.join(dll_files[0]);
+        if dll_names.len() == 1 {
+            install_dir = install_dir.join(dll_names[0]);
         } else {
             return new_io_error!(
                 ErrorKind::InvalidInput,
