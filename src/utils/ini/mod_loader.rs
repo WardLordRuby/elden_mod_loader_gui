@@ -10,7 +10,7 @@ use crate::{
         parser::RegMod,
         writer::new_cfg,
         common::{ModLoaderCfg, WriteToFile},
-    }, Operation, OperationResult, LOADER_FILES
+    }, Operation, OperationResult, LOADER_FILES, FileData
 };
 
 #[derive(Debug, Default)]
@@ -81,7 +81,13 @@ impl ModLoaderCfg {
                 m.files
                     .dll
                     .iter()
-                    .filter_map(|f| f.file_name()?.to_str())
+                    .filter_map(|f| {
+                        Some({
+                            let file_name = f.file_name()?.to_string_lossy();
+                            let file_data = FileData::from(&file_name);
+                            format!("{}{}", file_data.name, file_data.extension)
+                        })
+                    })
                     .collect::<Vec<_>>()
             })
             .collect::<HashSet<_>>();
