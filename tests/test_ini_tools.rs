@@ -10,11 +10,12 @@ mod tests {
     use elden_mod_loader_gui::{
         get_cfg,
         utils::ini::{
-            mod_loader::{Countable, ModLoaderCfg},
+            common::{Cfg, ModLoaderCfg, Read},
+            mod_loader::Countable,
             parser::{IniProperty, RegMod, Setup},
             writer::*,
         },
-        Cfg, INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_SECTIONS, OFF_STATE,
+        INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_SECTIONS, OFF_STATE,
     };
 
     use crate::common::{new_cfg_with_sections, GAME_DIR};
@@ -142,7 +143,7 @@ mod tests {
             File::create(&required_file).unwrap();
         }
 
-        let mut cfg = ModLoaderCfg::read_section(&test_file, test_sections[1]).unwrap();
+        let mut cfg = ModLoaderCfg::read(&test_file).unwrap();
 
         let parsed_cfg = cfg.parse_section().unwrap();
 

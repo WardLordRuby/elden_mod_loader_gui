@@ -12,7 +12,7 @@ use crate::{
     LOADER_SECTIONS, OFF_STATE,
 };
 
-const WRITE_OPTIONS: WriteOption = WriteOption {
+pub const WRITE_OPTIONS: WriteOption = WriteOption {
     escape_policy: EscapePolicy::Nothing,
     line_separator: LineSeparator::CRLF,
     kv_separator: "=",

@@ -5,9 +5,10 @@
 use elden_mod_loader_gui::{
     utils::{
         ini::{
-            mod_loader::{Countable, ModLoader, ModLoaderCfg},
+            mod_loader::{Countable, ModLoader},
             parser::{file_registered, CollectedMods, RegMod, Setup},
             writer::*,
+            common::*,
         },
         installer::{remove_mod_files, scan_for_mods, InstallData}
     },
@@ -70,7 +71,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         };
         let mut ini = match ini {
-            Some(ini_data) => Cfg::from(ini_data, current_ini),
+            Some(ini_data) => CfgFrom::from(ini_data, current_ini),
             None => {
                 Cfg::read(current_ini).unwrap_or_else(|err| {
                     // io::write error
@@ -95,7 +96,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         ModLoader::default()
                     });
                     if mod_loader.installed() {
-                        mod_loader_cfg = ModLoaderCfg::read_section(mod_loader.path(), LOADER_SECTIONS[1]).unwrap_or_else(|err| {
+                        mod_loader_cfg = ModLoaderCfg::read(mod_loader.path()).unwrap_or_else(|err| {
                             error!("error 4: {err}");
                             errors.push(err);
                             ModLoaderCfg::default(mod_loader.path())
@@ -674,7 +675,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 let order_map: Option<HashMap<String, usize>>;
                 let loader_dir = get_loader_ini_dir();
-                let loader = match ModLoaderCfg::read_section(loader_dir, LOADER_SECTIONS[1]) {
+                let loader = match ModLoaderCfg::read(loader_dir) {
                     Ok(mut data) => {
                         order_map = data.parse_section().ok();
                         data
@@ -874,7 +875,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let error = 42069_i32;
             let cfg_dir = get_loader_ini_dir();
             let result: i32 = if state { 1 } else { -1 };
-            let mut load_order = match ModLoaderCfg::read_section(cfg_dir, LOADER_SECTIONS[1]) {
+            let mut load_order = match ModLoaderCfg::read(cfg_dir) {
                 Ok(data) => data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -922,7 +923,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = ui_handle.unwrap();
             let mut result = 0_i32;
             let cfg_dir = get_loader_ini_dir();
-            let mut load_order = match ModLoaderCfg::read_section(cfg_dir, LOADER_SECTIONS[1]) {
+            let mut load_order = match ModLoaderCfg::read(cfg_dir) {
                 Ok(data) => data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -1198,7 +1199,7 @@ fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) 
     if let Some(dir) = from_path {
         path = dir
     } else { path = get_loader_ini_dir() };
-    match ModLoaderCfg::read_section(path, LOADER_SECTIONS[1]) {
+    match ModLoaderCfg::read(path) {
         Ok(mut data) => {
             data.parse_section().unwrap_or_else(|err| {
                 ui.display_msg(&err.to_string());
@@ -1406,7 +1407,7 @@ async fn confirm_scan_mods(
     };
     let order_map: Option<HashMap<String, usize>>;
     let loader_dir = get_loader_ini_dir();
-    let loader = match ModLoaderCfg::read_section(loader_dir, LOADER_SECTIONS[1]) {
+    let loader = match ModLoaderCfg::read(loader_dir) {
         Ok(mut data) => {
             order_map = data.parse_section().ok();
             data

@@ -1,6 +1,7 @@
 pub mod utils {
     pub mod installer;
     pub mod ini {
+        pub mod common;
         pub mod mod_loader;
         pub mod parser;
         pub mod writer;
@@ -10,8 +11,9 @@ pub mod utils {
 use ini::Ini;
 use log::{info, trace, warn};
 use utils::ini::{
-    parser::{IniProperty, IntoIoError, ModError, RegMod, Setup},
-    writer::{new_cfg, save_bool, save_path},
+    common::{Cfg, GetData, GetPath, Set},
+    parser::{IniProperty, IntoIoError, RegMod, Setup},
+    writer::{new_cfg, save_path},
 };
 
 use std::{
@@ -327,11 +329,6 @@ pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
     ))
 }
 
-#[derive(Debug)]
-pub struct Cfg {
-    pub data: Ini,
-    dir: PathBuf,
-}
 pub enum PathResult {
     Full(PathBuf),
     Partial(PathBuf),
@@ -339,78 +336,9 @@ pub enum PathResult {
 }
 
 impl Cfg {
-    pub fn from(ini: Ini, ini_path: &Path) -> Self {
-        Cfg {
-            data: ini,
-            dir: PathBuf::from(ini_path),
-        }
-    }
-
-    pub fn read(ini_path: &Path) -> std::io::Result<Cfg> {
-        let data = get_or_setup_cfg(ini_path, &INI_SECTIONS)?;
-        Ok(Cfg {
-            data,
-            dir: PathBuf::from(ini_path),
-        })
-    }
-
-    pub fn update(&mut self) -> std::io::Result<()> {
-        self.data = get_or_setup_cfg(&self.dir, &INI_SECTIONS)?;
-        Ok(())
-    }
-
-    pub fn default(cfg_dir: &Path) -> Self {
-        Cfg {
-            data: ini::Ini::new(),
-            dir: PathBuf::from(cfg_dir),
-        }
-    }
-
-    pub fn get_dark_mode(&self) -> std::io::Result<bool> {
-        match IniProperty::<bool>::read(&self.data, INI_SECTIONS[0], INI_KEYS[0]) {
-            Ok(dark_mode) => Ok(dark_mode.value),
-            Err(mut err) => {
-                err.add_msg(&format!(
-                    "Found an unexpected character saved in \"{}\". Reseting to default value",
-                    LOADER_KEYS[0]
-                ));
-                Err(save_default_val(
-                    &self.dir,
-                    INI_SECTIONS[0],
-                    INI_KEYS[0],
-                    DEFAULT_INI_VALUES[0].parse().unwrap(),
-                    err,
-                ))
-            }
-        }
-    }
-
-    #[inline]
-    pub fn path(&self) -> &Path {
-        &self.dir
-    }
-
-    /// returns the number of registered mods currently saved in the ".ini"  
-    pub fn mods_registered(&self) -> usize {
-        if self.data.section(INI_SECTIONS[2]).is_none()
-            || self.data.section(INI_SECTIONS[2]).unwrap().is_empty()
-        {
-            0
-        } else {
-            self.data.section(INI_SECTIONS[2]).unwrap().len()
-        }
-    }
-
-    /// returns true if registered mods saved in the ".ini" is None  
-    #[inline]
-    pub fn mods_empty(&self) -> bool {
-        self.data.section(INI_SECTIONS[2]).is_none()
-            || self.data.section(INI_SECTIONS[2]).unwrap().is_empty()
-    }
-
     pub fn attempt_locate_game(&mut self) -> std::io::Result<PathResult> {
         if let Ok(path) =
-            IniProperty::<PathBuf>::read(&self.data, INI_SECTIONS[1], INI_KEYS[1], false)
+            IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[1], false)
         {
             info!("Success: \"game_dir\" from ini is valid");
             return Ok(PathResult::Full(path.value));
@@ -422,14 +350,12 @@ impl Cfg {
         ) {
             info!("Success: located \"game_dir\" on drive");
             save_path(
-                &self.dir,
+                self.path(),
                 INI_SECTIONS[1],
                 INI_KEYS[1],
                 try_locate.as_path(),
             )?;
-            self.data
-                .with_section(INI_SECTIONS[1])
-                .set(INI_KEYS[1], try_locate.to_string_lossy().to_string());
+            self.set(INI_SECTIONS[1], INI_KEYS[1], &try_locate.to_string_lossy());
             return Ok(PathResult::Full(try_locate));
         }
         if try_locate.components().count() > 1 {
@@ -439,20 +365,6 @@ impl Cfg {
         warn!("Could not locate \"game_dir\"");
         Ok(PathResult::None(try_locate))
     }
-}
-
-fn save_default_val(
-    cfg_dir: &Path,
-    section: Option<&str>,
-    key: &str,
-    default_val: bool,
-    mut in_err: std::io::Error,
-) -> std::io::Error {
-    save_bool(cfg_dir, section, key, default_val).unwrap_or_else(|err| {
-        in_err.add_msg(&format!("\n, {err}"));
-        // io::write error
-    });
-    in_err
 }
 
 fn attempt_locate_dir(target_path: &[&str]) -> std::io::Result<PathBuf> {

@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     files_not_found, get_cfg, new_io_error, toggle_files, toggle_name_state,
-    utils::ini::writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
+    utils::ini::{common::{GetData, GetPath}, writer::{remove_array, remove_entry, save_bool, save_path, save_paths}},
     Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, OFF_STATE, REQUIRED_GAME_FILES,
 };
 
@@ -816,7 +816,7 @@ impl Cfg {
         }
 
         if skip_validation {
-            let parsed_data = collect_data_unchecked(&self.data);
+            let parsed_data = collect_data_unchecked(self.data());
             CollectedMods {
                 mods: parsed_data
                     .iter()
@@ -831,13 +831,13 @@ impl Cfg {
                 warnings: None,
             }
         } else {
-            let parsed_data = sync_keys(&self.data, &self.dir);
+            let parsed_data = sync_keys(self.data(), self.path());
             // parse_section is non critical write error | read_section is also non critical write error
             combine_map_data(
                 parsed_data,
                 include_load_order,
                 game_dir.as_ref(),
-                &self.dir,
+                self.path(),
             )
         }
     }

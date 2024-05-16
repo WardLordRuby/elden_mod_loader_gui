@@ -1,6 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use elden_mod_loader_gui::{utils::ini::writer::*, Cfg, INI_SECTIONS};
+use elden_mod_loader_gui::{
+    utils::ini::{
+        common::{Cfg, Read},
+        writer::{new_cfg, save_bool, save_path, save_paths},
+    },
+    INI_SECTIONS,
+};
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
     fs::remove_file,

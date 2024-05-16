@@ -1,4 +1,3 @@
-use ini::Ini;
 use log::{trace, warn};
 use std::{
     collections::{HashMap, HashSet},
@@ -7,10 +6,11 @@ use std::{
 };
 
 use crate::{
-    does_dir_contain, get_or_setup_cfg, new_io_error, utils::ini::{
-        parser::{IniProperty, ModError, RegMod},
-        writer::{new_cfg, save_value_ext, EXT_OPTIONS},
-    }, Operation, OperationResult, DEFAULT_LOADER_VALUES, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS
+    does_dir_contain, new_io_error, utils::ini::{
+        parser::RegMod,
+        writer::new_cfg,
+        common::{ModLoaderCfg, WriteToFile},
+    }, Operation, OperationResult, LOADER_FILES
 };
 
 #[derive(Debug, Default)]
@@ -73,76 +73,7 @@ impl ModLoader {
     }
 }
 
-#[derive(Debug)]
-pub struct ModLoaderCfg {
-    data: Ini,
-    dir: PathBuf,
-    section: Option<String>,
-}
-
 impl ModLoaderCfg {
-    pub fn read_section(cfg_dir: &Path, section: Option<&str>) -> std::io::Result<ModLoaderCfg> {
-        if section.is_none() {
-            return new_io_error!(ErrorKind::InvalidInput, "section can not be none");
-        }
-
-        let data = get_or_setup_cfg(cfg_dir, &LOADER_SECTIONS)?;
-        Ok(ModLoaderCfg {
-            data,
-            dir: PathBuf::from(cfg_dir),
-            section: section.map(String::from),
-        })
-    }
-
-    pub fn get_load_delay(&self) -> std::io::Result<u32> {
-        match IniProperty::<u32>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[0]) {
-            Ok(delay_time) => Ok(delay_time.value),
-            Err(mut err) => {
-                err.add_msg(&format!(
-                "Found an unexpected character saved in \"{}\". Reseting to default value",
-                LOADER_KEYS[0]
-                ));
-                Err(save_default_val_ext(&self.dir, LOADER_SECTIONS[0], LOADER_KEYS[0], DEFAULT_LOADER_VALUES[0], err))
-            },
-        }
-    }
-
-    pub fn get_show_terminal(&self) -> std::io::Result<bool> {
-        match IniProperty::<bool>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[1]) {
-            Ok(delay_time) => Ok(delay_time.value),
-            Err(mut err) => {
-                err.add_msg(&format!(
-                "Found an unexpected character saved in \"{}\". Reseting to default value",
-                LOADER_KEYS[1]
-                ));
-                Err(save_default_val_ext(&self.dir, LOADER_SECTIONS[0], LOADER_KEYS[1], DEFAULT_LOADER_VALUES[1], err))
-            },
-        }
-    }
-
-    #[inline]
-    pub fn mut_section(&mut self) -> &mut ini::Properties {
-        self.data.section_mut(self.section.as_ref()).unwrap()
-    }
-
-    #[inline]
-    fn section(&self) -> &ini::Properties {
-        self.data.section(self.section.as_ref()).unwrap()
-    }
-
-    #[inline]
-    /// updates the current section, general sections `None` are not supported
-    pub fn set_section(&mut self, new: Option<&str>) {
-        if new.is_some() {
-            self.section = new.map(String::from)
-        }
-    }
-
-    #[inline]
-    pub fn iter(&self) -> ini::PropertyIter {
-        self.section().iter()
-    }
-
     pub fn verify_keys(&mut self, mods: &[RegMod]) -> std::io::Result<()> {
         let valid_dlls = mods
             .iter()
@@ -216,25 +147,6 @@ impl ModLoaderCfg {
             .collect::<HashMap<String, usize>>()
     }
 
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.section().is_empty()
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.section().len()
-    }
-
-    #[inline]
-    pub fn path(&self) -> &Path {
-        &self.dir
-    }
-
-    pub fn write_to_file(&self) -> std::io::Result<()> {
-        self.data.write_to_file_opt(&self.dir, EXT_OPTIONS)
-    }
-
     /// updates the load order values in `Some("loadorder")` so they are always `0..`  
     /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  
     /// then writes the updated key values to file
@@ -243,15 +155,6 @@ impl ModLoaderCfg {
     ///     section is not set to "loadorder"  
     ///     fails to write to file  
     pub fn update_order_entries(&mut self, stable: Option<&str>) -> std::io::Result<()> {
-        if self.section.as_deref() != LOADER_SECTIONS[1] {
-            return new_io_error!(
-                ErrorKind::InvalidInput,
-                format!(
-                    "This function is only supported to modify Section: \"{}\"",
-                    LOADER_SECTIONS[1].unwrap()
-                )
-            );
-        }
         let mut k_v = Vec::with_capacity(self.section().len());
         let (mut stable_k, mut stable_v) = ("", 0_usize);
         for (k, v) in self.iter() {
@@ -286,30 +189,6 @@ impl ModLoaderCfg {
         std::mem::swap(self.mut_section(), &mut new_section);
         self.write_to_file()
     }
-
-    pub fn default(path: &Path) -> Self {
-        ModLoaderCfg {
-            data: ini::Ini::new(),
-            dir: PathBuf::from(path),
-            section: None,
-        }
-    }
-
-    pub fn empty() -> Self {
-        ModLoaderCfg {
-            data: ini::Ini::new(),
-            dir: PathBuf::new(),
-            section: None,
-        }
-    }
-}
-
-fn save_default_val_ext(cfg_dir: &Path, section: Option<&str>, key: &str, default_val: &str, mut in_err: std::io::Error) -> std::io::Error {
-    save_value_ext(cfg_dir, section, key, default_val).unwrap_or_else(|err| {
-        in_err.add_msg(&format!("\n, {err}"));
-        // io::write error
-    });
-    in_err
 }
 
 pub trait Countable {
