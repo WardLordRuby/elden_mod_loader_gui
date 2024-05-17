@@ -10,7 +10,7 @@ mod tests {
     use elden_mod_loader_gui::{
         get_cfg,
         utils::ini::{
-            common::{Cfg, ModLoaderCfg, Read},
+            common::*,
             mod_loader::Countable,
             parser::{IniProperty, RegMod, Setup},
             writer::*,
@@ -157,7 +157,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         // this tests to make sure the two without an order set are marked as order.set = false
-        assert_eq!(order.as_slice().order_count(), test_values.len());
+        assert_eq!(order.order_count(), test_values.len());
 
         // this tests that the order is set correclty for the mods that have a order entry
         order

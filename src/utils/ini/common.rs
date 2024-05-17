@@ -14,41 +14,27 @@ use crate::{
     LOADER_SECTIONS,
 };
 
-pub trait Read {
+pub trait Config {
     fn read(ini_path: &Path) -> std::io::Result<Self>
     where
         Self: std::marker::Sized;
-}
 
-pub trait GetPath {
     fn path(&self) -> &Path;
-}
 
-pub trait GetData {
     fn data(&self) -> &ini::Ini;
-}
 
-pub trait Set {
     fn set(&mut self, section: Option<&str>, key: &str, value: &str);
-}
 
-pub trait Update {
     fn update(&mut self) -> std::io::Result<()>;
-}
 
-pub trait CfgDefault {
-    fn default(path: &Path) -> Self;
-}
+    fn from(data: ini::Ini, dir: &Path) -> Self;
 
-pub trait CfgFrom {
-    fn from(ini: Ini, ini_path: &Path) -> Self;
-}
+    fn default(dir: &Path) -> Self;
 
-pub trait Empty {
     fn empty() -> Self;
-}
 
-pub trait SaveDefaultVal {
+    fn write_to_file(&self) -> std::io::Result<()>;
+
     #[allow(unused_variables)]
     #[allow(unused_mut)]
     fn save_default_val(
@@ -64,17 +50,13 @@ pub trait SaveDefaultVal {
     }
 }
 
-pub trait WriteToFile {
-    fn write_to_file(&self) -> std::io::Result<()>;
-}
-
 #[derive(Debug)]
 pub struct Cfg {
     data: Ini,
     dir: PathBuf,
 }
 
-impl Read for Cfg {
+impl Config for Cfg {
     fn read(ini_path: &Path) -> std::io::Result<Self>
     where
         Self: std::marker::Sized,
@@ -85,57 +67,42 @@ impl Read for Cfg {
             dir: PathBuf::from(ini_path),
         })
     }
-}
 
-impl GetPath for Cfg {
     #[inline]
     fn path(&self) -> &Path {
         &self.dir
     }
-}
 
-impl GetData for Cfg {
     #[inline]
     fn data(&self) -> &ini::Ini {
         &self.data
     }
-}
 
-impl Set for Cfg {
     #[inline]
     fn set(&mut self, section: Option<&str>, key: &str, value: &str) {
         self.data.with_section(section).set(key, value);
     }
-}
 
-impl Update for Cfg {
     fn update(&mut self) -> std::io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &INI_SECTIONS)?;
         Ok(())
     }
-}
 
-impl CfgDefault for Cfg {
+    fn from(data: ini::Ini, dir: &Path) -> Self {
+        Cfg {
+            data,
+            dir: PathBuf::from(dir),
+        }
+    }
+
     #[inline]
-    fn default(path: &Path) -> Self {
+    fn default(dir: &Path) -> Self {
         Cfg {
             data: ini::Ini::new(),
-            dir: PathBuf::from(path),
+            dir: PathBuf::from(dir),
         }
     }
-}
 
-impl CfgFrom for Cfg {
-    #[inline]
-    fn from(ini: Ini, ini_path: &Path) -> Self {
-        Cfg {
-            data: ini,
-            dir: PathBuf::from(ini_path),
-        }
-    }
-}
-
-impl Empty for Cfg {
     #[inline]
     fn empty() -> Self {
         Cfg {
@@ -143,33 +110,23 @@ impl Empty for Cfg {
             dir: PathBuf::new(),
         }
     }
-}
 
-impl SaveDefaultVal for Cfg {
+    #[inline]
+    fn write_to_file(&self) -> std::io::Result<()> {
+        self.data.write_to_file_opt(&self.dir, WRITE_OPTIONS)
+    }
+
     fn save_default_val(
         &self,
         section: Option<&str>,
         key: &str,
         mut in_err: std::io::Error,
     ) -> std::io::Error {
-        save_bool(
-            &self.dir,
-            section,
-            key,
-            DEFAULT_INI_VALUES[0].parse().unwrap(),
-        )
-        .unwrap_or_else(|err| {
+        save_bool(&self.dir, section, key, DEFAULT_INI_VALUES[0]).unwrap_or_else(|err| {
             in_err.add_msg(&format!("\n, {err}"));
             // io::write error
         });
         in_err
-    }
-}
-
-impl WriteToFile for Cfg {
-    #[inline]
-    fn write_to_file(&self) -> std::io::Result<()> {
-        self.data.write_to_file_opt(&self.dir, WRITE_OPTIONS)
     }
 }
 
@@ -212,7 +169,7 @@ pub struct ModLoaderCfg {
     dir: PathBuf,
 }
 
-impl Read for ModLoaderCfg {
+impl Config for ModLoaderCfg {
     fn read(ini_path: &Path) -> std::io::Result<Self>
     where
         Self: std::marker::Sized,
@@ -223,57 +180,42 @@ impl Read for ModLoaderCfg {
             dir: PathBuf::from(ini_path),
         })
     }
-}
 
-impl GetPath for ModLoaderCfg {
     #[inline]
     fn path(&self) -> &Path {
         &self.dir
     }
-}
 
-impl GetData for ModLoaderCfg {
     #[inline]
     fn data(&self) -> &ini::Ini {
         &self.data
     }
-}
 
-impl Set for ModLoaderCfg {
     #[inline]
     fn set(&mut self, section: Option<&str>, key: &str, value: &str) {
         self.data.with_section(section).set(key, value);
     }
-}
 
-impl Update for ModLoaderCfg {
     fn update(&mut self) -> std::io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &LOADER_SECTIONS)?;
         Ok(())
     }
-}
 
-impl CfgDefault for ModLoaderCfg {
+    fn from(data: ini::Ini, dir: &Path) -> Self {
+        ModLoaderCfg {
+            data,
+            dir: PathBuf::from(dir),
+        }
+    }
+
     #[inline]
-    fn default(path: &Path) -> Self {
+    fn default(dir: &Path) -> Self {
         ModLoaderCfg {
             data: ini::Ini::new(),
-            dir: PathBuf::from(path),
+            dir: PathBuf::from(dir),
         }
     }
-}
 
-impl CfgFrom for ModLoaderCfg {
-    #[inline]
-    fn from(ini: Ini, ini_path: &Path) -> Self {
-        ModLoaderCfg {
-            data: ini,
-            dir: PathBuf::from(ini_path),
-        }
-    }
-}
-
-impl Empty for ModLoaderCfg {
     #[inline]
     fn empty() -> Self {
         ModLoaderCfg {
@@ -281,9 +223,12 @@ impl Empty for ModLoaderCfg {
             dir: PathBuf::new(),
         }
     }
-}
 
-impl SaveDefaultVal for ModLoaderCfg {
+    #[inline]
+    fn write_to_file(&self) -> std::io::Result<()> {
+        self.data.write_to_file_opt(&self.dir, EXT_OPTIONS)
+    }
+
     fn save_default_val(
         &self,
         section: Option<&str>,
@@ -300,13 +245,6 @@ impl SaveDefaultVal for ModLoaderCfg {
             // io::write error
         });
         in_err
-    }
-}
-
-impl WriteToFile for ModLoaderCfg {
-    #[inline]
-    fn write_to_file(&self) -> std::io::Result<()> {
-        self.data.write_to_file_opt(&self.dir, EXT_OPTIONS)
     }
 }
 

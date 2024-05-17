@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     files_not_found, get_cfg, new_io_error, toggle_files, toggle_name_state,
-    utils::ini::{common::{GetData, GetPath}, writer::{remove_array, remove_entry, save_bool, save_path, save_paths}},
+    utils::ini::{common::Config, writer::{remove_array, remove_entry, save_bool, save_path, save_paths}},
     Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, OFF_STATE, REQUIRED_GAME_FILES,
 };
 
@@ -225,10 +225,10 @@ pub trait Setup {
 
 impl<T: AsRef<Path>> Setup for T {
     /// returns `Ok(ini)` if self is a path that:  
-    ///     _exists_ if not returns `Err(NotFound)` or `Err(PermissionDenied)`  
-    ///     _is .ini_ if not returns `Err(InvalidInput)`  
-    ///     _File::open_ does not return an error  
-    ///     _contains all sections_ if not returns `Err(InvalidData)`  
+    /// - **exists** - if not returns `Err(NotFound)` or `Err(PermissionDenied)`  
+    /// - **is .ini** - if not returns `Err(InvalidInput)`  
+    /// - **contains all sections** - if not returns `Err(InvalidData)`  
+    /// - **File::open** does not return an error  
     ///  
     /// it is safe to call unwrap on `get_cfg(self)` if this returns `Ok`
     fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<ini::Ini> {
@@ -917,7 +917,7 @@ impl Merge for Vec<std::io::Error> {
         }
         let mut new_err: std::io::Error = self[0].clone_err();
         if self.len() > 1 {
-            (1..self.len()).for_each(|i| new_err.add_msg(&self[i].to_string()));
+            self.iter().skip(1).for_each(|err| new_err.add_msg(&err.to_string()));
         }
         new_err
     }

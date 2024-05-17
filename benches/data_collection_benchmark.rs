@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use elden_mod_loader_gui::{
     utils::ini::{
-        common::{Cfg, Read},
+        common::{Cfg, Config},
         writer::{new_cfg, save_bool, save_path, save_paths},
     },
     INI_SECTIONS,

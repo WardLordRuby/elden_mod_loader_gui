@@ -11,7 +11,7 @@ pub mod utils {
 use ini::Ini;
 use log::{info, trace, warn};
 use utils::ini::{
-    common::{Cfg, GetData, GetPath, Set},
+    common::{Cfg, Config},
     parser::{IniProperty, IntoIoError, RegMod, Setup},
     writer::{new_cfg, save_path},
 };
@@ -48,7 +48,7 @@ pub const INI_SECTIONS: [Option<&str>; 4] = [
     Some("mod-files"),
 ];
 pub const INI_KEYS: [&str; 2] = ["dark_mode", "game_dir"];
-pub const DEFAULT_INI_VALUES: [&str; 1] = ["true"];
+pub const DEFAULT_INI_VALUES: [bool; 1] = [true];
 pub const ARRAY_KEY: &str = "array[]";
 pub const ARRAY_VALUE: &str = "array";
 

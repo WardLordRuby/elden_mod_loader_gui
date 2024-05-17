@@ -71,7 +71,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         };
         let mut ini = match ini {
-            Some(ini_data) => CfgFrom::from(ini_data, current_ini),
+            Some(ini_data) => Config::from(ini_data, current_ini),
             None => {
                 Cfg::read(current_ini).unwrap_or_else(|err| {
                     // io::write error
@@ -162,7 +162,7 @@ fn main() -> Result<(), slint::PlatformError> {
             // parse error ErrorKind::InvalidData
             error!("error 10: {err}");
             errors.push(err);
-            DEFAULT_INI_VALUES[0].parse().unwrap()
+            DEFAULT_INI_VALUES[0]
         }));
 
         ui.global::<MainLogic>().set_game_path_valid(game_verified);
@@ -252,7 +252,6 @@ fn main() -> Result<(), slint::PlatformError> {
         }).unwrap();
     }
 
-    // TODO: Error check input text for invalid symbols
     ui.global::<MainLogic>().on_select_mod_files({
         let ui_handle = ui.as_weak();
         move |mod_name| {
@@ -1240,7 +1239,7 @@ fn deserialize_current_mods(mods: &CollectedMods, ui_handle: slint::Weak<App>) {
         let name = mod_data.name.replace('_', " ");
         display_mods.push(DisplayMod {
             displayname: SharedString::from(if mod_data.name.chars().count() > 20 {
-                format!("{}...", &name[..17])
+                name.chars().take(17).chain("...".chars()).collect()
             } else {
                 name.clone()
             }),
@@ -1257,7 +1256,7 @@ fn deserialize_current_mods(mods: &CollectedMods, ui_handle: slint::Weak<App>) {
         })
     }
     ui.global::<MainLogic>().set_current_mods(ModelRc::from(display_mods));
-    ui.global::<MainLogic>().set_orders_set(mods.as_slice().order_count() as i32);
+    ui.global::<MainLogic>().set_orders_set(mods.order_count() as i32);
 }
 
 async fn install_new_mod(

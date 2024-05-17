@@ -9,7 +9,7 @@ use crate::{
     does_dir_contain, new_io_error, utils::ini::{
         parser::RegMod,
         writer::new_cfg,
-        common::{ModLoaderCfg, WriteToFile},
+        common::{ModLoaderCfg, Config},
     }, Operation, OperationResult, LOADER_FILES, FileData
 };
 
@@ -200,7 +200,7 @@ pub trait Countable {
     fn order_count(&self) -> usize;
 }
 
-impl Countable for &[RegMod] {
+impl Countable for [RegMod] {
     #[inline]
     fn order_count(&self) -> usize {
         self.iter().filter(|m| m.order.set).count()
