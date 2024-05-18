@@ -38,6 +38,9 @@ pub trait Config {
     /// returns a empty `Self`, avoid using `empty()` and use `default()` when possible  
     fn empty() -> Self;
 
+    /// sets `Self.data` to default value  
+    fn empty_contents(&mut self);
+
     /// returns `true` if no mods are registered  
     fn mods_is_empty(&self) -> bool;
 
@@ -116,6 +119,11 @@ impl Config for Cfg {
             data: ini::Ini::new(),
             dir: PathBuf::new(),
         }
+    }
+
+    #[inline]
+    fn empty_contents(&mut self) {
+        self.data = ini::Ini::new()
     }
 
     #[inline]
@@ -226,6 +234,11 @@ impl Config for ModLoaderCfg {
             data: ini::Ini::new(),
             dir: PathBuf::new(),
         }
+    }
+
+    #[inline]
+    fn empty_contents(&mut self) {
+        self.data = ini::Ini::new()
     }
 
     #[inline]

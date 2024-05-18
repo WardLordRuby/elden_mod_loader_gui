@@ -197,6 +197,7 @@ impl ModLoaderCfg {
 }
 
 pub trait Countable {
+    /// returns the number of mods in a colletion that have `mod.order.set`
     fn order_count(&self) -> usize;
 }
 

@@ -15,8 +15,8 @@ use elden_mod_loader_gui::{
     *,
 };
 use i_slint_backend_winit::WinitWindowAccessor;
-use tracing::{error, info, warn};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, VecModel};
+use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{fmt, filter, layer::SubscriberExt, util::SubscriberInitExt};
 use std::{
     collections::{HashMap, HashSet}, ffi::OsStr, io::ErrorKind, path::{Path, PathBuf}, rc::Rc, sync::{
@@ -39,7 +39,7 @@ fn main() -> Result<(), slint::PlatformError> {
     if cfg!(debug_assertions) {
         tracing_subscriber::registry()
             .with(fmt::layer().with_target(false).pretty())
-            .with(filter::EnvFilter::from_default_env())
+            .with(filter::EnvFilter::builder().with_default_directive(LevelFilter::INFO.into()).from_env_lossy())
             .init();
     }
 
@@ -556,105 +556,107 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 };
-                if let Some(found_mod) = registered_mods
+                let Some(found_mod) = registered_mods
                     .iter()
-                    .find(|reg_mod| format_key == reg_mod.name)
-                {
-                    let files = match shorten_paths(&file_paths, &game_dir) {
-                        Ok(files) => files,
-                        Err(err) => {
-                            if file_paths.len() == err.err_paths_long.len() {
-                                let ui_handle = ui.as_weak();
-                                match install_new_files_to_mod(found_mod, file_paths, &game_dir, ui_handle).await {
-                                    Ok(installed_files) => {
-                                        file_paths = installed_files;
-                                        match shorten_paths(&file_paths, &game_dir) {
-                                            Ok(installed_and_shortend) => installed_and_shortend,
-                                            Err(err) => {
-                                                let err_string = format!("Files installed but ran into StripPrefixError on {:?}", err.err_paths_long);
-                                                error!("{err_string}");
-                                                ui.display_msg(&err_string);
-                                                return;
-                                            }
+                    .find(|reg_mod| format_key == reg_mod.name) 
+                else {
+                    error!(%key, "No mod found with");
+                    ui.display_msg(&format!("Mod: \"{key}\" not found"));
+                    reset_mod_state(ini, &game_dir, None, ui.as_weak());
+                    info!("deserialized after encountered error");
+                    return;
+                };
+                let files = match shorten_paths(&file_paths, &game_dir) {
+                    Ok(files) => files,
+                    Err(err) => {
+                        if file_paths.len() == err.err_paths_long.len() {
+                            let ui_handle = ui.as_weak();
+                            match install_new_files_to_mod(found_mod, file_paths, &game_dir, ui_handle).await {
+                                Ok(installed_files) => {
+                                    file_paths = installed_files;
+                                    match shorten_paths(&file_paths, &game_dir) {
+                                        Ok(installed_and_shortend) => installed_and_shortend,
+                                        Err(err) => {
+                                            let err_string = format!("Files installed but ran into StripPrefixError on {:?}", err.err_paths_long);
+                                            error!("{err_string}");
+                                            ui.display_msg(&err_string);
+                                            return;
                                         }
-                                    },
-                                    Err(err) => {
-                                        match err.kind() {
-                                            ErrorKind::ConnectionAborted => info!("{err}"),
-                                            _ => error!("{err}"),
-                                        }
-                                        ui.display_msg(&err.to_string());
-                                        return;
                                     }
-                                }
-                            } else {
-                                error!("Encountered {} StripPrefixError on input files", err.err_paths_long.len());
-                                ui.display_msg(&format!("Some selected files are already installed\n\nSelected Files Installed: {}\nSelected Files not installed: {}", err.ok_paths_short.len(), err.err_paths_long.len()));
-                                return;
-                            }
-                        }
-                    };
-                    if file_registered(&registered_mods, &files) {
-                        ui.display_msg("A selected file is already registered to a mod");
-                    } else {
-                        let num_files = files.len();
-                        let mut new_data = found_mod.files.dll.clone();
-                        new_data.extend(files.iter().map(PathBuf::from));
-                        let mut results = Vec::with_capacity(3);
-                        let new_data_refs = found_mod.files.add_other_files_to_files(&new_data);
-                        if found_mod.files.len() == 1 {
-                            results.push(remove_entry(
-                                ini.path(),
-                                INI_SECTIONS[3],
-                                &found_mod.name,
-                            ));
-                        } else {
-                            results.push(remove_array(ini.path(), &found_mod.name));
-                        }
-                        results.push(save_paths(ini.path(), INI_SECTIONS[3], &found_mod.name, &new_data_refs));
-                        if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
-                            ui.display_msg(&err.to_string());
-                            let _ = remove_entry(
-                                ini.path(),
-                                INI_SECTIONS[2],
-                                &format_key,
-                            );
-                        }
-                        let new_data_owned = new_data_refs.iter().map(PathBuf::from).collect();
-                        let mut updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data_owned);
-                        
-                        updated_mod
-                            .verify_state(&game_dir, ini.path())
-                            .unwrap_or_else(|err| {
-                                if updated_mod
-                                    .verify_state(&game_dir, ini.path())
-                                    .is_err()
-                                {
+                                },
+                                Err(err) => {
+                                    match err.kind() {
+                                        ErrorKind::ConnectionAborted => info!("{err}"),
+                                        _ => error!("{err}"),
+                                    }
                                     ui.display_msg(&err.to_string());
-                                    let _ = remove_entry(
-                                        ini.path(),
-                                        INI_SECTIONS[2],
-                                        &updated_mod.name,
-                                    );
-                                };
-                                results.push(Err(err));
-                            });
-                        if !results.iter().any(|r| r.is_err()) {
-                            ui.display_msg(&format!("Sucessfully added {} file(s) to {}", num_files, format_key));
+                                    return;
+                                }
+                            }
+                        } else {
+                            error!("Encountered {} StripPrefixError on input files", err.err_paths_long.len());
+                            ui.display_msg(&format!("Some selected files are already installed\n\nSelected Files Installed: {}\nSelected Files not installed: {}", err.ok_paths_short.len(), err.err_paths_long.len()));
+                            return;
                         }
-                        ini.update().unwrap_or_else(|err| {
-                            ui.display_msg(&err.to_string());
-                            ini = Cfg::default(ini_dir);
-                        });
-                        let order_data = order_data_or_default(ui.as_weak(), None);
-                        deserialize_current_mods(
-                            &ini.collect_mods(game_dir.as_path(), Some(&order_data), false),ui.as_weak()
+                    }
+                };
+                if file_registered(&registered_mods, &files) {
+                    ui.display_msg("A selected file is already registered to a mod");
+                } else {
+                    let num_files = files.len();
+                    let mut new_data = found_mod.files.dll.clone();
+                    new_data.extend(files.iter().map(PathBuf::from));
+                    let mut results = Vec::with_capacity(3);
+                    let new_data_refs = found_mod.files.add_other_files_to_files(&new_data);
+                    if found_mod.files.len() == 1 {
+                        results.push(remove_entry(
+                            ini.path(),
+                            INI_SECTIONS[3],
+                            &found_mod.name,
+                        ));
+                    } else {
+                        results.push(remove_array(ini.path(), &found_mod.name));
+                    }
+                    results.push(save_paths(ini.path(), INI_SECTIONS[3], &found_mod.name, &new_data_refs));
+                    if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
+                        ui.display_msg(&err.to_string());
+                        let _ = remove_entry(
+                            ini.path(),
+                            INI_SECTIONS[2],
+                            &format_key,
                         );
                     }
-                } else {
-                    error!("Mod: \"{key}\" not found");
-                    ui.display_msg(&format!("Mod: \"{key}\" not found"));
-                };
+                    let new_data_owned = new_data_refs.iter().map(PathBuf::from).collect();
+                    let mut updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data_owned);
+                    
+                    updated_mod
+                        .verify_state(&game_dir, ini.path())
+                        .unwrap_or_else(|err| {
+                            if updated_mod
+                                .verify_state(&game_dir, ini.path())
+                                .is_err()
+                            {
+                                ui.display_msg(&err.to_string());
+                                let _ = remove_entry(
+                                    ini.path(),
+                                    INI_SECTIONS[2],
+                                    &updated_mod.name,
+                                );
+                            };
+                            results.push(Err(err));
+                        });
+                    if !results.iter().any(|r| r.is_err()) {
+                        ui.display_msg(&format!("Sucessfully added {} file(s) to {}", num_files, format_key));
+                    }
+                    ini.update().unwrap_or_else(|err| {
+                        ui.display_msg(&err.to_string());
+                        ini = Cfg::default(ini_dir);
+                    });
+                    let order_data = order_data_or_default(ui.as_weak(), None);
+                    deserialize_current_mods(
+                        &ini.collect_mods(game_dir.as_path(), Some(&order_data), false),ui.as_weak()
+                    );
+                }
             })
             .unwrap();
         }
@@ -664,7 +666,7 @@ fn main() -> Result<(), slint::PlatformError> {
         move |key| {
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
-            let mut ini = match Cfg::read(ini_dir) {
+            let ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -726,15 +728,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     error!("{err}");
                     ui.display_msg(&format!("{err}\nRemoving invalid entries"))
                 };
-                ui.global::<MainLogic>().set_current_subpage(0);
-                ini.update().unwrap_or_else(|err| {
-                    ui.display_msg(&err.to_string());
-                    ini = Cfg::default(ini_dir);
-                });
-                let order_data = order_data_or_default(ui.as_weak(), None);
-                deserialize_current_mods(
-                    &ini.collect_mods(game_dir.as_path(), Some(&order_data), false),ui.as_weak()
-                );
+                reset_mod_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
             }).unwrap();
         }
     });
@@ -977,17 +971,8 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.global::<MainLogic>().on_force_deserialize({
         let ui_handle = ui.as_weak();
         move || {
-            let ui = ui_handle.unwrap();
-            let ini = match Cfg::read(get_ini_dir()) {
-                Ok(ini_data) => ini_data,
-                Err(err) => {
-                    ui.display_msg(&err.to_string());
-                    return;
-                }
-            };
-            let order_data = order_data_or_default(ui.as_weak(), None);
-            deserialize_current_mods(
-                &ini.collect_mods(get_or_update_game_dir(None).as_path(), Some(&order_data), false),ui.as_weak()
+            reset_mod_state(
+                Cfg::default(get_ini_dir()), &get_or_update_game_dir(None), None, ui_handle.clone()
             );
             info!("deserialized after encountered error");
         }
@@ -1199,10 +1184,7 @@ fn open_text_files(ui_handle: slint::Weak<App>, files: Vec<std::ffi::OsString>) 
 
 fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) -> HashMap<String, usize> {
     let ui = ui_handle.unwrap();
-    let path: &Path;
-    if let Some(dir) = from_path {
-        path = dir
-    } else { path = get_loader_ini_dir() };
+    let path = from_path.unwrap_or_else(|| get_loader_ini_dir());
     match ModLoaderCfg::read(path) {
         Ok(mut data) => {
             data.parse_section().unwrap_or_else(|err| {
@@ -1217,16 +1199,28 @@ fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) 
     }
 }
 
-fn deserialize_current_mods(mods: &CollectedMods, ui_handle: slint::Weak<App>) {
+/// forces all data to be re-read from file, it is fine to pass in a `Cfg::default()` here  
+fn reset_mod_state(mut cfg: Cfg, game_dir: &Path, loader_dir: Option<&Path>, ui_handle: slint::Weak<App>) {
     let ui = ui_handle.unwrap();
-    let mods = {
-        if let Some(ref warning) = mods.warnings {
-            ui.display_msg(&warning.to_string());
-        }
-        &mods.mods
-    };
+    ui.global::<MainLogic>().set_current_subpage(0);
+    cfg.update().unwrap_or_else(|err| {
+        ui.display_msg(&err.to_string());
+        cfg.empty_contents();
+    });
+    let order_data = order_data_or_default(ui.as_weak(), loader_dir);
+    deserialize_current_mods(
+        &cfg.collect_mods(game_dir, Some(&order_data), false),ui.as_weak()
+    );
+}
+
+fn deserialize_current_mods(data: &CollectedMods, ui_handle: slint::Weak<App>) {
+    let ui = ui_handle.unwrap();
+    if let Some(ref warning) = data.warnings {
+        ui.display_msg(&warning.to_string());
+    }
+
     let display_mods: Rc<VecModel<DisplayMod>> = Default::default();
-    for mod_data in mods.iter() {
+    for mod_data in data.mods.iter() {
         let files: Rc<VecModel<slint::StandardListViewItem>> = Default::default();
         let dll_files: Rc<VecModel<SharedString>> = Default::default();
         let config_files: Rc<VecModel<SharedString>> = Default::default();
@@ -1261,7 +1255,7 @@ fn deserialize_current_mods(mods: &CollectedMods, ui_handle: slint::Weak<App>) {
         })
     }
     ui.global::<MainLogic>().set_current_mods(ModelRc::from(display_mods));
-    ui.global::<MainLogic>().set_orders_set(mods.order_count() as i32);
+    ui.global::<MainLogic>().set_orders_set(data.mods.order_count() as i32);
 }
 
 async fn install_new_mod(

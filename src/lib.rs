@@ -137,7 +137,7 @@ pub fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf
 
 /// toggle the state of the files saved in `reg_mod.files.dll`  
 /// this function updates the reg_mod's modified files and state  
-#[instrument(skip(game_dir, reg_mod, save_file), fields(name = reg_mod.name, mod_state = reg_mod.state))]
+#[instrument(skip(game_dir, reg_mod, save_file), fields(name = reg_mod.name, prev_state = reg_mod.state))]
 pub fn toggle_files(
     game_dir: &Path,
     new_state: bool,
@@ -460,7 +460,7 @@ fn get_current_drive() -> std::io::Result<std::ffi::OsString> {
         .components()
         .next()
         .map(|root| {
-            let mut drive = root.as_os_str().to_os_string().to_ascii_uppercase();
+            let mut drive = root.as_os_str().to_ascii_uppercase();
             drive.push("\\");
             drive
         })
