@@ -15,26 +15,36 @@ use crate::{
 };
 
 pub trait Config {
-    fn read(ini_path: &Path) -> std::io::Result<Self>
+    /// reads a .ini file into memory  
+    fn read(ini_dir: &Path) -> std::io::Result<Self>
     where
         Self: std::marker::Sized;
 
+    /// returns a reference to where the read file is loacated  
     fn path(&self) -> &Path;
 
+    /// returns a reference to the read in memory data  
     fn data(&self) -> &ini::Ini;
 
+    /// Set (replace) key-value pair in the section (all with the same name)
     fn set(&mut self, section: Option<&str>, key: &str, value: &str);
 
+    /// updates the in memory data of the ini from `self.path()`
     fn update(&mut self) -> std::io::Result<()>;
 
-    fn from(data: ini::Ini, dir: &Path) -> Self;
+    /// manually construct this type, typically use `Config::read()`  
+    fn from(data: ini::Ini, ini_dir: &Path) -> Self;
 
-    fn default(dir: &Path) -> Self;
+    /// returns a default `Self` with the ini_dir set  
+    fn default(ini_dir: &Path) -> Self;
 
+    /// returns a empty `Self`, avoid using `empty()` and use `default()` when possible  
     fn empty() -> Self;
 
+    /// writes the in-memory `self.data()` to the directory stored in `self.path()`
     fn write_to_file(&self) -> std::io::Result<()>;
 
+    /// saves the computed default value (from key) to to file and appends an error message apon failure  
     #[allow(unused_variables)]
     #[allow(unused_mut)]
     fn save_default_val(
@@ -57,14 +67,14 @@ pub struct Cfg {
 }
 
 impl Config for Cfg {
-    fn read(ini_path: &Path) -> std::io::Result<Self>
+    fn read(ini_dir: &Path) -> std::io::Result<Self>
     where
         Self: std::marker::Sized,
     {
-        let data = get_or_setup_cfg(ini_path, &INI_SECTIONS)?;
+        let data = get_or_setup_cfg(ini_dir, &INI_SECTIONS)?;
         Ok(Cfg {
             data,
-            dir: PathBuf::from(ini_path),
+            dir: PathBuf::from(ini_dir),
         })
     }
 
@@ -83,23 +93,25 @@ impl Config for Cfg {
         self.data.with_section(section).set(key, value);
     }
 
+    #[inline]
     fn update(&mut self) -> std::io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &INI_SECTIONS)?;
         Ok(())
     }
 
-    fn from(data: ini::Ini, dir: &Path) -> Self {
+    #[inline]
+    fn from(data: ini::Ini, ini_dir: &Path) -> Self {
         Cfg {
             data,
-            dir: PathBuf::from(dir),
+            dir: PathBuf::from(ini_dir),
         }
     }
 
     #[inline]
-    fn default(dir: &Path) -> Self {
+    fn default(ini_dir: &Path) -> Self {
         Cfg {
             data: ini::Ini::new(),
-            dir: PathBuf::from(dir),
+            dir: PathBuf::from(ini_dir),
         }
     }
 
@@ -122,25 +134,25 @@ impl Config for Cfg {
         key: &str,
         mut in_err: std::io::Error,
     ) -> std::io::Error {
-        save_bool(&self.dir, section, key, DEFAULT_INI_VALUES[0]).unwrap_or_else(|err| {
-            in_err.add_msg(&format!("\n, {err}"));
-            // io::write error
-        });
+        if let Err(err) = save_bool(&self.dir, section, key, DEFAULT_INI_VALUES[0]) {
+            in_err.add_msg(&err.to_string());
+        } else {
+            in_err.add_msg(&format!(
+                "Sucessfully reset {key} to {}",
+                DEFAULT_INI_VALUES[0]
+            ));
+        };
         in_err
     }
 }
 
 impl Cfg {
+    /// returns the value stored with key "dark_mode" as a `bool`  
+    /// if error calls `self.save_default_val` to correct error  
     pub fn get_dark_mode(&self) -> std::io::Result<bool> {
         match IniProperty::<bool>::read(&self.data, INI_SECTIONS[0], INI_KEYS[0]) {
             Ok(dark_mode) => Ok(dark_mode.value),
-            Err(mut err) => {
-                err.add_msg(&format!(
-                    "Found an unexpected character saved in \"{}\". Reseting to default value",
-                    LOADER_KEYS[0]
-                ));
-                Err(self.save_default_val(INI_SECTIONS[0], INI_KEYS[0], err))
-            }
+            Err(err) => Err(self.save_default_val(INI_SECTIONS[0], INI_KEYS[0], err)),
         }
     }
 
@@ -155,7 +167,7 @@ impl Cfg {
         }
     }
 
-    /// returns true if registered mods saved in the ".ini" is None  
+    /// returns `true` if registered mods saved in the ".ini" is None  
     #[inline]
     pub fn mods_empty(&self) -> bool {
         self.data.section(INI_SECTIONS[2]).is_none()
@@ -170,14 +182,14 @@ pub struct ModLoaderCfg {
 }
 
 impl Config for ModLoaderCfg {
-    fn read(ini_path: &Path) -> std::io::Result<Self>
+    fn read(ini_dir: &Path) -> std::io::Result<Self>
     where
         Self: std::marker::Sized,
     {
-        let data = get_or_setup_cfg(ini_path, &LOADER_SECTIONS)?;
+        let data = get_or_setup_cfg(ini_dir, &LOADER_SECTIONS)?;
         Ok(ModLoaderCfg {
             data,
-            dir: PathBuf::from(ini_path),
+            dir: PathBuf::from(ini_dir),
         })
     }
 
@@ -196,23 +208,25 @@ impl Config for ModLoaderCfg {
         self.data.with_section(section).set(key, value);
     }
 
+    #[inline]
     fn update(&mut self) -> std::io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &LOADER_SECTIONS)?;
         Ok(())
     }
 
-    fn from(data: ini::Ini, dir: &Path) -> Self {
+    #[inline]
+    fn from(data: ini::Ini, ini_dir: &Path) -> Self {
         ModLoaderCfg {
             data,
-            dir: PathBuf::from(dir),
+            dir: PathBuf::from(ini_dir),
         }
     }
 
     #[inline]
-    fn default(dir: &Path) -> Self {
+    fn default(ini_dir: &Path) -> Self {
         ModLoaderCfg {
             data: ini::Ini::new(),
-            dir: PathBuf::from(dir),
+            dir: PathBuf::from(ini_dir),
         }
     }
 
@@ -240,61 +254,59 @@ impl Config for ModLoaderCfg {
             k if k == LOADER_KEYS[1] => DEFAULT_LOADER_VALUES[1],
             _ => panic!("Unknown key was passed in"),
         };
-        save_value_ext(&self.dir, section, key, default_val).unwrap_or_else(|err| {
-            in_err.add_msg(&format!("\n, {err}"));
-            // io::write error
-        });
+        if let Err(err) = save_value_ext(&self.dir, section, key, default_val) {
+            in_err.add_msg(&err.to_string());
+        } else {
+            in_err.add_msg(&format!("Sucessfully reset {key} to {default_val}"));
+        };
         in_err
     }
 }
 
 impl ModLoaderCfg {
+    /// returns value stored with key "load_delay" as `u32`  
+    /// if error calls `self.save_default_val` to correct error  
     pub fn get_load_delay(&self) -> std::io::Result<u32> {
         match IniProperty::<u32>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[0]) {
             Ok(delay_time) => Ok(delay_time.value),
-            Err(mut err) => {
-                err.add_msg(&format!(
-                    "Found an unexpected character saved in \"{}\". Reseting to default value",
-                    LOADER_KEYS[0]
-                ));
-                Err(self.save_default_val(LOADER_SECTIONS[0], LOADER_KEYS[0], err))
-            }
+            Err(err) => Err(self.save_default_val(LOADER_SECTIONS[0], LOADER_KEYS[0], err)),
         }
     }
 
+    /// returns value stored with key "show_terminal" as `bool`  
+    /// if error calls `self.save_default_val` to correct error  
     pub fn get_show_terminal(&self) -> std::io::Result<bool> {
         match IniProperty::<bool>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[1]) {
             Ok(bool) => Ok(bool.value),
-            Err(mut err) => {
-                err.add_msg(&format!(
-                    "Found an unexpected character saved in \"{}\". Reseting to default value",
-                    LOADER_KEYS[1]
-                ));
-                Err(self.save_default_val(LOADER_SECTIONS[0], LOADER_KEYS[1], err))
-            }
+            Err(err) => Err(self.save_default_val(LOADER_SECTIONS[0], LOADER_KEYS[1], err)),
         }
     }
 
+    /// retuns mutable reference to key value pairs stored in "loadorder"  
     #[inline]
     pub fn mut_section(&mut self) -> &mut ini::Properties {
         self.data.section_mut(LOADER_SECTIONS[1]).unwrap()
     }
 
+    /// retuns immutable reference to key value pairs stored in "loadorder"  
     #[inline]
     pub fn section(&self) -> &ini::Properties {
         self.data.section(LOADER_SECTIONS[1]).unwrap()
     }
 
+    /// get an iterator of the key value pairs stored in "loadorder"  
     #[inline]
     pub fn iter(&self) -> ini::PropertyIter {
         self.section().iter()
     }
 
+    /// returns `true` if section "loadorder" is empty  
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.section().is_empty()
     }
 
+    /// get the number of the properties in section "loadorder"
     #[inline]
     pub fn len(&self) -> usize {
         self.section().len()
