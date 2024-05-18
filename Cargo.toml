@@ -22,8 +22,8 @@ slint = { version = "1.6.0", features = ["raw-window-handle-06"] }
 i-slint-backend-winit = "1.6.0"
 winit = "0.29.4"
 rfd = "0.14.1"
-log = "0.4.21"
-env_logger = "0.11.3"
+tracing = { version = "0.1.40", features = ["release_max_level_info"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 rust-ini = "0.21.0"
 
 [build-dependencies]
