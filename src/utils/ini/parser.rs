@@ -31,6 +31,7 @@ impl Parsable for bool {
         _skip_validation: bool,
     ) -> std::io::Result<Self> {
         parse_bool(
+            key,
             ini.get_from(section, key)
                 .expect("Validated by IniProperty::is_valid"),
         )
@@ -38,11 +39,11 @@ impl Parsable for bool {
 }
 
 #[inline]
-fn parse_bool(str: &str) -> std::io::Result<bool> {
+fn parse_bool(from_key: &str, str: &str) -> std::io::Result<bool> {
     match str {
         "0" => Ok(false),
         "1" => Ok(true),
-        c => c.to_lowercase().parse::<bool>().map_err(|err| err.into_io_error()),
+        c => c.to_lowercase().parse::<bool>().map_err(|err| err.into_io_error(from_key, str)),
     }
 }
 
@@ -54,10 +55,11 @@ impl Parsable for u32 {
         key: &str,
         _skip_validation: bool,
     ) -> std::io::Result<Self> {
-        ini.get_from(section, key)
-            .expect("Validated by IniProperty::is_valid")
+        let str = ini.get_from(section, key)
+            .expect("Validated by IniProperty::is_valid");
+        str
             .parse::<u32>()
-            .map_err(|err| err.into_io_error())
+            .map_err(|err| err.into_io_error(key, str))
     }
 }
 
@@ -732,7 +734,7 @@ impl Cfg {
                         }
                         (
                             key,
-                            parse_bool(state_str).unwrap_or(true),
+                            parse_bool(key, state_str).unwrap_or(true),
                             split_files,
                             load_order,
                         )
@@ -823,7 +825,7 @@ impl Cfg {
                     .map(|(n, s, f)| {
                         RegMod::new(
                             n,
-                            parse_bool(s).unwrap_or(true),
+                            parse_bool(n, s).unwrap_or(true),
                             f.iter().map(PathBuf::from).collect(),
                         )
                     })
@@ -843,24 +845,24 @@ impl Cfg {
     }
 }
 
-pub fn file_registered(mod_data: &[RegMod], files: &[PathBuf]) -> bool {
+pub fn file_registered<P: AsRef<Path>>(mod_data: &[RegMod], files: &[P]) -> bool {
     files.iter().any(|path| {
         mod_data.iter().any(|registered_mod| {
             registered_mod
                 .files
                 .file_refs()
                 .iter()
-                .any(|mod_file| path == mod_file)
+                .any(|mod_file| &path.as_ref() == mod_file)
         })
     })
 }
 
 pub trait IntoIoError {
-    fn into_io_error(self) -> std::io::Error;
+    fn into_io_error(self, key: &str, context: &str) -> std::io::Error;
 }
 
 impl IntoIoError for ini::Error {
-    fn into_io_error(self) -> std::io::Error {
+    fn into_io_error(self, _key: &str, _context: &str) -> std::io::Error {
         match self {
             ini::Error::Io(err) => err,
             ini::Error::Parse(err) => std::io::Error::new(ErrorKind::InvalidData, err),
@@ -870,15 +872,15 @@ impl IntoIoError for ini::Error {
 
 impl IntoIoError for std::str::ParseBoolError {
     #[inline]
-    fn into_io_error(self) -> std::io::Error {
-        std::io::Error::new(ErrorKind::InvalidData, self.to_string())
+    fn into_io_error(self, key: &str, context: &str) -> std::io::Error {
+        std::io::Error::new(ErrorKind::InvalidData, format!("string: \"{context}\" found in \"{key}\" was not `true`, `false`, `1`, or `0`."))
     }
 }
 
 impl IntoIoError for std::num::ParseIntError {
     #[inline]
-    fn into_io_error(self) -> std::io::Error {
-        std::io::Error::new(ErrorKind::InvalidData, self.to_string())
+    fn into_io_error(self, key: &str, context: &str) -> std::io::Error {
+        std::io::Error::new(ErrorKind::InvalidData, format!("string: \"{context}\" found in \"{key}\" was not within the valid `U32 range`."))
     }
 }
 
@@ -891,7 +893,7 @@ impl ModError for std::io::Error {
     fn add_msg(&mut self, msg: &str) {
         std::mem::swap(
             self,
-            &mut std::io::Error::new(self.kind(), format!("{self}\n{msg}")),
+            &mut std::io::Error::new(self.kind(), format!("{self} {msg}")),
         )
     }
 }
