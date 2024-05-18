@@ -243,7 +243,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     } else if game_verified {
                         if !mod_loader.installed() {
                             ui.display_msg(&format!("This tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease install files to \"{}\"\nand relaunch Elden Mod Loader GUI", get_or_update_game_dir(None).display()));
-                        } else if ini.mods_empty() {
+                        } else if ini.mods_is_empty() {
                             if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(ini)).await {
                                 ui.display_msg(&err.to_string());
                             }
@@ -448,7 +448,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         if mod_loader.installed() {
                             ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
                             let _ = receive_msg().await;
-                            if ini.mods_empty() {
+                            if ini.mods_is_empty() {
                                 if let Err(err) = confirm_scan_mods(ui.as_weak(), &try_path, Some(ini)).await {
                                     ui.display_msg(&err.to_string());
                                 };
@@ -1424,7 +1424,7 @@ async fn confirm_scan_mods(
     };
 
     let mut old_mods: Vec<RegMod>;
-    if !ini.mods_empty() {
+    if !ini.mods_is_empty() {
         ui.display_confirm("Warning: This action will reset current registered mods, are you sure you want to continue?", true);
         if receive_msg().await != Message::Confirm {
             return Ok(());

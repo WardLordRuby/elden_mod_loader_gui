@@ -1,8 +1,5 @@
 use ini::Ini;
-use std::{
-    io::ErrorKind,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use crate::{
     get_or_setup_cfg,
@@ -41,23 +38,22 @@ pub trait Config {
     /// returns a empty `Self`, avoid using `empty()` and use `default()` when possible  
     fn empty() -> Self;
 
+    /// returns `true` if no mods are registered  
+    fn mods_is_empty(&self) -> bool;
+
+    /// returns the number of mods registered  
+    fn mods_registered(&self) -> usize;
+
     /// writes the in-memory `self.data()` to the directory stored in `self.path()`
     fn write_to_file(&self) -> std::io::Result<()>;
 
     /// saves the computed default value (from key) to to file and appends an error message apon failure  
-    #[allow(unused_variables)]
-    #[allow(unused_mut)]
     fn save_default_val(
         &self,
         section: Option<&str>,
         key: &str,
-        mut in_err: std::io::Error,
-    ) -> std::io::Error {
-        std::io::Error::new(
-            ErrorKind::WriteZero,
-            "Please implement `save_default_val()` for your type",
-        )
-    }
+        in_err: std::io::Error,
+    ) -> std::io::Error;
 }
 
 #[derive(Debug)]
@@ -71,9 +67,8 @@ impl Config for Cfg {
     where
         Self: std::marker::Sized,
     {
-        let data = get_or_setup_cfg(ini_dir, &INI_SECTIONS)?;
         Ok(Cfg {
-            data,
+            data: get_or_setup_cfg(ini_dir, &INI_SECTIONS)?,
             dir: PathBuf::from(ini_dir),
         })
     }
@@ -124,6 +119,20 @@ impl Config for Cfg {
     }
 
     #[inline]
+    fn mods_is_empty(&self) -> bool {
+        self.data.section(INI_SECTIONS[2]).is_none()
+            || self.data.section(INI_SECTIONS[2]).unwrap().is_empty()
+    }
+
+    fn mods_registered(&self) -> usize {
+        if self.mods_is_empty() {
+            0
+        } else {
+            self.data.section(INI_SECTIONS[2]).unwrap().len()
+        }
+    }
+
+    #[inline]
     fn write_to_file(&self) -> std::io::Result<()> {
         self.data.write_to_file_opt(&self.dir, WRITE_OPTIONS)
     }
@@ -155,24 +164,6 @@ impl Cfg {
             Err(err) => Err(self.save_default_val(INI_SECTIONS[0], INI_KEYS[0], err)),
         }
     }
-
-    /// returns the number of registered mods currently saved in the ".ini"  
-    pub fn mods_registered(&self) -> usize {
-        if self.data.section(INI_SECTIONS[2]).is_none()
-            || self.data.section(INI_SECTIONS[2]).unwrap().is_empty()
-        {
-            0
-        } else {
-            self.data.section(INI_SECTIONS[2]).unwrap().len()
-        }
-    }
-
-    /// returns `true` if registered mods saved in the ".ini" is None  
-    #[inline]
-    pub fn mods_empty(&self) -> bool {
-        self.data.section(INI_SECTIONS[2]).is_none()
-            || self.data.section(INI_SECTIONS[2]).unwrap().is_empty()
-    }
 }
 
 #[derive(Debug)]
@@ -186,9 +177,8 @@ impl Config for ModLoaderCfg {
     where
         Self: std::marker::Sized,
     {
-        let data = get_or_setup_cfg(ini_dir, &LOADER_SECTIONS)?;
         Ok(ModLoaderCfg {
-            data,
+            data: get_or_setup_cfg(ini_dir, &LOADER_SECTIONS)?,
             dir: PathBuf::from(ini_dir),
         })
     }
@@ -235,6 +225,20 @@ impl Config for ModLoaderCfg {
         ModLoaderCfg {
             data: ini::Ini::new(),
             dir: PathBuf::new(),
+        }
+    }
+
+    #[inline]
+    fn mods_is_empty(&self) -> bool {
+        self.data.section(LOADER_SECTIONS[1]).is_none()
+            || self.data.section(LOADER_SECTIONS[1]).unwrap().is_empty()
+    }
+
+    fn mods_registered(&self) -> usize {
+        if self.mods_is_empty() {
+            0
+        } else {
+            self.data.section(LOADER_SECTIONS[1]).unwrap().len()
         }
     }
 
@@ -298,17 +302,5 @@ impl ModLoaderCfg {
     #[inline]
     pub fn iter(&self) -> ini::PropertyIter {
         self.section().iter()
-    }
-
-    /// returns `true` if section "loadorder" is empty  
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.section().is_empty()
-    }
-
-    /// get the number of the properties in section "loadorder"
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.section().len()
     }
 }
