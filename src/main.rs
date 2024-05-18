@@ -290,7 +290,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 return;
             }
             slint::spawn_local(async move {
-                let file_paths = match get_user_files(&game_dir, ui.as_weak()) {
+                let mut file_paths = match get_user_files(&game_dir, ui.as_weak()) {
                     Ok(files) => files,
                     Err(err) => {
                         info!("{err}");
@@ -303,9 +303,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     Err(err) => {
                         if file_paths.len() == err.err_paths_long.len() {
                             let ui_handle = ui.as_weak();
-                            match install_new_mod(&mod_name, err.err_paths_long, &game_dir, ui_handle).await {
+                            match install_new_mod(&mod_name, file_paths, &game_dir, ui_handle).await {
                                 Ok(installed_files) => {
-                                    match shorten_paths(&installed_files, &game_dir) {
+                                    file_paths = installed_files;
+                                    match shorten_paths(&file_paths, &game_dir) {
                                         Ok(installed_and_shortend) => installed_and_shortend,
                                         Err(err) => {
                                             let err_string = format!("New mod installed but ran into StripPrefixError on {:?}", err.err_paths_long);
@@ -348,12 +349,9 @@ fn main() -> Result<(), slint::PlatformError> {
                         ini.path(),
                         INI_SECTIONS[3],
                         &format_key,
-                        files[0].as_path(),
+                        files[0],
                     )),
-                    2.. => {
-                        let path_refs = files.iter().map(|p| p.as_path()).collect::<Vec<_>>();
-                        results.push(save_paths(ini.path(), INI_SECTIONS[3], &format_key, &path_refs))
-                    },
+                    2.. => results.push(save_paths(ini.path(), INI_SECTIONS[3], &format_key, &files)),
                 }
                 if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
                     ui.display_msg(&err.to_string());
@@ -362,7 +360,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     let _ =
                     remove_entry(ini.path(), INI_SECTIONS[2], &format_key);
                 }
-                let mut new_mod = RegMod::new(&format_key, state, files);
+                let mut new_mod = RegMod::new(&format_key, state, files.iter().map(PathBuf::from).collect());
                 
                 new_mod
                 .verify_state(&game_dir, ini.path())
@@ -544,7 +542,7 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             slint::spawn_local(async move {
                 let format_key = key.replace(' ', "_");
-                let file_paths = match get_user_files(&game_dir, ui.as_weak()) {
+                let mut file_paths = match get_user_files(&game_dir, ui.as_weak()) {
                     Ok(paths) => paths,
                     Err(err) => {
                         error!("{err}");
@@ -561,9 +559,10 @@ fn main() -> Result<(), slint::PlatformError> {
                         Err(err) => {
                             if file_paths.len() == err.err_paths_long.len() {
                                 let ui_handle = ui.as_weak();
-                                match install_new_files_to_mod(found_mod, err.err_paths_long, &game_dir, ui_handle).await {
+                                match install_new_files_to_mod(found_mod, file_paths, &game_dir, ui_handle).await {
                                     Ok(installed_files) => {
-                                        match shorten_paths(&installed_files, &game_dir) {
+                                        file_paths = installed_files;
+                                        match shorten_paths(&file_paths, &game_dir) {
                                             Ok(installed_and_shortend) => installed_and_shortend,
                                             Err(err) => {
                                                 let err_string = format!("Files installed but ran into StripPrefixError on {:?}", err.err_paths_long);
@@ -594,7 +593,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     } else {
                         let num_files = files.len();
                         let mut new_data = found_mod.files.dll.clone();
-                        new_data.extend(files);
+                        new_data.extend(files.iter().map(PathBuf::from));
                         let mut results = Vec::with_capacity(3);
                         let new_data_refs = found_mod.files.add_other_files_to_files(&new_data);
                         if found_mod.files.len() == 1 {
@@ -1367,7 +1366,7 @@ async fn confirm_install(
     parents.iter().try_for_each(std::fs::create_dir_all)?;
     zip.iter().try_for_each(|(from_path, to_path)| std::fs::copy(from_path, to_path).map(|_| ()))?;
     ui.display_msg(&format!("Successfully Installed mod \"{}\"", &install_files.name));
-    Ok(zip.iter().map(|(_, to_path)| to_path.to_path_buf()).collect::<Vec<_>>())
+    Ok(zip.iter().map(|(_, to_path)| to_path.to_path_buf()).collect())
 }
 
 async fn confirm_remove_mod(

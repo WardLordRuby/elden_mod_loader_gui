@@ -1,9 +1,9 @@
-use log::trace;
 use std::{
     collections::HashSet,
     io::ErrorKind,
     path::{Path, PathBuf},
 };
+use tracing::trace;
 
 use crate::{
     does_dir_contain, file_name_or_err, new_io_error, parent_or_err,
@@ -142,9 +142,9 @@ fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
     new_io_error!(ErrorKind::InvalidData, "No dir in the selected directory")
 }
 
-fn parent_dir_from_vec(in_files: &[PathBuf]) -> std::io::Result<PathBuf> {
-    match in_files.iter().min_by_key(|path| path.ancestors().count()) {
-        Some(path) => get_parent_dir(path),
+fn parent_dir_from_vec<P: AsRef<Path>>(in_files: &[P]) -> std::io::Result<PathBuf> {
+    match in_files.iter().min_by_key(|path| path.as_ref().ancestors().count()) {
+        Some(path) => get_parent_dir(path.as_ref()),
         None => new_io_error!(ErrorKind::Other, "Failed to create a parent_dir"),
     }
 }
@@ -555,7 +555,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
             continue;
         };
         if let Some(dir) = dirs.iter().find(|d| d.file_name().expect("is dir") == file_data.name) {
-            let mut data = InstallData::new(file_data.name, vec![file.clone()], game_dir)?;
+            let mut data = InstallData::new(file_data.name, vec![file.to_owned()], game_dir)?;
             data.import_files_from_dir(dir, &DisplayItems::None)?;
             file_sets.push(RegMod::new(
                 &data.name,

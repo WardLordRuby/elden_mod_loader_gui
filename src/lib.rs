@@ -68,12 +68,12 @@ macro_rules! new_io_error {
     };
 }
 
-pub struct PathErrors {
-    pub ok_paths_short: Vec<PathBuf>,
-    pub err_paths_long: Vec<PathBuf>,
+pub struct PathErrors<'a> {
+    pub ok_paths_short: Vec<&'a Path>,
+    pub err_paths_long: Vec<&'a Path>,
 }
 
-impl PathErrors {
+impl PathErrors<'_> {
     fn new(size: usize) -> Self {
         PathErrors {
             ok_paths_short: Vec::with_capacity(size),
@@ -82,19 +82,31 @@ impl PathErrors {
     }
 }
 
-pub fn shorten_paths(paths: &[PathBuf], remove: &PathBuf) -> Result<Vec<PathBuf>, PathErrors> {
+/// returns `Ok(Vec<Path>)` if the remove path is a valid prefix of all input paths  
+/// if not returns `Err(PathErrors)` that contains:
+/// - `PathErrors.ok_paths_short` - sucessful strip_prefix() calls  
+/// - `PathErrors.err_paths_long` - paths that remove path was not valid prefix  
+#[instrument(level = "trace", skip_all)]
+pub fn shorten_paths<'a, P: AsRef<Path>>(
+    paths: &'a [P],
+    remove: &P,
+) -> Result<Vec<&'a Path>, PathErrors<'a>> {
     let mut results = PathErrors::new(paths.len());
-    paths.iter().for_each(|path| match path.strip_prefix(remove) {
-        Ok(file) => {
-            results.ok_paths_short.push(PathBuf::from(file));
-        }
-        Err(_) => {
-            results.err_paths_long.push(PathBuf::from(path));
-        }
-    });
+    paths
+        .iter()
+        .for_each(|path| match path.as_ref().strip_prefix(remove) {
+            Ok(shortened_path) => results.ok_paths_short.push(shortened_path),
+            Err(_) => results.err_paths_long.push(path.as_ref()),
+        });
     if results.err_paths_long.is_empty() {
+        trace!("successfuly shortened all paths");
         Ok(results.ok_paths_short)
     } else {
+        trace!(
+            "unable to remove prefix on {} of {} paths",
+            results.err_paths_long.len(),
+            paths.len()
+        );
         Err(results)
     }
 }
