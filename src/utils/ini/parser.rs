@@ -1,5 +1,5 @@
 use ini::{Ini, Properties};
-use log::{error, warn};
+use tracing::{error, instrument, trace, warn};
 use std::{
     collections::HashMap,
     io::ErrorKind,
@@ -187,6 +187,7 @@ impl<T: AsRef<Path>> ValitidityMany for [T] {
     }
 }
 
+#[instrument(level = "trace", skip_all)]
 fn validate_file(path: &Path) -> std::io::Result<()> {
     if path.extension().is_none() {
         let input_file = path.to_string_lossy().to_string();
@@ -199,12 +200,17 @@ fn validate_file(path: &Path) -> std::io::Result<()> {
             )
         );
     }
+    trace!(file = ?path.file_name().unwrap(), "has extension");
     validate_existance(path)
 }
 
+#[instrument(level = "trace", skip_all)]
 fn validate_existance(path: &Path) -> std::io::Result<()> {
     match path.try_exists() {
-        Ok(true) => Ok(()),
+        Ok(true) => {
+            trace!(file = ?path.file_name().unwrap(), "exists on disk");
+            Ok(())
+        },
         Ok(false) => {
             new_io_error!(
                 ErrorKind::NotFound,
@@ -233,6 +239,7 @@ impl<T: AsRef<Path>> Setup for T {
     /// - **File::open** does not return an error  
     ///  
     /// it is safe to call unwrap on `get_cfg(self)` if this returns `Ok`
+    #[instrument(skip(self))]
     fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<ini::Ini> {
         let file_data = self.as_ref().to_string_lossy();
         let file_data = FileData::from(&file_data);
@@ -245,6 +252,7 @@ impl<T: AsRef<Path>> Setup for T {
                 .map(|s| s.unwrap())
                 .collect::<Vec<_>>();
             if not_found.is_empty() {
+                trace!("Ini found with all sections");
                 Ok(ini)
             } else {
                 new_io_error!(

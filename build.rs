@@ -1,4 +1,4 @@
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 extern crate winresource;
 
 /// `MAJOR << 48 | MINOR << 32 | PATCH << 16 | RELEASE`

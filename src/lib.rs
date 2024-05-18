@@ -9,7 +9,7 @@ pub mod utils {
 }
 
 use ini::Ini;
-use log::{info, trace, warn};
+use tracing::{info, instrument, trace, warn};
 use utils::ini::{
     common::{Cfg, Config},
     parser::{IniProperty, IntoIoError, RegMod, Setup},
@@ -135,7 +135,9 @@ pub fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf
         .collect()
 }
 
-/// returns all the modified _partial_paths_
+/// toggle the state of the files saved in `reg_mod.files.dll`  
+/// this function updates the reg_mod's modified files and state  
+#[instrument(skip(game_dir, reg_mod, save_file), fields(name = reg_mod.name, mod_state = reg_mod.state))]
 pub fn toggle_files(
     game_dir: &Path,
     new_state: bool,
@@ -159,6 +161,10 @@ pub fn toggle_files(
 
         paths.iter().zip(new_paths.iter()).try_for_each(|(path, new_path)| {
             std::fs::rename(path, new_path)?;
+            trace!(
+                old = ?path.file_name().unwrap(),
+                new = ?new_path.file_name().unwrap(), "Rename success"
+            );
             Ok(())
         })
     }
@@ -182,6 +188,7 @@ pub fn toggle_files(
 
     reg_mod.files.dll = short_path_new;
     reg_mod.state = new_state;
+    info!("reg_mod state updated");
     if let Some(file) = save_file {
         reg_mod.write_to_file(file, is_array)?
     }
@@ -189,22 +196,23 @@ pub fn toggle_files(
 }
 
 /// if cfg file does not exist or is not set up with provided sections this function will  
-/// create a new ".ini" file in the given path
+/// create a new ".ini" file in the given path  
+#[instrument(skip_all, fields(cfg_dir = %from_path.display()))]
 pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io::Result<Ini> {
     match from_path.is_setup(sections) {
-        Ok(ini) => {
-            trace!("{:?} found, and is already setup", from_path.file_name());
-            return Ok(ini);
-        }
-        Err(err) => warn!("{err}, creating new"),
+        Ok(ini) => return Ok(ini),
+        Err(err) => warn!(%err, "creating new"),
     }
     new_cfg(from_path)
 }
 
 /// returns ini read into memory, only call this if you know ini exists  
 /// if you are not sure call `get_or_setup_cfg()` or `check &path.is_setup()`  
+#[instrument(level = "trace", skip_all)]
 pub fn get_cfg(from_path: &Path) -> std::io::Result<Ini> {
-    Ini::load_from_file_noescape(from_path).map_err(|err| err.into_io_error())
+    let ini = Ini::load_from_file_noescape(from_path).map_err(|err| err.into_io_error("", ""))?;
+    trace!(file = ?from_path.file_name().unwrap(), "loaded from file");
+    Ok(ini)
 }
 
 pub enum Operation {
@@ -221,6 +229,7 @@ pub enum OperationResult<'a, T: ?Sized> {
 /// `Operation::All` and `Operation::Any` map to `OperationResult::bool(_result_)`  
 /// `Operation::Count` maps to `OperationResult::Count((_num_found_, _HashSet<_&input_list_>))`  
 /// when matching you will always have to `_ => unreachable()` for the return type you will never get
+#[instrument(level = "trace", skip_all)]
 pub fn does_dir_contain<'a, T>(
     path: &Path,
     operation: Operation,
@@ -237,19 +246,25 @@ where
     let str_names = file_names.iter().filter_map(|f| f.to_str()).collect::<HashSet<_>>();
 
     match operation {
-        Operation::All => Ok(OperationResult::Bool(
-            list.iter().all(|&check_file| str_names.contains(check_file)),
-        )),
-        Operation::Any => Ok(OperationResult::Bool(
-            list.iter().any(|&check_file| str_names.contains(check_file)),
-        )),
+        Operation::All => Ok(OperationResult::Bool({
+            let result = list.iter().all(|&check_file| str_names.contains(check_file));
+            trace!(result, "all files found");
+            result
+        })),
+        Operation::Any => Ok(OperationResult::Bool({
+            let result = list.iter().any(|&check_file| str_names.contains(check_file));
+            trace!(result, "any file found");
+            result
+        })),
         Operation::Count => {
             let collection = list
                 .iter()
                 .filter(|&check_file| str_names.contains(check_file))
                 .copied()
                 .collect::<HashSet<_>>();
-            Ok(OperationResult::Count((collection.len(), collection)))
+            let num_found = collection.len();
+            trace!(num_found, "files found");
+            Ok(OperationResult::Count((num_found, collection)))
         }
     }
 }
@@ -280,6 +295,7 @@ pub struct FileData<'a> {
 impl FileData<'_> {
     /// To get an accurate FileData.name function input needs .file_name() called before hand  
     /// FileData.extension && FileData.enabled are accurate with any &Path str as input
+    #[instrument(level = "trace", skip_all)]
     pub fn from(name: &str) -> FileData {
         match FileData::state_data(name) {
             (false, index) => {
@@ -306,6 +322,7 @@ impl FileData<'_> {
 
     /// removes the off_state if the file name is in the off_state  
     /// to get an accurate FileData.name function input needs .file_name() called before hand  
+    #[instrument(level = "trace", skip_all)]
     pub fn name_omit_off_state(name: &str) -> &str {
         let (file_state, index) = FileData::state_data(name);
         if file_state {
@@ -318,23 +335,28 @@ impl FileData<'_> {
     #[inline]
     /// index is only used in the _disabled_ state to locate where `OFF_STATE` begins  
     /// saftey check to make sure `OFF_STATE` is found at the end of a `&str`
+    #[instrument(level = "trace")]
     pub fn state_data(path: &str) -> (bool, usize) {
         if let Some(index) = path.find(OFF_STATE) {
-            (
-                index != path.chars().count() - OFF_STATE.chars().count(),
-                index,
-            )
+            let state = index != path.chars().count() - OFF_STATE.chars().count();
+            trace!(correct_pos = !state, "{OFF_STATE} found");
+            (state, index)
         } else {
+            trace!("file not disabled");
             (true, 0)
         }
     }
 
     #[inline]
+    /// returns `true` if the file is in the enabled state  
+    #[instrument(level = "trace", skip_all)]
     pub fn is_enabled<T: AsRef<Path>>(path: &T) -> bool {
         FileData::state_data(&path.as_ref().to_string_lossy()).0
     }
 
     #[inline]
+    /// returns `true` if the file is in the disabled state  
+    #[instrument(level = "trace", skip_all)]
     pub fn is_disabled<T: AsRef<Path>>(path: &T) -> bool {
         !FileData::state_data(&path.as_ref().to_string_lossy()).0
     }
@@ -362,6 +384,10 @@ pub enum PathResult {
 }
 
 impl Cfg {
+    /// returns various levels of a Path: "game_dir"  
+    /// first tries to validate the path saved in the .ini if that fails then tries to located the "game_dir" on disk  
+    /// if that fails will return a `PathResult::Partial` that is known to exist if not returns `PathResult::None` that contains just the found drive
+    #[instrument(skip_all)]
     pub fn attempt_locate_game(&mut self) -> std::io::Result<PathResult> {
         if let Ok(path) =
             IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[1], false)
@@ -393,10 +419,11 @@ impl Cfg {
     }
 }
 
+#[instrument(level = "trace", skip_all)]
 fn attempt_locate_dir(target_path: &[&str]) -> std::io::Result<PathBuf> {
     let drive = get_current_drive()?;
 
-    trace!("Drive Found: {:?}", &drive);
+    trace!(?drive, "Drive Found");
 
     match test_path_buf(PathBuf::from(&drive), target_path) {
         Ok(path) => Ok(path),
@@ -410,10 +437,11 @@ fn attempt_locate_dir(target_path: &[&str]) -> std::io::Result<PathBuf> {
     }
 }
 
+#[instrument(level = "trace", skip_all)]
 fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> std::io::Result<PathBuf> {
     for (index, dir) in target_path.iter().enumerate() {
         path.push(dir);
-        trace!("Testing Path: {}", &path.display());
+        trace!(path = %path.display(), "Testing");
         if !path.exists() && index > 1 {
             path.pop();
             break;

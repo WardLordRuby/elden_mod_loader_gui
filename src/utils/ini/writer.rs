@@ -1,4 +1,5 @@
 use ini::{EscapePolicy, Ini, LineSeparator, WriteOption};
+use tracing::{instrument, trace};
 
 use std::{
     fs::{self, read_to_string, write, File},
@@ -24,16 +25,16 @@ pub const EXT_OPTIONS: WriteOption = WriteOption {
     kv_separator: " = ",
 };
 
-pub fn save_paths(
+pub fn save_paths<P: AsRef<Path>>(
     file_path: &Path,
     section: Option<&str>,
     key: &str,
-    files: &[&Path],
+    files: &[P],
 ) -> std::io::Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
     let save_paths = files
         .iter()
-        .map(|path| path.to_string_lossy())
+        .map(|path| path.as_ref().to_string_lossy())
         .collect::<Vec<_>>()
         .join(&format!("\r\n{ARRAY_KEY}="));
     config
@@ -77,12 +78,14 @@ pub fn save_value_ext(
     config.write_to_file_opt(file_path, EXT_OPTIONS)
 }
 
+#[instrument(level = "trace", skip_all)]
 pub fn new_cfg(path: &Path) -> std::io::Result<Ini> {
     let file_name = file_name_or_err(path)?;
     let parent = parent_or_err(path)?;
 
     fs::create_dir_all(parent)?;
     let mut new_ini = File::create(path)?;
+    trace!(?file_name, "created on disk");
 
     if file_name == LOADER_FILES[2] {
         for (i, section) in LOADER_SECTIONS.iter().enumerate() {
@@ -101,6 +104,7 @@ pub fn new_cfg(path: &Path) -> std::io::Result<Ini> {
             }
         }
     }
+    trace!("default sections wrote to file");
     get_cfg(path)
 }
 

@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 // Setting windows_subsystem will hide console | cant read logs if console is hidden
-// #![windows_subsystem = "windows"]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use elden_mod_loader_gui::{
     utils::{
@@ -15,8 +15,9 @@ use elden_mod_loader_gui::{
     *,
 };
 use i_slint_backend_winit::WinitWindowAccessor;
-use log::{error, info, warn};
+use tracing::{error, info, warn};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, VecModel};
+use tracing_subscriber::{fmt, filter, layer::SubscriberExt, util::SubscriberInitExt};
 use std::{
     collections::{HashMap, HashSet}, ffi::OsStr, io::ErrorKind, path::{Path, PathBuf}, rc::Rc, sync::{
         atomic::{AtomicU32, Ordering},
@@ -35,8 +36,13 @@ static RESTRICTED_FILES: OnceLock<[&'static OsStr; 6]> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
 
 fn main() -> Result<(), slint::PlatformError> {
-    env_logger::init();
-    
+    if cfg!(debug_assertions) {
+        tracing_subscriber::registry()
+            .with(fmt::layer().with_target(false).pretty())
+            .with(filter::EnvFilter::from_default_env())
+            .init();
+    }
+
     slint::platform::set_platform(Box::new(
         i_slint_backend_winit::Backend::new().expect("This app is being run on windows"),
     ))

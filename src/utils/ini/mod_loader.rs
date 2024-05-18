@@ -1,4 +1,4 @@
-use log::{trace, warn};
+use tracing::{trace, warn};
 use std::{
     collections::{HashMap, HashSet},
     io::ErrorKind,
