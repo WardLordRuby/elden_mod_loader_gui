@@ -811,12 +811,17 @@ fn main() -> Result<(), slint::PlatformError> {
         move |state| -> bool {
             let ui = ui_handle.unwrap();
             let game_dir = get_or_update_game_dir(None);
-            let files = if state {
-                vec![PathBuf::from(LOADER_FILES[1])]
-            } else {
+            let loader = ModLoader::properties(&game_dir).unwrap_or_else(|err| {
+                ui.display_msg(&err.to_string());
+                error!(%err);
+                ModLoader::new(!state)
+            });
+            let files = if loader.disabled() {
                 vec![PathBuf::from(LOADER_FILES[0])]
+            } else {
+                vec![PathBuf::from(LOADER_FILES[1])]
             };
-            let mut main_dll = RegMod::new("main", !state, files);
+            let mut main_dll = RegMod::new(LOADER_FILES[1], !loader.disabled(), files);
             match toggle_files(&game_dir, !state, &mut main_dll, None) {
                 Ok(_) => state,
                 Err(err) => {
