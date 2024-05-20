@@ -168,21 +168,23 @@ pub fn toggle_files(
             Ok(())
         })
     }
+    if reg_mod.state == new_state
+        && reg_mod
+            .files
+            .dll
+            .iter()
+            .all(|f| FileData::state_data(&f.to_string_lossy()).0 == new_state)
+    {
+        trace!("Mod is already in the desired state");
+        return Ok(());
+    }
+
     let num_rename_files = reg_mod.files.dll.len();
     let is_array = reg_mod.files.len() > 1;
 
-    let file_paths = std::sync::Arc::new(reg_mod.files.dll.clone());
-    let file_paths_clone = file_paths.clone();
-    let game_dir_clone = game_dir.to_path_buf();
-
-    let new_short_paths_thread =
-        std::thread::spawn(move || toggle_name_state(&file_paths, new_state));
-    let original_full_paths_thread =
-        std::thread::spawn(move || join_paths(&game_dir_clone, &file_paths_clone));
-
-    let short_path_new = new_short_paths_thread.join().unwrap_or(Vec::new());
+    let short_path_new = toggle_name_state(&reg_mod.files.dll, new_state);
     let full_path_new = join_paths(game_dir, &short_path_new);
-    let full_path_original = original_full_paths_thread.join().unwrap_or(Vec::new());
+    let full_path_original = join_paths(game_dir, &reg_mod.files.dll);
 
     rename_files(&num_rename_files, &full_path_original, &full_path_new)?;
 

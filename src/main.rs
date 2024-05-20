@@ -487,6 +487,9 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             let game_dir = get_or_update_game_dir(None);
             let format_key = key.replace(' ', "_");
+            // MARK: OPTIMIZE
+            // we need a way to only collect the mod we are after
+            // we have the key already so it is very inefficent to collect all and search threw throw away data
             let mut reg_mods = {
                 let data = ini.collect_mods(game_dir.as_path(), None, false);
                 if let Some(warning) = data.warnings {
@@ -1439,10 +1442,10 @@ async fn confirm_scan_mods(
     } else {
         old_mods = Vec::new();
     }
-    let new_ini: Cfg;
+    let new_mods: CollectedMods;
     match scan_for_mods(game_dir, ini.path()) {
         Ok(len) => {
-            new_ini = match Cfg::read(ini.path()) {
+            let new_ini = match Cfg::read(ini.path()) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     ui.display_msg(&err.to_string());
@@ -1452,25 +1455,23 @@ async fn confirm_scan_mods(
             ui.global::<MainLogic>().set_current_subpage(0);
             let mod_loader = ModLoader::properties(game_dir).unwrap_or_default();
             let order_data = order_data_or_default(ui.as_weak(), Some(mod_loader.path()));
+            new_mods = new_ini.collect_mods(game_dir, Some(&order_data), false);
             deserialize_current_mods(
-                &new_ini.collect_mods(game_dir, Some(&order_data), false),ui.as_weak()
+                &new_mods,ui.as_weak()
             );
             ui.display_msg(&format!("Successfully Found {len} mod(s)"));
         }
         Err(err) => {
             ui.display_msg(&format!("Error: {err}"));
-            new_ini = Cfg::default(ini.path());
+            new_mods = CollectedMods { mods: Vec::new(), warnings: None };
         },
     };
+    if let Some(warning) = new_mods.warnings {
+        warn!(%warning);
+        ui.display_msg(&warning.to_string());
+    }
     if !old_mods.is_empty() {
-        let new_mods = {
-            let data = new_ini.collect_mods(game_dir, None, false);
-            if let Some(warning) = data.warnings {
-                ui.display_msg(&warning.to_string());
-            }
-            data.mods
-        };
-        let all_new_files = new_mods.iter().flat_map(|m| m.files.file_refs()).collect::<HashSet<_>>();
+        let all_new_files = new_mods.mods.iter().flat_map(|m| m.files.file_refs()).collect::<HashSet<_>>();
         old_mods.retain(|m| m.files.dll.iter().any(|f| !all_new_files.contains(f.as_path())));
         if old_mods.is_empty() { return Ok(()) }
 
