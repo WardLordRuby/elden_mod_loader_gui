@@ -3,13 +3,15 @@ use tracing::{error, instrument, trace, warn};
 use std::{
     collections::HashMap,
     io::ErrorKind,
-    path::{Path, PathBuf},
+    path::{Path, PathBuf}, str::ParseBoolError,
 };
 
 use crate::{
-    files_not_found, get_cfg, new_io_error, toggle_files, toggle_name_state,
-    utils::ini::{common::Config, writer::{remove_array, remove_entry, save_bool, save_path, save_paths}},
-    Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, OFF_STATE, REQUIRED_GAME_FILES,
+    files_not_found, get_cfg, new_io_error, omit_off_state, toggle_files, toggle_name_state, 
+    utils::ini::{
+        common::Config, 
+        writer::{remove_array, remove_entry, save_bool, save_path, save_paths}
+    }, Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES
 };
 
 pub trait Parsable: Sized {
@@ -237,7 +239,7 @@ impl<T: AsRef<Path>> Setup for T {
     /// - **File::open** does not return an error  
     ///  
     /// it is safe to call unwrap on `get_cfg(self)` if this returns `Ok`
-    #[instrument(skip(self))]
+    #[instrument(name = "ini_is_setup", skip(self))]
     fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<ini::Ini> {
         let file_data = self.as_ref().to_string_lossy();
         let file_data = FileData::from(&file_data);
@@ -414,7 +416,7 @@ impl LoadOrder {
             .iter()
             .map(|f| {
                 let file_name = f.file_name();
-                Some(file_name?.to_string_lossy().replace(OFF_STATE, ""))
+                Some(String::from(omit_off_state(&file_name?.to_string_lossy())))
             })
             .collect::<Option<Vec<_>>>()
         {
@@ -458,10 +460,12 @@ impl SplitFiles {
         path_refs
     }
 
+    /// returns references to files in `self.dll`
     pub fn dll_refs(&self) -> Vec<&Path> {
         self.dll.iter().map(|f| f.as_path()).collect()
     }
 
+    /// returns references to files in `self.config` and `self.other`
     pub fn other_file_refs(&self) -> Vec<&Path> {
         let mut path_refs = Vec::with_capacity(self.other_files_len());
         path_refs.extend(self.config.iter().map(|f| f.as_path()));
@@ -478,6 +482,7 @@ impl SplitFiles {
         path_refs
     }
 
+    /// removes and returns entry using `swap_remove`
     fn remove(&mut self, path: &Path) -> Option<PathBuf> {
         let file_data = path.to_string_lossy();
         let file_data = FileData::from(&file_data);
@@ -540,15 +545,22 @@ impl RegMod {
         }
     }
 
-    fn from_split_files(name: &str, state: bool, in_files: SplitFiles, order: LoadOrder) -> Self {
+    /// manual constructor for RegMod, note does not convert name to _snake_case_
+    fn from_split_files(name: &str, state: bool, files: SplitFiles, order: LoadOrder) -> Self {
         RegMod {
             name: String::from(name),
             state,
-            files: in_files,
+            files,
             order,
         }
     }
 
+    /// verifies that files exist and recovers from the case where the file paths are saved in the  
+    /// incorect state compaired to the name of the files currently saved on disk  
+    /// 
+    /// then verifies that the saved state matches the state of the files  
+    /// if not correct, runs toggle files to put them in the correct state  
+    #[instrument(level = "trace", skip_all)]
     pub fn verify_state(&mut self, game_dir: &Path, ini_path: &Path) -> std::io::Result<()> {
         fn count_try_verify_ouput(paths: &[PathBuf], game_dir: &Path) -> (usize, usize, usize) {
             let (mut exists, mut no_exist, mut errors) = (0_usize, 0_usize, 0_usize);
@@ -571,6 +583,7 @@ impl RegMod {
                 self.state = alt_file_state;
                 self.files.dll = test_alt_state;
                 self.write_to_file(ini_path, is_array)?;
+                trace!(new_fnames = ?self.files.dll, "recovered from Error: file names saved in the incorrect state")
             } else {
                 return new_io_error!(
                     ErrorKind::NotFound,
@@ -596,11 +609,15 @@ impl RegMod {
                 "wrong file state for \"{}\" chaning file extentions",
                 self.name
             );
-            toggle_files(game_dir, self.state, self, Some(ini_path))?
+            return toggle_files(game_dir, self.state, self, Some(ini_path))
         }
+        trace!(fnames = ?self.files.dll, state = self.state, "verified");
         Ok(())
     }
 
+    /// saves `self.state` and all `self.files` to file  
+    /// it is important to keep track of the length of `self.files.file_refs()` before  
+    /// making modifications to `self.files` to insure that the .ini file remains valid  
     pub fn write_to_file(&self, ini_path: &Path, was_array: bool) -> std::io::Result<()> {
         save_bool(ini_path, INI_SECTIONS[2], &self.name, self.state)?;
         let is_array = self.files.len() > 1;
@@ -646,6 +663,15 @@ pub struct CollectedMods {
 }
 
 impl Cfg {
+    /// returns only valid mod data, if data was found to be invalid a message  
+    /// is given to inform the user of why a mod was not included  
+    /// 
+    /// validateds data in the following ways:
+    /// - ensures data has both files and state associated with the same name  
+    /// - `self.files.dll` are valid to exist on disk check `self.verify_state()` for how it can recover  
+    /// - `self.files.other_file_refs()` are valid to exist on disk  
+    ///   - if they are not files are removed and user can re-add them  
+    #[instrument(skip(self, game_dir, include_load_order))]
     pub fn collect_mods<P: AsRef<Path>>(
         &self,
         game_dir: P,
@@ -655,6 +681,7 @@ impl Cfg {
         type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
         type ModData<'a> = Vec<(&'a str, bool, SplitFiles, LoadOrder)>;
 
+        #[instrument(skip_all)]
         fn sync_keys<'a>(ini: &'a Ini, ini_path: &Path) -> CollectedMaps<'a> {
             fn collect_paths(section: &Properties) -> HashMap<&str, Vec<&str>> {
                 section
@@ -691,7 +718,7 @@ impl Cfg {
                 state_data.remove(key);
                 remove_entry(ini_path, INI_SECTIONS[2], key)
                     .expect("Key is valid & ini has already been read");
-                warn!("\"{key}\" has no matching files");
+                warn!(key, "has no matching files");
             }
 
             let invalid_files = file_data
@@ -708,13 +735,14 @@ impl Cfg {
                         .expect("Key is valid & ini has already been read");
                 }
                 file_data.remove(key);
-                warn!("\"{key}\" has no matching state");
+                warn!(key, "has no matching state");
             }
 
             assert_eq!(state_data.len(), file_data.len());
             (state_data, file_data)
         }
 
+        #[instrument(level = "trace", skip_all)]
         fn combine_map_data(
             map_data: CollectedMaps,
             parsed_order_val: Option<&HashMap<String, usize>>,
@@ -758,7 +786,7 @@ impl Cfg {
                     .filter_map(|d| {
                         let mut curr = RegMod::from_split_files(d.0, d.1, d.2, d.3);
                         if let Err(err) = curr.verify_state(game_dir, ini_dir) {
-                            error!("{err}");
+                            error!(%err);
                             warnings.push(err);
                             if let Err(err) = remove_entry(ini_dir, INI_SECTIONS[2], &curr.name) {
                                 error!(%err);
@@ -776,11 +804,11 @@ impl Cfg {
                                         "File: {file:?} was removed, and is no longer associated with: {}",
                                         curr.name
                                     ));
-                                    warn!("{}", err.errors[i]);
+                                    warn!(warning = %err.errors[i]);
                                     warnings.push(err.errors.pop().expect("valid range"))
                                 } else {
                                     let err = err.errors.merge();
-                                    error!("Error: {err}");
+                                    error!(%err);
                                     warnings.push(err);
                                     if let Err(err) = remove_entry(ini_dir, INI_SECTIONS[2], &curr.name) {
                                         error!(%err);
@@ -792,7 +820,7 @@ impl Cfg {
                             }
                             if can_continue {
                                 if let Err(err) = curr.write_to_file(ini_dir, is_array) {
-                                    error!("{err}");
+                                    error!(%err);
                                     None
                                 } else { Some(curr) }
                             } else { None }
@@ -846,17 +874,19 @@ impl Cfg {
             }
         } else {
             let parsed_data = sync_keys(self.data(), self.path());
-            // parse_section is non critical write error | read_section is also non critical write error
-            combine_map_data(
+            let collected_mods = combine_map_data(
                 parsed_data,
                 include_load_order,
                 game_dir.as_ref(),
                 self.path(),
-            )
+            );
+            trace!("collected {} mods", collected_mods.mods.len());
+            collected_mods
         }
     }
 }
 
+/// checks if any passed in file is contained in any `RegMod` 
 pub fn file_registered<P: AsRef<Path>>(mod_data: &[RegMod], files: &[P]) -> bool {
     files.iter().any(|path| {
         mod_data.iter().any(|registered_mod| {
@@ -874,6 +904,7 @@ pub trait IntoIoError {
 }
 
 impl IntoIoError for ini::Error {
+    /// converts `ini::Error` into `io::Error` key and context are not used  
     fn into_io_error(self, _key: &str, _context: &str) -> std::io::Error {
         match self {
             ini::Error::Io(err) => err,
@@ -883,6 +914,7 @@ impl IntoIoError for ini::Error {
 }
 
 impl IntoIoError for std::str::ParseBoolError {
+    /// converts `ParseBoolError` into `io::Error` key and context add context to err msg
     #[inline]
     fn into_io_error(self, key: &str, context: &str) -> std::io::Error {
         std::io::Error::new(ErrorKind::InvalidData, format!("string: \"{context}\" found in \"{key}\" was not `true`, `false`, `1`, or `0`."))
@@ -890,6 +922,7 @@ impl IntoIoError for std::str::ParseBoolError {
 }
 
 impl IntoIoError for std::num::ParseIntError {
+    /// converts `ParseIntError` into `io::Error` key and context add context to err msg
     #[inline]
     fn into_io_error(self, key: &str, context: &str) -> std::io::Error {
         std::io::Error::new(ErrorKind::InvalidData, format!("string: \"{context}\" found in \"{key}\" was not within the valid `U32 range`."))
@@ -897,6 +930,7 @@ impl IntoIoError for std::num::ParseIntError {
 }
 
 pub trait ModError {
+    /// replaces self with `self` + `msg`
     fn add_msg(&mut self, msg: &str);
 }
 
@@ -911,6 +945,7 @@ impl ModError for std::io::Error {
 }
 
 pub trait ErrorClone {
+    /// clones a immutable reference to an `Error` to a owned `io::Error`
     fn clone_err(&self) -> std::io::Error;
 }
 
@@ -922,9 +957,10 @@ impl ErrorClone for std::io::Error {
 }
 
 trait Merge {
+    /// joins all `io::Error`'s in a collection while leaving the collection intact
     fn merge(&self) -> std::io::Error;
 }
-impl Merge for Vec<std::io::Error> {
+impl Merge for [std::io::Error] {
     fn merge(&self) -> std::io::Error {
         if self.is_empty() {
             return std::io::Error::new(ErrorKind::InvalidInput, "Tried to merge 0 errors");

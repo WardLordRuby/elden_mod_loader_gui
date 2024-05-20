@@ -1,4 +1,4 @@
-use tracing::{trace, warn};
+use tracing::{trace, warn, instrument, info};
 use std::{
     collections::{HashMap, HashSet},
     io::ErrorKind,
@@ -6,11 +6,11 @@ use std::{
 };
 
 use crate::{
-    does_dir_contain, new_io_error, utils::ini::{
+    does_dir_contain, omit_off_state, new_io_error, utils::ini::{
         parser::RegMod,
         writer::new_cfg,
         common::{ModLoaderCfg, Config},
-    }, Operation, OperationResult, LOADER_FILES, FileData
+    }, Operation, OperationResult, LOADER_FILES,
 };
 
 #[derive(Debug, Default)]
@@ -21,16 +21,19 @@ pub struct ModLoader {
 }
 
 impl ModLoader {
+    /// returns struct `ModLoader` that contains properties about the current installation of  
+    /// the _elden_mod_loader_ dll hook by TechieW
+    /// 
+    /// can only error if it finds loader hook installed && "elden_mod_loader_config.ini" is not found so it fails on writing a new one to disk
+    #[instrument(name = "mod_loader_properties", skip_all)]
     pub fn properties(game_dir: &Path) -> std::io::Result<ModLoader> {
         let mut cfg_dir = game_dir.join(LOADER_FILES[2]);
         let mut properties = ModLoader::default();
         match does_dir_contain(game_dir, Operation::Count, &LOADER_FILES) {
             Ok(OperationResult::Count((_, files))) => {
                 if files.contains(LOADER_FILES[1]) && !files.contains(LOADER_FILES[0]) {
-                    trace!("Mod loader found in the Enabled state");
                     properties.installed = true;
                 } else if files.contains(LOADER_FILES[0]) && !files.contains(LOADER_FILES[1]) {
-                    trace!("Mod loader found in the Disabled state");
                     properties.installed = true;
                     properties.disabled = true;
                 }
@@ -42,14 +45,21 @@ impl ModLoader {
             _ => unreachable!(),
         };
         if properties.installed && properties.path == Path::new("") {
-            trace!("{} not found, creating new", LOADER_FILES[2]);
+            info!("{} not found, creating new", LOADER_FILES[2]);
             new_cfg(&cfg_dir)?;
             properties.path = cfg_dir;
         }
         if !properties.installed {
             warn!("Mod loader dll hook not found");
+        } else {
+            info!(dll_hook_disabled = properties.disabled, "elden_mod_loader files found");
         }
         Ok(properties)
+    }
+
+    /// only use this if `ModLoader::properties()` returns err and you have an idea of the current state
+    pub fn new(disabled: bool) -> Self {
+        ModLoader { installed: true, disabled, path: PathBuf::new() }
     }
 
     #[inline]
@@ -74,6 +84,9 @@ impl ModLoader {
 }
 
 impl ModLoaderCfg {
+    /// verifies that all keys stored in "elden_mod_loader_config.ini" are registered with the app  
+    /// a _unknown_ file is found as a key this will change the order to be greater than _known_ files  
+    #[instrument(level = "trace", skip_all)]
     pub fn verify_keys(&mut self, mods: &[RegMod]) -> std::io::Result<()> {
         let valid_dlls = mods
             .iter()
@@ -117,11 +130,13 @@ impl ModLoaderCfg {
                 unknown_keys.join("\n"))
             );
         }
+        trace!("all load_order entries are files registered with the app");
         Ok(())
     }
 
     /// returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
     /// this function also fixes usize.parse() errors and if values are out of order
+    #[instrument(level = "trace", skip_all)]
     pub fn parse_section(&mut self) -> std::io::Result<HashMap<String, usize>> {
         let map = self.parse_into_map();
         if self.section().len() != map.len() {
@@ -156,9 +171,10 @@ impl ModLoaderCfg {
     /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  
     /// then writes the updated key values to file
     ///
-    /// error cases:  
-    ///     section is not set to "loadorder"  
-    ///     fails to write to file  
+    /// error cases:
+    /// - section is not set to "loadorder"  
+    /// - fails to write to file  
+    #[instrument(level = "trace", skip(self))]
     pub fn update_order_entries(&mut self, stable: Option<&str>) -> std::io::Result<()> {
         let mut k_v = Vec::with_capacity(self.section().len());
         let (mut stable_k, mut stable_v) = ("", 0_usize);
@@ -192,12 +208,13 @@ impl ModLoaderCfg {
             }
         }
         std::mem::swap(self.mut_section(), &mut new_section);
+        trace!("re-calculated the order of entries in {}", LOADER_FILES[2]);
         self.write_to_file()
     }
 }
 
 pub trait Countable {
-    /// returns the number of mods in a colletion that have `mod.order.set`
+    /// returns the number of entries in a colletion that have `mod.order.set`
     fn order_count(&self) -> usize;
 }
 

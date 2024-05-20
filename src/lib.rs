@@ -190,7 +190,11 @@ pub fn toggle_files(
 
     reg_mod.files.dll = short_path_new;
     reg_mod.state = new_state;
-    info!("reg_mod state updated");
+    info!(
+        "{} {}",
+        reg_mod.name,
+        if reg_mod.state { "enabled" } else { "disabled" }
+    );
     if let Some(file) = save_file {
         reg_mod.write_to_file(file, is_array)?
     }
@@ -295,9 +299,9 @@ pub struct FileData<'a> {
 }
 
 impl FileData<'_> {
-    /// To get an accurate FileData.name function input needs .file_name() called before hand  
-    /// FileData.extension && FileData.enabled are accurate with any &Path str as input
-    #[instrument(level = "trace", skip_all)]
+    /// To get an accurate `FileData.name` function input needs `file_name()` called before hand  
+    /// `FileData.extension` && `FileData.enabled` are accurate with any &Path str as input
+    #[instrument(level = "trace", name = "file_data_from", skip_all)]
     pub fn from(name: &str) -> FileData {
         match FileData::state_data(name) {
             (false, index) => {
@@ -336,15 +340,15 @@ impl FileData<'_> {
         }
     }
 
-    #[inline]
     /// returns `true` if the file is in the enabled state  
+    #[inline]
     #[instrument(level = "trace", skip_all)]
     pub fn is_enabled<T: AsRef<Path>>(path: &T) -> bool {
         FileData::state_data(&path.as_ref().to_string_lossy()).0
     }
 
-    #[inline]
     /// returns `true` if the file is in the disabled state  
+    #[inline]
     #[instrument(level = "trace", skip_all)]
     pub fn is_disabled<T: AsRef<Path>>(path: &T) -> bool {
         !FileData::state_data(&path.as_ref().to_string_lossy()).0
@@ -364,6 +368,7 @@ pub fn omit_off_state(name: &str) -> &str {
 }
 
 /// convience function to map Option None to an io Error
+#[inline]
 pub fn parent_or_err(path: &Path) -> std::io::Result<&Path> {
     path.parent().ok_or(std::io::Error::new(
         ErrorKind::InvalidData,
@@ -371,6 +376,7 @@ pub fn parent_or_err(path: &Path) -> std::io::Result<&Path> {
     ))
 }
 /// convience function to map Option None to an io Error
+#[inline]
 pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
     path.file_name().ok_or(std::io::Error::new(
         ErrorKind::InvalidData,

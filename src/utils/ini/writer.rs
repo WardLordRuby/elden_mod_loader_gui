@@ -8,9 +8,9 @@ use std::{
 };
 
 use crate::{
-    file_name_or_err, get_cfg, parent_or_err, utils::ini::parser::RegMod, ARRAY_KEY, ARRAY_VALUE,
-    DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_KEYS,
-    LOADER_SECTIONS, OFF_STATE,
+    file_name_or_err, get_cfg, new_io_error, omit_off_state, parent_or_err,
+    utils::ini::parser::RegMod, ARRAY_KEY, ARRAY_VALUE, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES,
+    INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
 };
 
 pub const WRITE_OPTIONS: WriteOption = WriteOption {
@@ -25,6 +25,7 @@ pub const EXT_OPTIONS: WriteOption = WriteOption {
     kv_separator: " = ",
 };
 
+#[instrument(level = "trace", skip(file_path, section, files), fields(section = section.unwrap()))]
 pub fn save_paths<P: AsRef<Path>>(
     file_path: &Path,
     section: Option<&str>,
@@ -40,9 +41,12 @@ pub fn save_paths<P: AsRef<Path>>(
     config
         .with_section(section)
         .set(key, format!("{ARRAY_VALUE}\r\n{ARRAY_KEY}={save_paths}"));
-    config.write_to_file_opt(file_path, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)?;
+    trace!("saved paths to file");
+    Ok(())
 }
 
+#[instrument(level = "trace", skip(file_path, section, path), fields(section = section.unwrap()))]
 pub fn save_path(
     file_path: &Path,
     section: Option<&str>,
@@ -53,9 +57,12 @@ pub fn save_path(
     config
         .with_section(section)
         .set(key, path.to_string_lossy().to_string());
-    config.write_to_file_opt(file_path, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)?;
+    trace!("saved path to file");
+    Ok(())
 }
 
+#[instrument(level = "trace", skip(file_path, section), fields(section = section.unwrap()))]
 pub fn save_bool(
     file_path: &Path,
     section: Option<&str>,
@@ -64,9 +71,12 @@ pub fn save_bool(
 ) -> std::io::Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
     config.with_section(section).set(key, value.to_string());
-    config.write_to_file_opt(file_path, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)?;
+    trace!("saved bool to file");
+    Ok(())
 }
 
+#[instrument(level = "trace", skip(file_path, section), fields(section = section.unwrap()))]
 pub fn save_value_ext(
     file_path: &Path,
     section: Option<&str>,
@@ -75,7 +85,9 @@ pub fn save_value_ext(
 ) -> std::io::Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
     config.with_section(section).set(key, value);
-    config.write_to_file_opt(file_path, EXT_OPTIONS)
+    config.write_to_file_opt(file_path, EXT_OPTIONS)?;
+    trace!("saved value to file");
+    Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -108,6 +120,7 @@ pub fn new_cfg(path: &Path) -> std::io::Result<Ini> {
     get_cfg(path)
 }
 
+#[instrument(level = "trace", skip(file_path))]
 pub fn remove_array(file_path: &Path, key: &str) -> std::io::Result<()> {
     let content = read_to_string(file_path)?;
 
@@ -128,9 +141,12 @@ pub fn remove_array(file_path: &Path, key: &str) -> std::io::Result<()> {
 
     let lines = content.lines().filter(|&line| filter_lines(line)).collect::<Vec<_>>();
 
-    write(file_path, lines.join("\r\n"))
+    write(file_path, lines.join("\r\n"))?;
+    trace!("removed paths from file");
+    Ok(())
 }
 
+#[instrument(level = "trace", skip(file_path), fields(section = section.unwrap()))]
 pub fn remove_entry(file_path: &Path, section: Option<&str>, key: &str) -> std::io::Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
     config.delete_from(section, key).ok_or(std::io::Error::new(
@@ -140,9 +156,12 @@ pub fn remove_entry(file_path: &Path, section: Option<&str>, key: &str) -> std::
             &section.expect("Passed in section should be valid")
         ),
     ))?;
-    config.write_to_file_opt(file_path, WRITE_OPTIONS)
+    config.write_to_file_opt(file_path, WRITE_OPTIONS)?;
+    trace!("removed entry from file");
+    Ok(())
 }
 
+#[instrument(level = "trace", skip(loader_dir), fields(mod_name = entry.name))]
 pub fn remove_order_entry(entry: &RegMod, loader_dir: &Path) -> std::io::Result<()> {
     if !entry.order.set {
         return new_io_error!(
