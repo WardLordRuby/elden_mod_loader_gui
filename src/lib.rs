@@ -320,19 +320,6 @@ impl FileData<'_> {
         }
     }
 
-    /// removes the off_state if the file name is in the off_state  
-    /// to get an accurate FileData.name function input needs .file_name() called before hand  
-    #[instrument(level = "trace", skip_all)]
-    pub fn name_omit_off_state(name: &str) -> &str {
-        let (file_state, index) = FileData::state_data(name);
-        if file_state {
-            name
-        } else {
-            &name[..index]
-        }
-    }
-
-    #[inline]
     /// index is only used in the _disabled_ state to locate where `OFF_STATE` begins  
     /// saftey check to make sure `OFF_STATE` is found at the end of a `&str`
     #[instrument(level = "trace")]
@@ -359,6 +346,18 @@ impl FileData<'_> {
     #[instrument(level = "trace", skip_all)]
     pub fn is_disabled<T: AsRef<Path>>(path: &T) -> bool {
         !FileData::state_data(&path.as_ref().to_string_lossy()).0
+    }
+}
+
+/// removes the off_state if the file name is in the off_state  
+/// to get an accurate `FileData.name` function input needs `file_name()` called before hand  
+#[instrument(level = "trace", skip_all)]
+pub fn omit_off_state(name: &str) -> &str {
+    let (file_state, index) = FileData::state_data(name);
+    if file_state {
+        name
+    } else {
+        &name[..index]
     }
 }
 

@@ -84,7 +84,7 @@ impl ModLoaderCfg {
                     .filter_map(|f| {
                         Some({
                             let file_name = f.file_name()?.to_str()?;
-                            FileData::name_omit_off_state(file_name)
+                            omit_off_state(file_name)
                         })
                     })
                     .collect::<Vec<_>>()

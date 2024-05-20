@@ -151,13 +151,11 @@ pub fn remove_order_entry(entry: &RegMod, loader_dir: &Path) -> std::io::Result<
         );
     }
     let file_name = file_name_or_err(&entry.files.dll[entry.order.i])?;
-    let file_name = file_name
-        .to_str()
-        .ok_or(std::io::Error::new(
-            ErrorKind::InvalidData,
-            format!("{file_name:?} is not valid UTF-8"),
-        ))?
-        .replace(OFF_STATE, "");
-    remove_entry(loader_dir, LOADER_SECTIONS[1], &file_name)?;
+    let file_name = file_name.to_str().ok_or(std::io::Error::new(
+        ErrorKind::InvalidData,
+        format!("{file_name:?} is not valid UTF-8"),
+    ))?;
+    remove_entry(loader_dir, LOADER_SECTIONS[1], omit_off_state(file_name))?;
+    trace!("removed order entry");
     Ok(())
 }

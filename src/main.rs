@@ -1225,8 +1225,8 @@ fn deserialize_current_mods(data: &CollectedMods, ui_handle: slint::Weak<App>) {
         let dll_files: Rc<VecModel<SharedString>> = Default::default();
         let config_files: Rc<VecModel<SharedString>> = Default::default();
         if !mod_data.files.dll.is_empty() {
-            files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(f.to_string_lossy().replace(OFF_STATE, "")).into()));
-            dll_files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(f.file_name().unwrap().to_string_lossy().replace(OFF_STATE, ""))));
+            files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(omit_off_state(&f.to_string_lossy())).into()));
+            dll_files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(omit_off_state(&f.file_name().unwrap().to_string_lossy()))));
         };
         if !mod_data.files.config.is_empty() {
             files.extend(mod_data.files.config.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
