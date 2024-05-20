@@ -762,6 +762,10 @@ impl Cfg {
                         if let Err(err) = curr.verify_state(game_dir, ini_dir) {
                             error!("{err}");
                             warnings.push(err);
+                            if let Err(err) = remove_entry(ini_dir, INI_SECTIONS[2], &curr.name) {
+                                error!(%err);
+                                warnings.push(err);
+                            };
                             None
                         } else if let Err(mut err) =
                             curr.files.other_file_refs().validate(Some(&game_dir))
@@ -780,8 +784,10 @@ impl Cfg {
                                     let err = err.errors.merge();
                                     error!("Error: {err}");
                                     warnings.push(err);
-                                    remove_entry(ini_dir, INI_SECTIONS[2], &curr.name)
-                                        .expect("Key is valid & ini has already been read");
+                                    if let Err(err) = remove_entry(ini_dir, INI_SECTIONS[2], &curr.name) {
+                                        error!(%err);
+                                        warnings.push(err);
+                                    };
                                     can_continue = false;
                                     break;
                                 }
