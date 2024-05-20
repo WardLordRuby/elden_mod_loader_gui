@@ -1,5 +1,9 @@
 use ini::Ini;
-use std::path::{Path, PathBuf};
+use std::{
+    io,
+    marker::Sized,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     get_or_setup_cfg,
@@ -13,9 +17,9 @@ use crate::{
 
 pub trait Config {
     /// reads a .ini file into memory  
-    fn read(ini_dir: &Path) -> std::io::Result<Self>
+    fn read(ini_dir: &Path) -> io::Result<Self>
     where
-        Self: std::marker::Sized;
+        Self: Sized;
 
     /// returns a reference to where the read file is loacated  
     fn path(&self) -> &Path;
@@ -27,7 +31,7 @@ pub trait Config {
     fn set(&mut self, section: Option<&str>, key: &str, value: &str);
 
     /// updates the in memory data of the ini from `self.path()`
-    fn update(&mut self) -> std::io::Result<()>;
+    fn update(&mut self) -> io::Result<()>;
 
     /// manually construct this type, typically use `Config::read()`  
     fn from(data: ini::Ini, ini_dir: &Path) -> Self;
@@ -38,8 +42,8 @@ pub trait Config {
     /// returns a empty `Self`, avoid using `empty()` and use `default()` when possible  
     fn empty() -> Self;
 
-    /// sets `Self.data` to default value  
-    fn empty_contents(&mut self);
+    /// swaps `Self.data` with `Self::default()` and returns you contents
+    fn empty_contents(&mut self) -> ini::Ini;
 
     /// returns `true` if no mods are registered  
     fn mods_is_empty(&self) -> bool;
@@ -48,15 +52,10 @@ pub trait Config {
     fn mods_registered(&self) -> usize;
 
     /// writes the in-memory `self.data()` to the directory stored in `self.path()`
-    fn write_to_file(&self) -> std::io::Result<()>;
+    fn write_to_file(&self) -> io::Result<()>;
 
     /// saves the computed default value (from key) to to file and appends an error message apon failure  
-    fn save_default_val(
-        &self,
-        section: Option<&str>,
-        key: &str,
-        in_err: std::io::Error,
-    ) -> std::io::Error;
+    fn save_default_val(&self, section: Option<&str>, key: &str, in_err: io::Error) -> io::Error;
 }
 
 #[derive(Debug)]
@@ -66,9 +65,9 @@ pub struct Cfg {
 }
 
 impl Config for Cfg {
-    fn read(ini_dir: &Path) -> std::io::Result<Self>
+    fn read(ini_dir: &Path) -> io::Result<Self>
     where
-        Self: std::marker::Sized,
+        Self: Sized,
     {
         Ok(Cfg {
             data: get_or_setup_cfg(ini_dir, &INI_SECTIONS)?,
@@ -92,7 +91,7 @@ impl Config for Cfg {
     }
 
     #[inline]
-    fn update(&mut self) -> std::io::Result<()> {
+    fn update(&mut self) -> io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &INI_SECTIONS)?;
         Ok(())
     }
@@ -122,8 +121,8 @@ impl Config for Cfg {
     }
 
     #[inline]
-    fn empty_contents(&mut self) {
-        self.data = ini::Ini::new()
+    fn empty_contents(&mut self) -> ini::Ini {
+        std::mem::take(&mut self.data)
     }
 
     #[inline]
@@ -141,7 +140,7 @@ impl Config for Cfg {
     }
 
     #[inline]
-    fn write_to_file(&self) -> std::io::Result<()> {
+    fn write_to_file(&self) -> io::Result<()> {
         self.data.write_to_file_opt(&self.dir, WRITE_OPTIONS)
     }
 
@@ -149,8 +148,8 @@ impl Config for Cfg {
         &self,
         section: Option<&str>,
         key: &str,
-        mut in_err: std::io::Error,
-    ) -> std::io::Error {
+        mut in_err: io::Error,
+    ) -> io::Error {
         if let Err(err) = save_bool(&self.dir, section, key, DEFAULT_INI_VALUES[0]) {
             in_err.add_msg(&err.to_string());
         } else {
@@ -166,7 +165,7 @@ impl Config for Cfg {
 impl Cfg {
     /// returns the value stored with key "dark_mode" as a `bool`  
     /// if error calls `self.save_default_val` to correct error  
-    pub fn get_dark_mode(&self) -> std::io::Result<bool> {
+    pub fn get_dark_mode(&self) -> io::Result<bool> {
         match IniProperty::<bool>::read(&self.data, INI_SECTIONS[0], INI_KEYS[0]) {
             Ok(dark_mode) => Ok(dark_mode.value),
             Err(err) => Err(self.save_default_val(INI_SECTIONS[0], INI_KEYS[0], err)),
@@ -181,9 +180,9 @@ pub struct ModLoaderCfg {
 }
 
 impl Config for ModLoaderCfg {
-    fn read(ini_dir: &Path) -> std::io::Result<Self>
+    fn read(ini_dir: &Path) -> io::Result<Self>
     where
-        Self: std::marker::Sized,
+        Self: Sized,
     {
         Ok(ModLoaderCfg {
             data: get_or_setup_cfg(ini_dir, &LOADER_SECTIONS)?,
@@ -207,7 +206,7 @@ impl Config for ModLoaderCfg {
     }
 
     #[inline]
-    fn update(&mut self) -> std::io::Result<()> {
+    fn update(&mut self) -> io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &LOADER_SECTIONS)?;
         Ok(())
     }
@@ -237,8 +236,8 @@ impl Config for ModLoaderCfg {
     }
 
     #[inline]
-    fn empty_contents(&mut self) {
-        self.data = ini::Ini::new()
+    fn empty_contents(&mut self) -> ini::Ini {
+        std::mem::take(&mut self.data)
     }
 
     #[inline]
@@ -256,7 +255,7 @@ impl Config for ModLoaderCfg {
     }
 
     #[inline]
-    fn write_to_file(&self) -> std::io::Result<()> {
+    fn write_to_file(&self) -> io::Result<()> {
         self.data.write_to_file_opt(&self.dir, EXT_OPTIONS)
     }
 
@@ -264,8 +263,8 @@ impl Config for ModLoaderCfg {
         &self,
         section: Option<&str>,
         key: &str,
-        mut in_err: std::io::Error,
-    ) -> std::io::Error {
+        mut in_err: io::Error,
+    ) -> io::Error {
         let default_val = match key {
             k if k == LOADER_KEYS[0] => DEFAULT_LOADER_VALUES[0],
             k if k == LOADER_KEYS[1] => DEFAULT_LOADER_VALUES[1],
@@ -283,7 +282,7 @@ impl Config for ModLoaderCfg {
 impl ModLoaderCfg {
     /// returns value stored with key "load_delay" as `u32`  
     /// if error calls `self.save_default_val` to correct error  
-    pub fn get_load_delay(&self) -> std::io::Result<u32> {
+    pub fn get_load_delay(&self) -> io::Result<u32> {
         match IniProperty::<u32>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[0]) {
             Ok(delay_time) => Ok(delay_time.value),
             Err(err) => Err(self.save_default_val(LOADER_SECTIONS[0], LOADER_KEYS[0], err)),
@@ -292,7 +291,7 @@ impl ModLoaderCfg {
 
     /// returns value stored with key "show_terminal" as `bool`  
     /// if error calls `self.save_default_val` to correct error  
-    pub fn get_show_terminal(&self) -> std::io::Result<bool> {
+    pub fn get_show_terminal(&self) -> io::Result<bool> {
         match IniProperty::<bool>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[1]) {
             Ok(bool) => Ok(bool.value),
             Err(err) => Err(self.save_default_val(LOADER_SECTIONS[0], LOADER_KEYS[1], err)),
