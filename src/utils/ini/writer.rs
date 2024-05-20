@@ -144,6 +144,12 @@ pub fn remove_entry(file_path: &Path, section: Option<&str>, key: &str) -> std::
 }
 
 pub fn remove_order_entry(entry: &RegMod, loader_dir: &Path) -> std::io::Result<()> {
+    if !entry.order.set {
+        return new_io_error!(
+            ErrorKind::InvalidInput,
+            format!("{} has no order data", entry.name)
+        );
+    }
     let file_name = file_name_or_err(&entry.files.dll[entry.order.i])?;
     let file_name = file_name
         .to_str()
