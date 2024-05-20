@@ -30,20 +30,18 @@ impl Parsable for bool {
         key: &str,
         _skip_validation: bool,
     ) -> std::io::Result<Self> {
-        parse_bool(
-            key,
-            ini.get_from(section, key)
-                .expect("Validated by IniProperty::is_valid"),
-        )
+        let str = ini.get_from(section, key)
+            .expect("Validated by IniProperty::is_valid");
+        parse_bool(str).map_err(|err| err.into_io_error(key, str))
     }
 }
 
 #[inline]
-fn parse_bool(from_key: &str, str: &str) -> std::io::Result<bool> {
+fn parse_bool(str: &str) -> Result<bool, ParseBoolError> {
     match str {
         "0" => Ok(false),
         "1" => Ok(true),
-        c => c.to_lowercase().parse::<bool>().map_err(|err| err.into_io_error(from_key, str)),
+        c => c.to_lowercase().parse::<bool>(),
     }
 }
 
@@ -742,7 +740,7 @@ impl Cfg {
                         }
                         (
                             key,
-                            parse_bool(key, state_str).unwrap_or(true),
+                            parse_bool(state_str).unwrap_or(true),
                             split_files,
                             load_order,
                         )
@@ -839,7 +837,7 @@ impl Cfg {
                     .map(|(n, s, f)| {
                         RegMod::new(
                             n,
-                            parse_bool(n, s).unwrap_or(true),
+                            parse_bool(s).unwrap_or(true),
                             f.iter().map(PathBuf::from).collect(),
                         )
                     })
