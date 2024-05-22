@@ -758,7 +758,7 @@ fn main() -> Result<(), slint::PlatformError> {
             if !matches!(FileData::from(&item).extension, ".txt" | ".ini") {
                 return;
             };
-            let os_file = vec![std::ffi::OsString::from(format!("{}\\{item}", game_dir.display()))];
+            let os_file = vec![game_dir.join(item)];
             open_text_files(ui.as_weak(), os_file);
         }
     });
@@ -773,7 +773,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 .expect("We know we set a VecModel earlier");
             let os_files = downcast_config_file
                 .iter()
-                .map(|path| std::ffi::OsString::from(format!("{}\\{path}", game_dir.display())))
+                .map(|path| game_dir.join(path.to_string()))
                 .collect::<Vec<_>>();
             open_text_files(ui.as_weak(), os_files);
         }
@@ -1403,7 +1403,8 @@ async fn confirm_remove_mod(
 async fn confirm_scan_mods(
     ui_handle: slint::Weak<App>,
     game_dir: &Path,
-    ini: Option<Cfg>) -> std::io::Result<()> {
+    ini: Option<&Cfg>,
+    order_map: Option<&OrderMap>) -> std::io::Result<()> {
     let ui = ui_handle.unwrap();
     
     ui.display_confirm("Would you like to attempt to auto-import already installed mods to Elden Mod Loader GUI?", true);
@@ -1411,23 +1412,20 @@ async fn confirm_scan_mods(
         return Ok(());
     };
     
+    let mut _new_ini = None;
     let ini = match ini {
         Some(data) => data,
-        None => Cfg::read(get_ini_dir())?,
-    };
-    let order_map: Option<HashMap<String, usize>>;
-    let loader_dir = get_loader_ini_dir();
-    let loader = match ModLoaderCfg::read(loader_dir) {
-        Ok(mut data) => {
-            order_map = data.parse_section().ok();
-            data
+        None => {
+            _new_ini = Some(Cfg::read(get_ini_dir())?);
+            _new_ini.as_ref().unwrap()
         },
-        Err(err) => {
-            ui.display_msg(&err.to_string());
-            order_map = None;
-            ModLoaderCfg::default(loader_dir)
-        }
     };
+    let loader_dir = get_loader_ini_dir();
+    let mut _new_map = None;
+    let order_map = order_map.unwrap_or_else(|| {
+        _new_map = Some(order_data_or_default(ui.as_weak(), Some(loader_dir)));
+        _new_map.as_ref().unwrap()
+    });
 
     let mut old_mods: Vec<RegMod>;
     if !ini.mods_is_empty() {
@@ -1436,7 +1434,7 @@ async fn confirm_scan_mods(
             return Ok(());
         };
         old_mods = {
-            let data = ini.collect_mods(game_dir, order_map.as_ref(), false);
+            let data = ini.collect_mods(game_dir, Some(order_map), false);
             if let Some(warning) = data.warnings {
                 ui.display_msg(&warning.to_string());
             }
@@ -1454,16 +1452,9 @@ async fn confirm_scan_mods(
     let new_mods: CollectedMods;
     match scan_for_mods(game_dir, ini.path()) {
         Ok(len) => {
-            let new_ini = match Cfg::read(ini.path()) {
-                Ok(ini_data) => ini_data,
-                Err(err) => {
-                    ui.display_msg(&err.to_string());
-                    return Err(err);
-                }
-            };
+            let new_ini = Cfg::read(ini.path())?;
             ui.global::<MainLogic>().set_current_subpage(0);
-            let mod_loader = ModLoader::properties(game_dir).unwrap_or_default();
-            let order_data = order_data_or_default(ui.as_weak(), Some(mod_loader.path()));
+            let order_data = order_data_or_default(ui.as_weak(), Some(loader_dir));
             new_mods = new_ini.collect_mods(game_dir, Some(&order_data), false);
             deserialize_current_mods(
                 &new_mods,ui.as_weak()
@@ -1488,7 +1479,7 @@ async fn confirm_scan_mods(
         // we only delete order data on mod uninstallation
         old_mods.iter().try_for_each(|m| {
             if m.order.set && !all_new_files.contains(m.files.dll[m.order.i].as_path()) {
-                remove_order_entry(m, loader.path())
+                remove_order_entry(m, loader_dir)
             } else {
                 Ok(())
             }
