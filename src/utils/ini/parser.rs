@@ -11,7 +11,7 @@ use crate::{
     utils::ini::{
         common::Config, 
         writer::{remove_array, remove_entry, save_bool, save_path, save_paths}
-    }, Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES
+    }, Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES, OrderMap
 };
 
 pub trait Parsable: Sized {
@@ -214,7 +214,7 @@ fn validate_existance(path: &Path) -> std::io::Result<()> {
         Ok(false) => {
             new_io_error!(
                 ErrorKind::NotFound,
-                format!("Path: \"{}\" can not be found on machine", path.display())
+                format!("{:?} can not be found on machine", path.file_name().unwrap())
             )
         }
         Err(_) => new_io_error!(
@@ -258,9 +258,9 @@ impl<T: AsRef<Path>> Setup for T {
                 new_io_error!(
                     ErrorKind::InvalidData,
                     format!(
-                        "Could not find section(s): {:?} in {}",
+                        "Could not find section(s): {:?} in {:?}",
                         not_found,
-                        self.as_ref().display()
+                        self.as_ref().file_name().unwrap()
                     )
                 )
             }
@@ -407,7 +407,7 @@ pub struct LoadOrder {
 }
 
 impl LoadOrder {
-    fn from(dll_files: &[PathBuf], parsed_order_val: &HashMap<String, usize>) -> Self {
+    fn from(dll_files: &[PathBuf], parsed_order_val: &OrderMap) -> Self {
         let mut order = LoadOrder::default();
         if dll_files.is_empty() {
             return order;
@@ -533,7 +533,7 @@ impl RegMod {
         name: &str,
         state: bool,
         in_files: Vec<PathBuf>,
-        parsed_order_val: &HashMap<String, usize>,
+        parsed_order_val: &OrderMap,
     ) -> Self {
         let split_files = SplitFiles::from(in_files);
         let load_order = LoadOrder::from(&split_files.dll, parsed_order_val);
@@ -675,7 +675,7 @@ impl Cfg {
     pub fn collect_mods<P: AsRef<Path>>(
         &self,
         game_dir: P,
-        include_load_order: Option<&HashMap<String, usize>>,
+        include_load_order: Option<&OrderMap>,
         skip_validation: bool,
     ) -> CollectedMods {
         type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
@@ -745,7 +745,7 @@ impl Cfg {
         #[instrument(level = "trace", skip_all)]
         fn combine_map_data(
             map_data: CollectedMaps,
-            parsed_order_val: Option<&HashMap<String, usize>>,
+            parsed_order_val: Option<&OrderMap>,
             game_dir: &Path,
             ini_dir: &Path,
         ) -> CollectedMods {

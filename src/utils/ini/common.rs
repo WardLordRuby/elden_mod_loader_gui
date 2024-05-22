@@ -4,6 +4,7 @@ use std::{
     marker::Sized,
     path::{Path, PathBuf},
 };
+use tracing::instrument;
 
 use crate::{
     get_or_setup_cfg,
@@ -65,6 +66,7 @@ pub struct Cfg {
 }
 
 impl Config for Cfg {
+    #[instrument(name = "cfg_read", skip_all)]
     fn read(ini_dir: &Path) -> io::Result<Self>
     where
         Self: Sized,
@@ -91,6 +93,7 @@ impl Config for Cfg {
     }
 
     #[inline]
+    #[instrument(name = "cfg_update")]
     fn update(&mut self) -> io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &INI_SECTIONS)?;
         Ok(())
@@ -180,6 +183,7 @@ pub struct ModLoaderCfg {
 }
 
 impl Config for ModLoaderCfg {
+    #[instrument(name = "mod_loader_read", skip_all)]
     fn read(ini_dir: &Path) -> io::Result<Self>
     where
         Self: Sized,
@@ -206,6 +210,7 @@ impl Config for ModLoaderCfg {
     }
 
     #[inline]
+    #[instrument(name = "mod_loader_update")]
     fn update(&mut self) -> io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &LOADER_SECTIONS)?;
         Ok(())

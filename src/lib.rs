@@ -17,7 +17,7 @@ use utils::ini::{
 };
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     io::ErrorKind,
     path::{Path, PathBuf},
 };
@@ -60,6 +60,8 @@ pub const LOADER_FILES: [&str; 3] = [
 pub const LOADER_SECTIONS: [Option<&str>; 2] = [Some("modloader"), Some("loadorder")];
 pub const LOADER_KEYS: [&str; 2] = ["load_delay", "show_terminal"];
 pub const DEFAULT_LOADER_VALUES: [&str; 2] = ["5000", "0"];
+
+pub type OrderMap = HashMap<String, usize>;
 
 #[macro_export]
 macro_rules! new_io_error {
@@ -207,7 +209,7 @@ pub fn toggle_files(
 pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io::Result<Ini> {
     match from_path.is_setup(sections) {
         Ok(ini) => return Ok(ini),
-        Err(err) => warn!(%err, "creating new"),
+        Err(err) => warn!("{err}, creating new"),
     }
     new_cfg(from_path)
 }
@@ -399,7 +401,7 @@ impl Cfg {
         if let Ok(path) =
             IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[1], false)
         {
-            info!("Success: \"game_dir\" from ini is valid");
+            info!("\"game_dir\" from ini is valid");
             return Ok(PathResult::Full(path.value));
         }
         let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
@@ -407,7 +409,7 @@ impl Cfg {
             does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES),
             Ok(OperationResult::Bool(true))
         ) {
-            info!("Success: located \"game_dir\" on drive");
+            info!("located valid \"game_dir\" on drive");
             save_path(
                 self.path(),
                 INI_SECTIONS[1],

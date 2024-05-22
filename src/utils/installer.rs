@@ -98,7 +98,7 @@ fn items_in_directory(path: &Path, f_type: FileType) -> std::io::Result<usize> {
 }
 
 /// returns `Ok(num)` of files in a dir_tree,  
-/// returns `Err(InvalidData)` if _any_ symlink is found  or fs::read_dir err
+/// returns `Err(InvalidData)` if _any_ symlink is found or fs::read_dir err
 fn files_in_directory_tree(directory: &Path) -> std::io::Result<usize> {
     fn count_loop(count: &mut usize, path: &Path) -> std::io::Result<()> {
         for entry in std::fs::read_dir(path)? {
@@ -121,7 +121,7 @@ fn files_in_directory_tree(directory: &Path) -> std::io::Result<usize> {
 }
 
 /// returns `Ok(true)` if dir_tree contains no files, note directories are not counted as files  
-/// returns `Err(InvalidData)` if _any_ symlink is found  
+/// returns `Err(InvalidData)` if _any_ symlink is found or fs::read_dir err
 fn directory_tree_is_empty(directory: &Path) -> std::io::Result<bool> {
     fn lookup_loop(path: &Path) -> std::io::Result<bool> {
         for entry in std::fs::read_dir(path)? {
@@ -628,6 +628,6 @@ pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> 
         mod_data.verify_state(game_dir, ini_dir)?;
     }
     let mods_found = file_sets.len();
-    info!(mods_found, "Scanned for mods");
+    info!(mods_found, "scanned for mods");
     Ok(mods_found)
 }

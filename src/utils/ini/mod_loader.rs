@@ -1,6 +1,6 @@
 use tracing::{trace, warn, instrument, info};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     io::ErrorKind,
     path::{Path, PathBuf},
 };
@@ -10,7 +10,7 @@ use crate::{
         parser::RegMod,
         writer::new_cfg,
         common::{ModLoaderCfg, Config},
-    }, Operation, OperationResult, LOADER_FILES,
+    }, Operation, OperationResult, LOADER_FILES, OrderMap,
 };
 
 #[derive(Debug, Default)]
@@ -137,7 +137,7 @@ impl ModLoaderCfg {
     /// returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
     /// this function also fixes usize.parse() errors and if values are out of order
     #[instrument(level = "trace", skip_all)]
-    pub fn parse_section(&mut self) -> std::io::Result<HashMap<String, usize>> {
+    pub fn parse_section(&mut self) -> std::io::Result<OrderMap> {
         let map = self.parse_into_map();
         if self.section().len() != map.len() {
             trace!("fixing usize parse error in \"{}\"", LOADER_FILES[2]);
@@ -161,10 +161,10 @@ impl ModLoaderCfg {
 
     /// returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
     /// this will filter out invalid entries, do not use unless you _know_ all entries are valid  
-    pub fn parse_into_map(&self) -> HashMap<String, usize> {
+    pub fn parse_into_map(&self) -> OrderMap {
         self.iter()
             .filter_map(|(k, v)| Some((k.to_string(), v.parse::<usize>().ok()?)))
-            .collect::<HashMap<String, usize>>()
+            .collect::<OrderMap>()
     }
 
     /// updates the load order values in `Some("loadorder")` so they are always `0..`  
