@@ -45,16 +45,17 @@ fn check_dir_contains_files(path: &Path) -> std::io::Result<PathBuf> {
     } else if num_of_dirs == 1 {
         return check_dir_contains_files(&next_dir(path)?);
     } else if num_of_dirs > 1 {
-        let mut non_empty_branches: usize = 0;
-        let mut non_empty_dirs = Vec::with_capacity(num_of_dirs);
+        let mut non_empty_dirs = Vec::with_capacity(2);
         for entry in std::fs::read_dir(path)? {
             let dir = entry?.path();
             if !directory_tree_is_empty(&dir)? {
-                non_empty_branches += 1;
                 non_empty_dirs.push(dir);
             }
+            if non_empty_dirs.len() > 1 {
+                break;
+            }
         }
-        if non_empty_branches == 1 {
+        if non_empty_dirs.len() == 1 {
             return check_dir_contains_files(&non_empty_dirs[0]);
         }
         return Ok(PathBuf::from(path));
@@ -267,21 +268,17 @@ impl InstallData {
         Ok(data)
     }
 
-    fn reconstruct(
-        name: &str,
-        install_dir: PathBuf,
-        new_directory: &Path,
-    ) -> std::io::Result<Self> {
-        Ok(InstallData {
-            name: String::from(name),
-            from_paths: Vec::new(),
-            to_paths: Vec::new(),
-            display_paths: String::new(),
-            parent_dir: get_parent_dir(new_directory)?,
-            install_dir,
-        })
+    /// resets self to default and sets parent dir as the parent of `new_dirctory` input
+    fn reconstruct(&mut self, new_directory: &Path) -> std::io::Result<()> {
+        self.from_paths = Vec::new();
+        self.to_paths = Vec::new();
+        self.display_paths = String::new();
+        self.parent_dir = get_parent_dir(new_directory)?;
+        Ok(())
     }
 
+    /// strips `self.parent_dir` from `self.from_paths` if valid prefix and joins to a new line seperated string  
+    #[instrument(level = "trace", skip_all)]
     fn init_display_paths(&mut self) {
         self.display_paths = self
             .from_paths
@@ -419,11 +416,7 @@ impl InstallData {
             if self_clone.parent_dir.strip_prefix(&valid_dir).is_ok() {
                 if valid_dir.ancestors().count() <= self_clone.parent_dir.ancestors().count() {
                     trace!("Selected directory contains the original files, reconstructing data");
-                    self_clone = InstallData::reconstruct(
-                        &self_clone.name,
-                        self_clone.install_dir.clone(),
-                        &valid_dir,
-                    )?;
+                    self_clone.reconstruct(&valid_dir)?;
                 }
             } else if valid_dir.strip_prefix(&self_clone.parent_dir).is_ok() {
                 trace!("New directory selected contains unique files, and is inside the original_parent, entire folder will be moved");
@@ -471,19 +464,31 @@ pub fn remove_mod_files(
     loader_dir: &Path,
     reg_mod: &RegMod,
 ) -> std::io::Result<()> {
-    let remove_files = reg_mod
+    let mut remove_files = reg_mod
         .files
         .file_refs()
         .iter()
         .map(|f| game_dir.join(f))
         .collect::<Vec<_>>();
 
-    if remove_files.iter().any(|file| !matches!(file.try_exists(), Ok(true))) {
-        return new_io_error!(
-            ErrorKind::InvalidInput,
-            "Could not confirm existance of all files to remove"
-        );
-    };
+    for i in (0..remove_files.len()).rev() {
+        match remove_files[i].try_exists() {
+            Ok(true) => (),
+            Ok(false) => {
+                remove_files.swap_remove(i);
+                trace!(fname = %remove_files[i].display(), "input file doesn't exist removing from list");
+            }
+            Err(_) => {
+                return new_io_error!(
+                    ErrorKind::PermissionDenied,
+                    format!(
+                        "Permission denied while trying to access {}",
+                        remove_files[i].display()
+                    )
+                )
+            }
+        }
+    }
 
     let mut parent_dirs = remove_files
         .iter()
