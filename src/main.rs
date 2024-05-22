@@ -35,6 +35,10 @@ static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
 static RESTRICTED_FILES: OnceLock<[&'static OsStr; 6]> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
 
+// MARK: TODO
+// trace this file with infos we know we want to be written out to a log
+// and create spans for startup process and every ui_invoke
+
 fn main() -> Result<(), slint::PlatformError> {
     if cfg!(debug_assertions) {
         tracing_subscriber::registry()

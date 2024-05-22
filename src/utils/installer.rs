@@ -3,7 +3,7 @@ use std::{
     io::ErrorKind,
     path::{Path, PathBuf},
 };
-use tracing::trace;
+use tracing::{error, info, instrument, trace};
 
 use crate::{
     does_dir_contain, file_name_or_err, new_io_error, parent_or_err,
@@ -28,7 +28,7 @@ fn get_parent_dir(input: &Path) -> std::io::Result<PathBuf> {
             }
         }
         Err(_) => {
-            new_io_error!(ErrorKind::InvalidData, "Unable to retrieve metadata")
+            new_io_error!(ErrorKind::InvalidInput, "Unable to retrieve metadata")
         }
     }
 }
@@ -69,6 +69,8 @@ enum FileType {
     Any,
 }
 
+/// returns `Ok(num)` of items of the given type located in the given directory  
+/// can error on fs::read_dir or failed to retrieve metadata
 fn items_in_directory(path: &Path, f_type: FileType) -> std::io::Result<usize> {
     let mut count = 0;
     for entry in std::fs::read_dir(path)? {
@@ -95,6 +97,8 @@ fn items_in_directory(path: &Path, f_type: FileType) -> std::io::Result<usize> {
     Ok(count)
 }
 
+/// returns `Ok(num)` of files in a dir_tree,  
+/// returns `Err(InvalidData)` if _any_ symlink is found  or fs::read_dir err
 fn files_in_directory_tree(directory: &Path) -> std::io::Result<usize> {
     fn count_loop(count: &mut usize, path: &Path) -> std::io::Result<()> {
         for entry in std::fs::read_dir(path)? {
@@ -116,6 +120,8 @@ fn files_in_directory_tree(directory: &Path) -> std::io::Result<usize> {
     Ok(count)
 }
 
+/// returns `Ok(true)` if dir_tree contains no files, note directories are not counted as files  
+/// returns `Err(InvalidData)` if _any_ symlink is found  
 fn directory_tree_is_empty(directory: &Path) -> std::io::Result<bool> {
     fn lookup_loop(path: &Path) -> std::io::Result<bool> {
         for entry in std::fs::read_dir(path)? {
@@ -133,6 +139,8 @@ fn directory_tree_is_empty(directory: &Path) -> std::io::Result<bool> {
     lookup_loop(directory)
 }
 
+/// returns the `path()` of the first directory found in the given path  
+/// can error on fs::read_dir
 fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
@@ -143,6 +151,7 @@ fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
     new_io_error!(ErrorKind::InvalidData, "No dir in the selected directory")
 }
 
+/// returns the parent of input path with the _least_ ammount of ancestors  
 fn parent_dir_from_vec<P: AsRef<Path>>(in_files: &[P]) -> std::io::Result<PathBuf> {
     match in_files.iter().min_by_key(|path| path.as_ref().ancestors().count()) {
         Some(path) => get_parent_dir(path.as_ref()),
@@ -150,6 +159,7 @@ fn parent_dir_from_vec<P: AsRef<Path>>(in_files: &[P]) -> std::io::Result<PathBu
     }
 }
 
+#[derive(Debug)]
 pub enum DisplayItems {
     Limit(usize),
     All,
@@ -164,7 +174,9 @@ struct Cutoff {
 }
 
 impl Cutoff {
-    fn new(input: &DisplayItems, file_count: usize) -> Self {
+    /// builds the correct Cutoff data for the given `DisplayItems`  
+    /// get `file_count` from `items_in_directory_tree(dir)` where dir is the directory being operated on
+    fn from(input: &DisplayItems, file_count: usize) -> Self {
         match input {
             DisplayItems::All => Cutoff {
                 reached: false,
@@ -214,6 +226,7 @@ pub struct InstallData {
 }
 
 impl InstallData {
+    /// creates a new `InstallData` from a collection of files
     pub fn new(name: &str, file_paths: Vec<PathBuf>, game_dir: &Path) -> std::io::Result<Self> {
         let parent_dir = parent_dir_from_vec(&file_paths)?;
         let mut data = InstallData {
@@ -229,6 +242,7 @@ impl InstallData {
         Ok(data)
     }
 
+    /// creates a new `InstallData` from a previously installed `RegMod` and amends a new collection of files  
     pub fn amend(
         amend_to: &RegMod,
         file_paths: Vec<PathBuf>,
@@ -289,8 +303,11 @@ impl InstallData {
             })
             .collect::<Vec<_>>()
             .join("\n");
+        trace!("\"display_paths\" initialized");
     }
 
+    /// extends `self.to_paths` with the _prefix_ `self.parent_dir` replaced with `self.install_dir` for each `self.from_path`  
+    #[instrument(level = "trace", skip_all)]
     pub fn collect_to_paths(&mut self) {
         self.to_paths.extend(
             self.from_paths
@@ -298,11 +315,24 @@ impl InstallData {
                 .skip(self.to_paths.len())
                 .filter_map(|path| path.strip_prefix(&self.parent_dir).ok())
                 .map(|path| self.install_dir.join(path)),
-        )
+        );
+        trace!(
+            from_len = self.from_paths.len(),
+            to_len = self.to_paths.len(),
+            "populated \"to_paths\""
+        );
     }
 
+    /// returns a collection of `(from_path, to_path)` for easy copy operations  
+    #[instrument(skip_all)]
     pub fn zip_from_to_paths(&self) -> std::io::Result<Vec<(&Path, &Path)>> {
         if self.from_paths.len() != self.to_paths.len() {
+            error!(
+                from_len = self.from_paths.len(),
+                to_len = self.to_paths.len(),
+                parent_dir = %self.parent_dir.display(),
+                "strip_prefix err with parent_dir or \"to_paths\" was not collected"
+            );
             return new_io_error!(
                 ErrorKind::BrokenPipe,
                 "collect_to_paths either failed or was not ran"
@@ -318,6 +348,7 @@ impl InstallData {
 
     /// Use update_fields_with_new_dir when installing a mod from outside the game_dir  
     /// This function is for internal use only and contians no saftey checks
+    #[instrument(level = "trace", skip(self, directory), fields(valid_dir = %directory.display()))]
     fn import_files_from_dir(
         &mut self,
         directory: &Path,
@@ -325,7 +356,7 @@ impl InstallData {
     ) -> std::io::Result<()> {
         let file_count = files_in_directory_tree(directory)?;
 
-        let mut cut_off_data = Cutoff::new(cutoff, file_count);
+        let mut cut_off_data = Cutoff::from(cutoff, file_count);
         let mut files_to_display = Vec::with_capacity(cut_off_data.display_count);
         if !self.display_paths.is_empty() {
             files_to_display.push(self.display_paths.clone());
@@ -388,12 +419,13 @@ impl InstallData {
         if let DisplayItems::All | DisplayItems::Limit(_) = *cutoff {
             self.display_paths = files_to_display.join("\n");
         }
-
+        trace!("added files within path to {}", self.name);
         Ok(())
     }
 
-    /// This function is intended to add a directory to a InstallData::new()  
-    /// Subsequent runs of this funciton is not tested and not expected to work
+    /// this function is intended to add a directory to a `InstallData::new()`  
+    /// subsequent runs of this funciton is not tested and not expected to work
+    #[instrument(level = "trace", skip_all, fields(in_dir = %new_directory.display()))]
     pub async fn update_fields_with_new_dir(
         &mut self,
         new_directory: &Path,
@@ -459,6 +491,9 @@ impl InstallData {
     }
 }
 
+/// removes mod files safely by avoiding any call to `remove_dir_all()`  
+/// will remove all associated fiales with a `RegMod` then clean up any empty directories
+#[instrument(level = "trace", skip_all, fields(reg_mod = reg_mod.name))]
 pub fn remove_mod_files(
     game_dir: &Path,
     loader_dir: &Path,
@@ -526,10 +561,14 @@ pub fn remove_mod_files(
     if reg_mod.order.set {
         remove_order_entry(reg_mod, loader_dir)?;
     }
+    info!("{} uninstalled", reg_mod.name);
     Ok(())
 }
 
-pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize> {
+/// scans the "mods" folder for ".dll"s | if the ".dll" has the same name as a directory the contentents  
+/// of that directory are included in that mod
+#[instrument(level = "trace", skip_all)]
+pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> {
     let scan_dir = game_dir.join("mods");
     if !matches!(scan_dir.try_exists(), Ok(true)) {
         return new_io_error!(
@@ -579,14 +618,16 @@ pub fn scan_for_mods(game_dir: &Path, ini_file: &Path) -> std::io::Result<usize>
         }
     }
     for mod_data in file_sets.iter_mut() {
-        save_bool(ini_file, INI_SECTIONS[2], &mod_data.name, mod_data.state)?;
+        save_bool(ini_dir, INI_SECTIONS[2], &mod_data.name, mod_data.state)?;
         let file_refs = mod_data.files.file_refs();
         if file_refs.len() == 1 {
-            save_path(ini_file, INI_SECTIONS[3], &mod_data.name, file_refs[0])?;
+            save_path(ini_dir, INI_SECTIONS[3], &mod_data.name, file_refs[0])?;
         } else {
-            save_paths(ini_file, INI_SECTIONS[3], &mod_data.name, &file_refs)?;
+            save_paths(ini_dir, INI_SECTIONS[3], &mod_data.name, &file_refs)?;
         }
-        mod_data.verify_state(game_dir, ini_file)?;
+        mod_data.verify_state(game_dir, ini_dir)?;
     }
-    Ok(file_sets.len())
+    let mods_found = file_sets.len();
+    info!(mods_found, "Scanned for mods");
+    Ok(mods_found)
 }

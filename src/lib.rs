@@ -237,7 +237,7 @@ pub enum OperationResult<'a, T: ?Sized> {
 /// when matching you will always have to `_ => unreachable()` for the return type you will never get
 #[instrument(level = "trace", skip_all)]
 pub fn does_dir_contain<'a, T>(
-    path: &Path,
+    dir: &Path,
     operation: Operation,
     list: &'a [&T],
 ) -> std::io::Result<OperationResult<'a, T>>
@@ -245,7 +245,7 @@ where
     T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash + ?Sized,
     for<'b> &'b str: std::borrow::Borrow<T>,
 {
-    let entries = std::fs::read_dir(path)?;
+    let entries = std::fs::read_dir(dir)?;
     let file_names = entries
         .filter_map(|entry| Some(entry.ok()?.file_name()))
         .collect::<Vec<_>>();
@@ -275,14 +275,14 @@ where
     }
 }
 
-/// returns a collection of references to entries in list that are not found in the supplied path  
+/// returns a collection of references to entries in list that are not found in the supplied directory  
 /// returns an empty Vec if all files were found
-pub fn files_not_found<'a, T>(in_path: &Path, list: &'a [&T]) -> std::io::Result<Vec<&'a T>>
+pub fn files_not_found<'a, T>(dir: &Path, list: &'a [&T]) -> std::io::Result<Vec<&'a T>>
 where
     T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash + ?Sized,
     for<'b> &'b str: std::borrow::Borrow<T>,
 {
-    match does_dir_contain(in_path, Operation::Count, list) {
+    match does_dir_contain(dir, Operation::Count, list) {
         Ok(OperationResult::Count((c, _))) if c == list.len() => Ok(Vec::new()),
         Ok(OperationResult::Count((_, found_files))) => {
             Ok(list.iter().filter(|&&e| !found_files.contains(e)).copied().collect())
