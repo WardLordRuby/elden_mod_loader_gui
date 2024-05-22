@@ -1287,10 +1287,8 @@ async fn install_new_mod(
     if receive_msg().await != Message::Confirm {
         return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled");
     }
-    match InstallData::new(mod_name, files, game_dir) {
-        Ok(data) => add_dir_to_install_data(data, ui_handle).await,
-        Err(err) => Err(err)
-    }
+    let data = InstallData::new(mod_name, files, game_dir)?;
+    add_dir_to_install_data(data, ui_handle).await
 }
 
 async fn install_new_files_to_mod(
@@ -1304,10 +1302,8 @@ async fn install_new_files_to_mod(
     if receive_msg().await != Message::Confirm {
         return new_io_error!(ErrorKind::ConnectionAborted, "Did not select to install files");
     };
-    match InstallData::amend(mod_data, files, game_dir) {
-        Ok(data) => confirm_install(data, ui_handle).await,
-        Err(err) => Err(err)
-    }
+    let data = InstallData::amend(mod_data, files, game_dir)?;
+    confirm_install(data, ui_handle).await
 }
 
 async fn add_dir_to_install_data(
@@ -1318,7 +1314,7 @@ async fn add_dir_to_install_data(
     ui.display_confirm(&format!(
         "Current Files to install:\n{}\n\nWould you like to add a directory eg. Folder containing a config file?", 
         install_files.display_paths), true);
-    let mut result: Vec<Result<(), std::io::Error>> = Vec::with_capacity(2);
+    let mut result = Vec::with_capacity(1);
     match receive_msg().await {
         Message::Confirm => match get_user_folder(&install_files.parent_dir, ui.as_weak()) {
             Ok(path) => {
@@ -1327,18 +1323,18 @@ async fn add_dir_to_install_data(
                     .await
                     .unwrap_or_else(|err| {
                         error!("{err}");
-                        result.push(Err(err));
+                        result.push(err);
                     });
             }
-            Err(err) => result.push(Err(err)),
+            Err(err) => result.push(err),
         },
         Message::Deny => (),
         Message::Esc => return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled"),
     }
     match result.is_empty() {
         false => {
-            let err = result[0].as_ref().unwrap_err();
-            if result.len() == 1 && err.kind() == ErrorKind::InvalidInput {
+            let err = &result[0];
+            if err.kind() == ErrorKind::InvalidInput {
                 ui.display_msg(&format!("Error:\n\n{err}"));
                 let _ = receive_msg().await;
                 let reselect_dir = Box::pin(async {
