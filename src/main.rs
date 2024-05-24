@@ -280,6 +280,8 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
+            // MARK: OPTIMIZE
+            // here we can just make sure that the ini doesn't contain the format_key instead of doing any not needed parsing
             let format_key = mod_name.trim().replace(' ', "_");
             let registered_mods = {
                 let data = ini.collect_mods(game_dir.as_path(), None, false);
@@ -375,8 +377,19 @@ fn main() -> Result<(), slint::PlatformError> {
                     // sync keys will take care of any invalid ini entries
                     let _ = remove_entry(ini.path(), INI_SECTIONS[2], &format_key);
                 }
-                let mut new_mod = RegMod::new(&format_key, state, files.iter().map(PathBuf::from).collect());
-                
+                let loader_dir = get_loader_ini_dir();
+                let mut loader_cfg = ModLoaderCfg::read(loader_dir).unwrap_or_else(|err| {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
+                    ModLoaderCfg::default(loader_dir)
+                });
+                let order_data = loader_cfg.parse_section().unwrap_or_else(|err| {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
+                    HashMap::new()
+                });
+                let mut new_mod = RegMod::with_load_order(&format_key, state, files.iter().map(PathBuf::from).collect(), &order_data);
+
                 new_mod
                 .verify_state(&game_dir, ini.path())
                 .unwrap_or_else(|err| {
@@ -390,17 +403,21 @@ fn main() -> Result<(), slint::PlatformError> {
                         );
                     };
                 });
+
                 ui.global::<MainLogic>().set_line_edit_text(SharedString::new());
                 ini.update().unwrap_or_else(|err| {
                     error!("{err}");
                     ui.display_msg(&err.to_string());
                     ini = Cfg::default(ini_dir);
                 });
-                let order_data = order_data_or_default(ui.as_weak(), None);
-                deserialize_current_mods(
-                    &ini.collect_mods(game_dir.as_path(), Some(&order_data), false),ui.as_weak()
-                );
-                info!(files = new_mod.files.file_refs().len(), enabled = new_mod.state, order = new_mod.order.set, "{mod_name} added with")
+                
+                let model = ui.global::<MainLogic>().get_current_mods();
+                let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().unwrap();
+                mut_model.push(deserialize(&new_mod));
+                if new_mod.order.set {
+                    model.update_order(None, &order_data, ui.as_weak());
+                }
+                info!(files = new_mod.files.file_refs().len(), enabled = new_mod.state, order = new_mod.order.set, "{mod_name} added with");
             }).unwrap();
         }
     });
@@ -993,11 +1010,14 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
             model.set_row_data(value as usize, selected_mod);
-            if let Err(err) = model.update_order(&mut load_order,  value, ui.as_weak()) {
-                error!("{err}");
-                ui.display_msg(&err.to_string());
-                return error;
-            };
+            match load_order.parse_section() {
+                Ok(ref order_map) => model.update_order(Some(value), order_map, ui.as_weak()),
+                Err(err) => {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
+                    return error;
+                }
+            }
             match state {
                 true => info!("load_order set to {}, for {}", value + 1, key),
                 false => info!("load_order removed for {}", key),
@@ -1047,11 +1067,14 @@ fn main() -> Result<(), slint::PlatformError> {
                 if !selected_mod.order.set { selected_mod.order.set = true }
                 model.set_row_data(row as usize, selected_mod);
                 if value != row {
-                    if let Err(err) = model.update_order(&mut load_order, row, ui.as_weak()) {
-                        error!("{err}");
-                        ui.display_msg(&err.to_string());
-                        return error;
-                    };
+                    match load_order.parse_section() {
+                        Ok(ref order_map) => model.update_order(Some(row), order_map, ui.as_weak()),
+                        Err(err) => {
+                            error!("{err}");
+                            ui.display_msg(&err.to_string());
+                            return error;
+                        }
+                    }
                 }
             } else if value != row {
                 let model = ui.global::<MainLogic>().get_current_mods();
@@ -1088,17 +1111,15 @@ fn main() -> Result<(), slint::PlatformError> {
 }
 
 trait Sortable {
-    fn update_order(&self, cfg: &mut ModLoaderCfg, selected_row: i32, ui_handle: slint::Weak<App>) -> std::io::Result<()>;
+    fn update_order(&self, selected_row: Option<i32>, order_map: &OrderMap, ui_handle: slint::Weak<App>);
 }
 
 impl Sortable for ModelRc<DisplayMod> {
     #[instrument(level = "trace", skip_all)]
-    fn update_order(&self, cfg: &mut ModLoaderCfg, selected_row: i32, ui_handle: slint::Weak<App>) -> std::io::Result<()> {
+    fn update_order(&self, selected_row: Option<i32>, order_map: &OrderMap, ui_handle: slint::Weak<App>) {
         let ui = ui_handle.unwrap();
-        let order_map = cfg.parse_section()?;
-
+        let selected_key = selected_row.map(|row| self.row_data(row as usize).expect("front end gives us a valid row").name);
         let mut unsorted_idx = (0..self.row_count()).collect::<Vec<_>>();
-        let selected_key = self.row_data(selected_row as usize).expect("front end gives us a valid row").name;
         let mut i = 0_usize;
         let mut selected_i = 0_usize;
         let mut no_order_count = 0_usize;
@@ -1114,8 +1135,10 @@ impl Sortable for ModelRc<DisplayMod> {
             if curr_key.is_some() && {new_order = order_map.get(&curr_key.unwrap().to_string()); new_order}.is_some() {
                 let new_order = new_order.unwrap();
                 curr_row.order.at = *new_order as i32 + 1;
-                if curr_row.name == selected_key {
-                    selected_i = *new_order;
+                if let Some(ref key) = selected_key {
+                    if curr_row.name == key {
+                        selected_i = *new_order;
+                    }
                 }
                 if unsorted_i == *new_order {
                     self.set_row_data(*new_order, curr_row);
@@ -1124,8 +1147,10 @@ impl Sortable for ModelRc<DisplayMod> {
                 }
                 if let Some(index) = unsorted_idx.iter().position(|&x| x == *new_order) {
                     let swap_row = self.row_data(*new_order).unwrap();
-                    if swap_row.name == selected_key {
-                        selected_i = unsorted_i;
+                    if let Some(ref key) = selected_key {
+                        if swap_row.name == key {
+                            selected_i = unsorted_i;
+                        }
                     }
                     self.set_row_data(*new_order, curr_row);
                     self.set_row_data(unsorted_i, swap_row);
@@ -1133,8 +1158,10 @@ impl Sortable for ModelRc<DisplayMod> {
                     continue;
                 }
             }
-            if curr_row.name == selected_key {
-                selected_i = unsorted_i;
+            if let Some(ref key) = selected_key {
+                if curr_row.name == key {
+                    selected_i = unsorted_i;
+                }
             }
             if !seen_names.contains(&curr_row.name) {
                 seen_names.insert(curr_row.name.clone());
@@ -1146,9 +1173,10 @@ impl Sortable for ModelRc<DisplayMod> {
             }
             i += 1;
         }
-        ui.invoke_update_mod_index(selected_i as i32, 1);
+        if selected_key.is_some() {
+            ui.invoke_update_mod_index(selected_i as i32, 1);
+        } 
         ui.invoke_redraw_checkboxes();
-        Ok(())
     }
 }
 
@@ -1328,48 +1356,52 @@ fn reset_app_state(mut cfg: Cfg, game_dir: &Path, loader_dir: Option<&Path>, ui_
     info!("reloaded state from file");
 }
 
+fn deserialize(mod_data: &RegMod) -> DisplayMod {
+    let files: Rc<VecModel<slint::StandardListViewItem>> = Default::default();
+    let dll_files: Rc<VecModel<SharedString>> = Default::default();
+    let config_files: Rc<VecModel<SharedString>> = Default::default();
+    if !mod_data.files.dll.is_empty() {
+        files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(omit_off_state(&f.to_string_lossy())).into()));
+        dll_files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(omit_off_state(&f.file_name().unwrap().to_string_lossy()))));
+    };
+    if !mod_data.files.config.is_empty() {
+        files.extend(mod_data.files.config.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
+        config_files.extend(mod_data.files.config.iter().map(|f| SharedString::from(f.to_string_lossy().to_string())));
+    };
+    if !mod_data.files.other.is_empty() {
+        files.extend(mod_data.files.other.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
+    };
+    let name = mod_data.name.replace('_', " ");
+    DisplayMod {
+        displayname: SharedString::from(if mod_data.name.chars().count() > 20 {
+            name.chars().take(17).chain("...".chars()).collect()
+        } else {
+            name.clone()
+        }),
+        name: SharedString::from(name),
+        enabled: mod_data.state,
+        files: ModelRc::from(files),
+        config_files: ModelRc::from(config_files),
+        dll_files: ModelRc::from(dll_files),
+        order: LoadOrder { 
+            at: if !mod_data.order.set { 0 } else { mod_data.order.at as i32 + 1 }, 
+            i: if !mod_data.order.set && mod_data.files.dll.len() != 1 { -1 } else { mod_data.order.i as i32 },
+            set: mod_data.order.set 
+        },
+    }
+}
+
 #[instrument(level = "trace", skip_all)]
 fn deserialize_current_mods(data: &CollectedMods, ui_handle: slint::Weak<App>) {
     let ui = ui_handle.unwrap();
     if let Some(ref warning) = data.warnings {
+        warn!("{warning}");
         ui.display_msg(&warning.to_string());
     }
 
     let display_mods: Rc<VecModel<DisplayMod>> = Default::default();
-    for mod_data in data.mods.iter() {
-        let files: Rc<VecModel<slint::StandardListViewItem>> = Default::default();
-        let dll_files: Rc<VecModel<SharedString>> = Default::default();
-        let config_files: Rc<VecModel<SharedString>> = Default::default();
-        if !mod_data.files.dll.is_empty() {
-            files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(omit_off_state(&f.to_string_lossy())).into()));
-            dll_files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(omit_off_state(&f.file_name().unwrap().to_string_lossy()))));
-        };
-        if !mod_data.files.config.is_empty() {
-            files.extend(mod_data.files.config.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
-            config_files.extend(mod_data.files.config.iter().map(|f| SharedString::from(f.to_string_lossy().to_string())));
-        };
-        if !mod_data.files.other.is_empty() {
-            files.extend(mod_data.files.other.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
-        };
-        let name = mod_data.name.replace('_', " ");
-        display_mods.push(DisplayMod {
-            displayname: SharedString::from(if mod_data.name.chars().count() > 20 {
-                name.chars().take(17).chain("...".chars()).collect()
-            } else {
-                name.clone()
-            }),
-            name: SharedString::from(name),
-            enabled: mod_data.state,
-            files: ModelRc::from(files),
-            config_files: ModelRc::from(config_files),
-            dll_files: ModelRc::from(dll_files),
-            order: LoadOrder { 
-                at: if !mod_data.order.set { 0 } else { mod_data.order.at as i32 + 1 }, 
-                i: if !mod_data.order.set && mod_data.files.dll.len() != 1 { -1 } else { mod_data.order.i as i32 },
-                set: mod_data.order.set 
-            },
-        })
-    }
+    data.mods.iter().for_each(|mod_data| display_mods.push(deserialize(mod_data)));
+
     ui.global::<MainLogic>().set_current_mods(ModelRc::from(display_mods));
     ui.global::<MainLogic>().set_orders_set(data.mods.order_count() as i32);
     trace!("deserialized mods");
