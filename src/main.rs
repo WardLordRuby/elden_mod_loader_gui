@@ -309,7 +309,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 let mut file_paths = match get_user_files(&game_dir, ui.as_weak()) {
                     Ok(files) => files,
                     Err(err) => {
-                        info!("{err}");
+                        if err.kind() != ErrorKind::InvalidInput {
+                            error!("{err}");
+                        }
                         ui.display_msg(&err.to_string());
                         return;
                     }
@@ -446,7 +448,6 @@ fn main() -> Result<(), slint::PlatformError> {
                 let path = match path_result {
                     Ok(path) => path,
                     Err(err) => {
-                        info!("{err}");
                         ui.display_msg(&err.to_string());
                         return;
                     }
@@ -600,7 +601,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 let mut file_paths = match get_user_files(&game_dir, ui.as_weak()) {
                     Ok(paths) => paths,
                     Err(err) => {
-                        error!("{err}");
+                        if err.kind() != ErrorKind::InvalidInput {
+                            error!("{err}");
+                        }
                         ui.display_msg(&err.to_string());
                         return;
                     }
@@ -756,68 +759,64 @@ fn main() -> Result<(), slint::PlatformError> {
                     data.mods
                 };
                 let format_key = key.replace(' ', "_");
-                let mut dlls = reg_mods.dll_name_set();
-                let mut order_count = reg_mods.order_count();
-                if let Some(found_mod) =
-                    reg_mods.iter_mut().find(|reg_mod| format_key == reg_mod.name)
+                let Some(found_i) = reg_mods.iter().position(|reg_mod| format_key == reg_mod.name) else
                 {
-                    if found_mod.files.dll.iter().any(FileData::is_disabled) {
-                        if let Err(err) = toggle_files(&game_dir, true, found_mod, None) {
-                            ui.display_msg(&format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}"));
-                            return;
-                        }
-                    }
-                    // MARK: TODO
-                    // now that we don;t rely on Cfg.collect_mods we need to clean up our entries and not rely on sync keys to do our cleanup
-                    // we can let sync keys take care of removing files from ini
-                    remove_entry(ini_dir, INI_SECTIONS[2], &found_mod.name)
-                        .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
-                    let ui_handle = ui.as_weak();
-                    match confirm_remove_mod(ui_handle, &game_dir, loader.path(), found_mod).await {
-                        Ok(_) => {
-                            let success = format!("Successfully removed all files associated with the previously registered mod \"{key}\"");
-                            info!("{success}");
-                            ui.display_msg(&success);
-                        },
-                        Err(err) => {
-                            match err.kind() {
-                                ErrorKind::ConnectionAborted => info!("{err}"),
-                                _ => error!("{err}"),
-                            }
-                            ui.display_msg(&err.to_string())
-                        }
-                    }
-                    let model = ui.global::<MainLogic>().get_current_mods();
-                    let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().unwrap();
-                    ui.global::<MainLogic>().set_current_subpage(0);
-                    mut_model.remove(row as usize);
-                    for f_path in found_mod.files.dll_refs() {
-                        if let Some(f_name) = f_path.file_name() {
-                            if let Some(name_str) = f_name.to_str() {
-                                dlls.remove(omit_off_state(name_str));
-                            }
-                        };
-                    };
-                    if found_mod.order.set { order_count -= 1 }
-                    if let Err(err) = loader.verify_keys(&dlls, order_count) {
-                        warn!("{err}");
-                        ui.display_msg(&err.to_string());
-                    }
-                    let order_data = loader.parse_section().unwrap_or_else(|err| {
-                        error!("{err}");
-                        ui.display_msg(&err.to_string());
-                        HashMap::new()
-                    });
-                    if found_mod.order.set {
-                        ui.global::<MainLogic>().set_orders_set(order_count as i32);
-                        model.update_order(None, &order_data, ui.as_weak());
-                    }
-                } else {
                     let err = &format!("Mod: \"{key}\" not found");
                     error!("{err}");
                     ui.display_msg(&format!("{err}\nRemoving invalid entries"));
                     reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
+                    return;
                 };
+                let mut found_mod = reg_mods.swap_remove(found_i);
+                if found_mod.files.dll.iter().any(FileData::is_disabled) {
+                    if let Err(err) = toggle_files(&game_dir, true, &mut found_mod, None) {
+                        let error = format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}");
+                        error!("{error}");
+                        ui.display_msg(&error);
+                        return;
+                    }
+                }
+                // MARK: TODO
+                // now that we don't rely on Cfg.collect_mods we need to clean up our entries and not rely on sync keys to do our cleanup
+                // we can let sync keys take care of removing files from ini
+                if let Err(err) = remove_entry(ini_dir, INI_SECTIONS[2], &found_mod.name) {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
+                    return;
+                };
+                match confirm_remove_mod(ui.as_weak(), &game_dir, loader.path(), &found_mod).await {
+                    Ok(_) => {
+                        let success = format!("Successfully removed all files associated with the previously registered mod \"{key}\"");
+                        info!("{success}");
+                        ui.display_msg(&success);
+                    },
+                    Err(err) => {
+                        match err.kind() {
+                            ErrorKind::ConnectionAborted => info!("{err}"),
+                            _ => error!("{err}"),
+                        }
+                        ui.display_msg(&err.to_string())
+                    }
+                }
+                let dlls = reg_mods.dll_name_set();
+                let order_count = reg_mods.order_count();
+                let model = ui.global::<MainLogic>().get_current_mods();
+                let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().unwrap();
+                ui.global::<MainLogic>().set_current_subpage(0);
+                mut_model.remove(row as usize);
+                loader.verify_keys(&dlls, order_count).unwrap_or_else(|err| {
+                    warn!("{err}");
+                    ui.display_msg(&err.to_string());
+                });
+                let order_data = loader.parse_section().unwrap_or_else(|err| {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
+                    HashMap::new()
+                });
+                if found_mod.order.set {
+                    ui.global::<MainLogic>().set_orders_set(order_count as i32);
+                    model.update_order(None, &order_data, ui.as_weak());
+                }
             }).unwrap();
         }
     });

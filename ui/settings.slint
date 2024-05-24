@@ -118,7 +118,7 @@ export component SettingsPage inherits Page {
                     padding-top: Formatting.side-padding;
                     padding-left: Formatting.side-padding - 2px;
                     Switch {
-                        text: @tr("Disable All mods");
+                        text: @tr("Disable All Mods");
                         enabled: SettingsLogic.loader-installed;
                         checked <=> SettingsLogic.loader-disabled;
                         toggled => {
