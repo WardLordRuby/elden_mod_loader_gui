@@ -1,7 +1,7 @@
 use ini::{Ini, Properties};
 use tracing::{error, instrument, trace, warn};
 use std::{
-    collections::HashMap, io::ErrorKind, path::{Path, PathBuf}, str::ParseBoolError
+    collections::{HashMap, HashSet}, io::ErrorKind, path::{Path, PathBuf}, str::ParseBoolError
 };
 
 use crate::{
@@ -660,6 +660,8 @@ pub struct CollectedMods {
     pub warnings: Option<std::io::Error>,
 }
 
+type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
+
 impl Cfg {
     /// returns only valid mod data, if data was found to be invalid a message  
     /// is given to inform the user of why a mod was not included  
@@ -676,69 +678,7 @@ impl Cfg {
         include_load_order: Option<&OrderMap>,
         skip_validation: bool,
     ) -> CollectedMods {
-        type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
         type ModData<'a> = Vec<(&'a str, bool, SplitFiles, LoadOrder)>;
-
-        #[instrument(skip_all)]
-        fn sync_keys<'a>(ini: &'a Ini, ini_path: &Path) -> CollectedMaps<'a> {
-            fn collect_paths(section: &Properties) -> HashMap<&str, Vec<&str>> {
-                section
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, (k, _))| *k != ARRAY_KEY)
-                    .map(|(i, (k, v))| {
-                        let paths = section
-                            .iter()
-                            .skip(i + 1)
-                            .take_while(|(k, _)| *k == ARRAY_KEY)
-                            .map(|(_, v)| v)
-                            .collect();
-                        (k, if v == ARRAY_VALUE { paths } else { vec![v] })
-                    })
-                    .collect()
-            }
-
-            let mod_state_data = ini
-                .section(INI_SECTIONS[2])
-                .expect("Validated by Ini::is_setup on startup");
-            let dll_data = ini
-                .section(INI_SECTIONS[3])
-                .expect("Validated by Ini::is_setup on startup");
-            let mut state_data = mod_state_data.iter().collect::<HashMap<&str, &str>>();
-            let mut file_data = collect_paths(dll_data);
-            let invalid_state = state_data
-                .keys()
-                .filter(|k| !file_data.contains_key(*k))
-                .cloned()
-                .collect::<Vec<_>>();
-
-            for key in invalid_state {
-                state_data.remove(key);
-                remove_entry(ini_path, INI_SECTIONS[2], key)
-                    .expect("Key is valid & ini has already been read");
-                warn!(key, "has no matching files");
-            }
-
-            let invalid_files = file_data
-                .keys()
-                .filter(|k| !state_data.contains_key(*k))
-                .cloned()
-                .collect::<Vec<_>>();
-
-            for key in invalid_files {
-                if file_data.get(key).expect("key exists").len() > 1 {
-                    remove_array(ini_path, key).expect("Key is valid & ini has already been read");
-                } else {
-                    remove_entry(ini_path, INI_SECTIONS[3], key)
-                        .expect("Key is valid & ini has already been read");
-                }
-                file_data.remove(key);
-                warn!(key, "has no matching state");
-            }
-
-            assert_eq!(state_data.len(), file_data.len());
-            (state_data, file_data)
-        }
 
         #[instrument(level = "trace", skip_all)]
         fn combine_map_data(
@@ -871,7 +811,7 @@ impl Cfg {
                 warnings: None,
             }
         } else {
-            let parsed_data = sync_keys(self.data(), self.path());
+            let parsed_data = sync_keys(self);
             let collected_mods = combine_map_data(
                 parsed_data,
                 include_load_order,
@@ -882,19 +822,111 @@ impl Cfg {
             collected_mods
         }
     }
+
+    /// returns all the keys(as_lowercase) collected into a `Set` 
+    /// this also calls sync keys if invalid keys are found
+    #[instrument(level = "trace", skip_all)]
+    pub fn keys(&mut self) -> HashSet<String> {
+        fn are_keys_ok(data: &ini::Ini) -> Option<HashSet<String>> {
+            let reg_mods = data.section(INI_SECTIONS[2]).expect("Validated by is_setup");
+            let mut keys = reg_mods.iter().map(|(k, _)| k.to_lowercase()).collect::<HashSet<_>>();
+            let filtered_mod_files = data.section(INI_SECTIONS[3]).expect("Validated by is_setup").iter().filter_map(|(k, _)| {
+                if k != ARRAY_KEY {
+                    Some(k)
+                } else {
+                    None
+                }
+            }).collect::<Vec<_>>();
+            match filtered_mod_files.iter().all(|k| !keys.insert(k.to_lowercase())) {
+                true => Some(keys),
+                false => None,
+            }
+        }
+
+        if let Some(keys) = are_keys_ok(self.data()) {
+            trace!("keys collected");
+            return keys
+        }
+        let registered_mods = {
+            let (mods_map, _) = sync_keys(self);
+            mods_map.keys().map(|k| k.to_lowercase()).collect::<HashSet<_>>()
+        };
+        self.update().expect("already exists in an accessable directory");
+        registered_mods
+    }
+
+    /// returns all the registered files in a `Set`
+    pub fn files(&self) -> HashSet<&str> {
+        let mod_files = self.data().section(INI_SECTIONS[3]).expect("Validated by is_setup");
+        mod_files.iter().filter_map(|(_, v)| {
+            if v != ARRAY_VALUE {
+                Some(v)
+            } else {
+                None
+            }
+        }).collect::<HashSet<_>>()
+    }
 }
 
-/// checks if any passed in file is contained in any `RegMod` 
-pub fn file_registered<P: AsRef<Path>>(mod_data: &[RegMod], files: &[P]) -> bool {
-    files.iter().any(|path| {
-        mod_data.iter().any(|registered_mod| {
-            registered_mod
-                .files
-                .file_refs()
-                .iter()
-                .any(|mod_file| &path.as_ref() == mod_file)
-        })
-    })
+#[instrument(skip_all)]
+fn sync_keys<'a>(cfg: &'a Cfg) -> CollectedMaps<'a> {
+    fn collect_paths(section: &Properties) -> HashMap<&str, Vec<&str>> {
+        section
+            .iter()
+            .enumerate()
+            .filter(|(_, (k, _))| *k != ARRAY_KEY)
+            .map(|(i, (k, v))| {
+                let paths = section
+                    .iter()
+                    .skip(i + 1)
+                    .take_while(|(k, _)| *k == ARRAY_KEY)
+                    .map(|(_, v)| v)
+                    .collect();
+                (k, if v == ARRAY_VALUE { paths } else { vec![v] })
+            })
+            .collect()
+    }
+
+    let mod_state_data = cfg.data()
+        .section(INI_SECTIONS[2])
+        .expect("Validated by Ini::is_setup on startup");
+    let dll_data = cfg.data()
+        .section(INI_SECTIONS[3])
+        .expect("Validated by Ini::is_setup on startup");
+    let mut state_data = mod_state_data.iter().collect::<HashMap<&str, &str>>();
+    let mut file_data = collect_paths(dll_data);
+    let invalid_state = state_data
+        .keys()
+        .filter(|k| !file_data.contains_key(*k))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for key in invalid_state {
+        state_data.remove(key);
+        remove_entry(cfg.path(), INI_SECTIONS[2], key)
+            .expect("Key is valid & ini has already been read");
+        warn!(key, "has no matching files");
+    }
+
+    let invalid_files = file_data
+        .keys()
+        .filter(|k| !state_data.contains_key(*k))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for key in invalid_files {
+        if file_data.get(key).expect("key exists").len() > 1 {
+            remove_array(cfg.path(), key).expect("Key is valid & ini has already been read");
+        } else {
+            remove_entry(cfg.path(), INI_SECTIONS[3], key)
+                .expect("Key is valid & ini has already been read");
+        }
+        file_data.remove(key);
+        warn!(key, "has no matching state");
+    }
+
+    assert_eq!(state_data.len(), file_data.len());
+    (state_data, file_data)
 }
 
 pub trait IntoIoError {

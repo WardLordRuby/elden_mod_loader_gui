@@ -6,7 +6,7 @@ use elden_mod_loader_gui::{
     utils::{
         ini::{
             mod_loader::{Countable, ModLoader, NameSet},
-            parser::{file_registered, CollectedMods, RegMod, Setup},
+            parser::{CollectedMods, RegMod, Setup},
             writer::*,
             common::*,
         },
@@ -32,7 +32,7 @@ use tokio::sync::{
 slint::include_modules!();
 
 static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
-static RESTRICTED_FILES: OnceLock<[&'static OsStr; 6]> = OnceLock::new();
+static RESTRICTED_FILES: OnceLock<HashSet<&OsStr>> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
 
 fn main() -> Result<(), slint::PlatformError> {
@@ -281,21 +281,8 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
-            // MARK: OPTIMIZE
-            // here we can just make sure that the ini doesn't contain the format_key instead of doing any not needed parsing
             let format_key = mod_name.trim().replace(' ', "_");
-            let registered_mods = {
-                let data = ini.collect_mods(game_dir.as_path(), None, false);
-                if let Some(warning) = data.warnings {
-                    warn!("{warning}");
-                    ui.display_msg(&warning.to_string());
-                }
-                data.mods
-            };
-            if registered_mods
-                .iter()
-                .any(|mod_data| format_key.to_lowercase() == mod_data.name.to_lowercase())
-            {
+            if ini.keys().contains(&format_key) {
                 ui.display_msg(&format!(
                     "There is already a registered mod with the name\n\"{mod_name}\""
                 ));
@@ -350,12 +337,13 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }
                 };
-                if file_registered(&registered_mods, &files) {
+                let registered_files = ini.files();
+                if files.iter().any(|f| registered_files.contains(f.to_string_lossy().to_string().as_str())) {
                     let err_str = "A selected file is already registered to a mod";
-                    error!(err_str);
+                    error!("{err_str}");
                     ui.display_msg(err_str);
                     return;
-                }
+                };
                 let mut results: Vec<std::io::Result<()>> = Vec::with_capacity(2);
                 let state = !files.iter().all(FileData::is_disabled);
                 results.push(save_bool(
@@ -652,62 +640,65 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }
                 };
-                if file_registered(&registered_mods, &files) {
-                    ui.display_msg("A selected file is already registered to a mod");
+                let registered_files = ini.files();
+                if files.iter().any(|f| registered_files.contains(f.to_string_lossy().to_string().as_str())) {
+                    let err_str = "A selected file is already registered to a mod";
+                    error!("{err_str}");
+                    ui.display_msg(err_str);
+                    return;
+                };
+                let num_files = files.len();
+                let mut new_data = found_mod.files.dll.clone();
+                new_data.extend(files.iter().map(PathBuf::from));
+                let mut results = Vec::with_capacity(3);
+                let new_data_refs = found_mod.files.add_other_files_to_files(&new_data);
+                if found_mod.files.len() == 1 {
+                    results.push(remove_entry(
+                        ini.path(),
+                        INI_SECTIONS[3],
+                        &found_mod.name,
+                    ));
                 } else {
-                    let num_files = files.len();
-                    let mut new_data = found_mod.files.dll.clone();
-                    new_data.extend(files.iter().map(PathBuf::from));
-                    let mut results = Vec::with_capacity(3);
-                    let new_data_refs = found_mod.files.add_other_files_to_files(&new_data);
-                    if found_mod.files.len() == 1 {
-                        results.push(remove_entry(
-                            ini.path(),
-                            INI_SECTIONS[3],
-                            &found_mod.name,
-                        ));
-                    } else {
-                        results.push(remove_array(ini.path(), &found_mod.name));
-                    }
-                    results.push(save_paths(ini.path(), INI_SECTIONS[3], &found_mod.name, &new_data_refs));
-                    if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
-                        error!("{err}");
+                    results.push(remove_array(ini.path(), &found_mod.name));
+                }
+                results.push(save_paths(ini.path(), INI_SECTIONS[3], &found_mod.name, &new_data_refs));
+                if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
+                    let _ = remove_entry(
+                        ini.path(),
+                        INI_SECTIONS[2],
+                        &format_key,
+                    );
+                }
+                let new_data_owned = new_data_refs.iter().map(PathBuf::from).collect();
+                let mut updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data_owned);
+                
+                updated_mod
+                    .verify_state(&game_dir, ini.path())
+                    .unwrap_or_else(|err| {
                         ui.display_msg(&err.to_string());
                         let _ = remove_entry(
                             ini.path(),
                             INI_SECTIONS[2],
-                            &format_key,
+                            &updated_mod.name,
                         );
-                    }
-                    let new_data_owned = new_data_refs.iter().map(PathBuf::from).collect();
-                    let mut updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data_owned);
-                    
-                    updated_mod
-                        .verify_state(&game_dir, ini.path())
-                        .unwrap_or_else(|err| {
-                            ui.display_msg(&err.to_string());
-                            let _ = remove_entry(
-                                ini.path(),
-                                INI_SECTIONS[2],
-                                &updated_mod.name,
-                            );
-                            results.push(Err(err));
-                        });
-                    if !results.iter().any(|r| r.is_err()) {
-                        let success = format!("Sucessfully added {} file(s) to {}", num_files, format_key);
-                        info!("{success}");
-                        ui.display_msg(&success);
-                    }
-                    ini.update().unwrap_or_else(|err| {
-                        error!("{err}");
-                        ui.display_msg(&err.to_string());
-                        ini = Cfg::default(ini_dir);
+                        results.push(Err(err));
                     });
-                    let order_data = order_data_or_default(ui.as_weak(), None);
-                    deserialize_current_mods(
-                        &ini.collect_mods(game_dir.as_path(), Some(&order_data), false),ui.as_weak()
-                    );
+                if !results.iter().any(|r| r.is_err()) {
+                    let success = format!("Sucessfully added {} file(s) to {}", num_files, format_key);
+                    info!("{success}");
+                    ui.display_msg(&success);
                 }
+                ini.update().unwrap_or_else(|err| {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
+                    ini = Cfg::default(ini_dir);
+                });
+                let order_data = order_data_or_default(ui.as_weak(), None);
+                deserialize_current_mods(
+                    &ini.collect_mods(game_dir.as_path(), Some(&order_data), false),ui.as_weak()
+                );
             })
             .unwrap();
         }
@@ -1247,10 +1238,9 @@ fn get_user_files(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<V
         Some(files) => match files.len() {
             0 => new_io_error!(ErrorKind::InvalidInput, "No Files Selected"),
             _ => {
+                let restricted_files = RESTRICTED_FILES.get().unwrap();
                 if files.iter().any(|file| {
-                    RESTRICTED_FILES.get().unwrap().iter().any(|&restricted_file| {
-                        file.file_name().expect("has valid name") == restricted_file
-                    })
+                    restricted_files.contains(file.file_name().expect("has valid name"))
                 }) {
                     return new_io_error!(
                         ErrorKind::InvalidData,
@@ -1295,16 +1285,8 @@ fn get_or_update_game_dir(update: Option<PathBuf>) -> tokio::sync::RwLockReadGua
     GAME_DIR.get().unwrap().blocking_read()
 }
 
-fn populate_restricted_files() -> [&'static OsStr; 6] {
-    let mut restricted_files: [&OsStr; 6] = [OsStr::new(""); 6];
-    for (i, file) in LOADER_FILES.iter().map(OsStr::new).enumerate() {
-        restricted_files[i] = file;
-    }
-    for (i, file) in REQUIRED_GAME_FILES.iter().map(OsStr::new).enumerate() {
-        restricted_files[i + LOADER_FILES.len()] = file;
-    }
-
-    restricted_files
+fn populate_restricted_files() -> HashSet<&'static OsStr> {
+    LOADER_FILES.iter().chain(REQUIRED_GAME_FILES.iter()).map(OsStr::new).collect()
 }
 
 #[instrument(skip(ui_handle))]
