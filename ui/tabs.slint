@@ -198,7 +198,7 @@ export component ModEdit inherits Tab {
                     height: Formatting.default-element-height;
                     primary: !SettingsLogic.dark-mode;
                     text: @tr("De-register");
-                    clicked => { MainLogic.remove-mod(MainLogic.current-mods[mod-index].name) }
+                    clicked => { MainLogic.remove-mod(MainLogic.current-mods[mod-index].name, mod-index) }
                 }
             }
         }

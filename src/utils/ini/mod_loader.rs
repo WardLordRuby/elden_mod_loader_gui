@@ -87,28 +87,12 @@ impl ModLoaderCfg {
     /// verifies that all keys stored in "elden_mod_loader_config.ini" are registered with the app  
     /// a _unknown_ file is found as a key this will change the order to be greater than _known_ files  
     #[instrument(level = "trace", skip_all)]
-    pub fn verify_keys(&mut self, mods: &[RegMod]) -> std::io::Result<()> {
-        let valid_dlls = mods
-            .iter()
-            .flat_map(|m| {
-                m.files
-                    .dll
-                    .iter()
-                    .filter_map(|f| {
-                        Some({
-                            let file_name = f.file_name()?.to_str()?;
-                            omit_off_state(file_name)
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<HashSet<_>>();
-        let order_count = mods.order_count();
+    pub fn verify_keys(&mut self, dlls: &HashSet<String>, order_count: usize) -> std::io::Result<()> {
         let keys = self.iter().map(|(k, _)| k.to_string()).collect::<Vec<_>>();
         let mut unknown_keys = Vec::new();
         let mut update_order = false;
         keys.iter().enumerate().for_each(|(i, k)| {
-            if !valid_dlls.contains(k.as_str()) {
+            if !dlls.contains(k.as_str()) {
                 unknown_keys.push(k.to_owned());
                 if i < order_count {
                     update_order = true; 
@@ -222,5 +206,21 @@ impl Countable for [RegMod] {
     #[inline]
     fn order_count(&self) -> usize {
         self.iter().filter(|m| m.order.set).count()
+    }
+}
+
+pub trait NameSet {
+    fn dll_name_set(&self) -> HashSet<String>;
+}
+
+impl NameSet for [RegMod] {
+    fn dll_name_set(&self) -> HashSet<String> {
+        self.iter().flat_map(|reg_mod| {
+           reg_mod.files.dll.iter().filter_map(|f|
+            Some({
+                let file_name = f.file_name()?.to_str()?;
+                String::from(omit_off_state(file_name))
+            })).collect::<Vec<_>>()
+        }).collect::<HashSet<_>>()
     }
 }

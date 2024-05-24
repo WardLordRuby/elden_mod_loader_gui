@@ -5,7 +5,7 @@
 use elden_mod_loader_gui::{
     utils::{
         ini::{
-            mod_loader::{Countable, ModLoader},
+            mod_loader::{Countable, ModLoader, NameSet},
             parser::{file_registered, CollectedMods, RegMod, Setup},
             writer::*,
             common::*,
@@ -129,7 +129,8 @@ fn main() -> Result<(), slint::PlatformError> {
                     Some(data.mods)
                 };
                 if let Some(ref mods) = reg_mods {
-                    if let Err(err) = mod_loader_cfg.verify_keys(mods) {
+                    let dlls = mods.dll_name_set();
+                    if let Err(err) = mod_loader_cfg.verify_keys(&dlls, mods.order_count()) {
                         if err.kind() == ErrorKind::Unsupported {
                             order_data = mod_loader_cfg.parse_into_map();
                             reg_mods = Some(ini.collect_mods(&path, Some(&order_data), false).mods);
@@ -516,7 +517,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
-            let mut ini = match Cfg::read(ini_dir) {
+            let ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     error!("{err}");
@@ -552,16 +553,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 error!("Mod: \"{key}\" not found");
                 ui.display_msg(&format!("Mod: \"{key}\" not found"))
             };
-
-            ini.update().unwrap_or_else(|err| {
-                error!("{err}");
-                ui.display_msg(&err.to_string());
-                ini = Cfg::default(ini_dir);
-            });
-            let order_data = order_data_or_default(ui.as_weak(), None);
-            deserialize_current_mods(
-                &ini.collect_mods(game_dir.as_path(), Some(&order_data), false),ui.as_weak()
-            );
+            reset_app_state(ini, &game_dir, None, ui.as_weak());
             !state
         }
     });
@@ -719,7 +711,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_remove_mod({
         let ui_handle = ui.as_weak();
-        move |key| {
+        move |key, row| {
             let span = info_span!("remove_mod");
             let _gaurd = span.enter();
 
@@ -733,17 +725,16 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
-            let format_key = key.replace(' ', "_");
-            ui.display_confirm(&format!("Are you sure you want to de-register: \"{key}\""), false);
             let span_clone = span.clone();
             slint::spawn_local(async move {
                 let _gaurd = span_clone.enter();
+                ui.display_confirm(&format!("Are you sure you want to de-register: \"{key}\""), false);
                 if receive_msg().await != Message::Confirm {
                     return
                 }
                 let order_map: Option<OrderMap>;
                 let loader_dir = get_loader_ini_dir();
-                let loader = match ModLoaderCfg::read(loader_dir) {
+                let mut loader = match ModLoaderCfg::read(loader_dir) {
                     Ok(mut data) => {
                         order_map = data.parse_section().ok();
                         data
@@ -764,6 +755,9 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                     data.mods
                 };
+                let format_key = key.replace(' ', "_");
+                let mut dlls = reg_mods.dll_name_set();
+                let mut order_count = reg_mods.order_count();
                 if let Some(found_mod) =
                     reg_mods.iter_mut().find(|reg_mod| format_key == reg_mod.name)
                 {
@@ -773,6 +767,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             return;
                         }
                     }
+                    // MARK: TODO
+                    // now that we don;t rely on Cfg.collect_mods we need to clean up our entries and not rely on sync keys to do our cleanup
                     // we can let sync keys take care of removing files from ini
                     remove_entry(ini_dir, INI_SECTIONS[2], &found_mod.name)
                         .unwrap_or_else(|err| ui.display_msg(&err.to_string()));
@@ -791,14 +787,37 @@ fn main() -> Result<(), slint::PlatformError> {
                             ui.display_msg(&err.to_string())
                         }
                     }
+                    let model = ui.global::<MainLogic>().get_current_mods();
+                    let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().unwrap();
+                    ui.global::<MainLogic>().set_current_subpage(0);
+                    mut_model.remove(row as usize);
+                    for f_path in found_mod.files.dll_refs() {
+                        if let Some(f_name) = f_path.file_name() {
+                            if let Some(name_str) = f_name.to_str() {
+                                dlls.remove(omit_off_state(name_str));
+                            }
+                        };
+                    };
+                    if found_mod.order.set { order_count -= 1 }
+                    if let Err(err) = loader.verify_keys(&dlls, order_count) {
+                        warn!("{err}");
+                        ui.display_msg(&err.to_string());
+                    }
+                    let order_data = loader.parse_section().unwrap_or_else(|err| {
+                        error!("{err}");
+                        ui.display_msg(&err.to_string());
+                        HashMap::new()
+                    });
+                    if found_mod.order.set {
+                        ui.global::<MainLogic>().set_orders_set(order_count as i32);
+                        model.update_order(None, &order_data, ui.as_weak());
+                    }
                 } else {
                     let err = &format!("Mod: \"{key}\" not found");
                     error!("{err}");
-                    ui.display_msg(&format!("{err}\nRemoving invalid entries"))
+                    ui.display_msg(&format!("{err}\nRemoving invalid entries"));
+                    reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
                 };
-                // MARK: OPTIMIZE
-                // remove this and just remove the row data and manually set the app to page 0
-                reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
             }).unwrap();
         }
     });
