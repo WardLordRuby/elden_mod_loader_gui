@@ -97,66 +97,64 @@ fn main() -> Result<(), slint::PlatformError> {
         let mut reg_mods = None;
         let mut order_data: OrderMap;
         let game_dir = match ini.attempt_locate_game() {
-            Ok(path_result) => match path_result {
-                PathResult::Full(path) => {
-                    mod_loader = ModLoader::properties(&path).unwrap_or_else(|err| {
-                        error!("code 3: {err}");
+            Ok(PathResult::Full(path)) => {
+                mod_loader = ModLoader::properties(&path).unwrap_or_else(|err| {
+                    error!("code 3: {err}");
+                    errors.push(err);
+                    ModLoader::default()
+                });
+                if mod_loader.installed() {
+                    mod_loader_cfg = ModLoaderCfg::read(mod_loader.path()).unwrap_or_else(|err| {
+                        error!("code 4: {err}");
                         errors.push(err);
-                        ModLoader::default()
+                        ModLoaderCfg::default(mod_loader.path())
                     });
-                    if mod_loader.installed() {
-                        mod_loader_cfg = ModLoaderCfg::read(mod_loader.path()).unwrap_or_else(|err| {
-                            error!("code 4: {err}");
-                            errors.push(err);
-                            ModLoaderCfg::default(mod_loader.path())
-                        });
-                    } else {
-                        mod_loader_cfg = ModLoaderCfg::default(mod_loader.path());
-                    }
-                    order_data = match mod_loader_cfg.parse_section() {
-                        Ok(data) => data,
-                        Err(err) => {
-                            error!("code 5: {err}");
-                            errors.push(err);
-                            HashMap::new()
-                        }
-                    };
-                    reg_mods = {
-                        let data = ini.collect_mods(&path, Some(&order_data), false);
-                        if let Some(warning) = data.warnings {
-                            warn!("code 6: {warning}");
-                            errors.push(warning);
-                        }
-                        Some(data.mods)
-                    };
-                    if let Some(ref mods) = reg_mods {
-                        if let Err(err) = mod_loader_cfg.verify_keys(mods) {
-                            if err.kind() == ErrorKind::Unsupported {
-                                order_data = mod_loader_cfg.parse_into_map();
-                                reg_mods = Some(ini.collect_mods(&path, Some(&order_data), false).mods);
-                            }
-                            warn!("code 7: {err}");
-                            errors.push(err);
-                        }
-                    }
-                    if reg_mods.is_some() && reg_mods.as_ref().unwrap().len() != ini.mods_registered() {
-                        ini = Cfg::read(current_ini).unwrap_or_else(|err| {
-                            error!("code 8: {err}");
-                            errors.push(err);
-                            Cfg::default(current_ini)
-                        })
-                    }
-                    game_verified = true;
-                    Some(path)
-                },
-                PathResult::Partial(path) | PathResult::None(path) => {
-                    mod_loader_cfg = ModLoaderCfg::empty();
-                    mod_loader = ModLoader::default();
-                    order_data = HashMap::new();
-                    game_verified = false;
-                    Some(path)
+                } else {
+                    mod_loader_cfg = ModLoaderCfg::default(mod_loader.path());
                 }
+                order_data = match mod_loader_cfg.parse_section() {
+                    Ok(data) => data,
+                    Err(err) => {
+                        error!("code 5: {err}");
+                        errors.push(err);
+                        HashMap::new()
+                    }
+                };
+                reg_mods = {
+                    let data = ini.collect_mods(&path, Some(&order_data), false);
+                    if let Some(warning) = data.warnings {
+                        warn!("code 6: {warning}");
+                        errors.push(warning);
+                    }
+                    Some(data.mods)
+                };
+                if let Some(ref mods) = reg_mods {
+                    if let Err(err) = mod_loader_cfg.verify_keys(mods) {
+                        if err.kind() == ErrorKind::Unsupported {
+                            order_data = mod_loader_cfg.parse_into_map();
+                            reg_mods = Some(ini.collect_mods(&path, Some(&order_data), false).mods);
+                        }
+                        warn!("code 7: {err}");
+                        errors.push(err);
+                    }
+                }
+                if reg_mods.is_some() && reg_mods.as_ref().unwrap().len() != ini.mods_registered() {
+                    ini = Cfg::read(current_ini).unwrap_or_else(|err| {
+                        error!("code 8: {err}");
+                        errors.push(err);
+                        Cfg::default(current_ini)
+                    })
+                }
+                game_verified = true;
+                Some(path)
             },
+            Ok(PathResult::Partial(path) | PathResult::None(path)) => {
+                mod_loader_cfg = ModLoaderCfg::empty();
+                mod_loader = ModLoader::default();
+                order_data = HashMap::new();
+                game_verified = false;
+                Some(path)
+            }   
             Err(err) => {
                 // io::Write error
                 error!("code 9: {err}");
