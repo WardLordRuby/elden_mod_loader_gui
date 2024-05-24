@@ -1,9 +1,7 @@
 use ini::{Ini, Properties};
 use tracing::{error, instrument, trace, warn};
 use std::{
-    collections::HashMap,
-    io::ErrorKind,
-    path::{Path, PathBuf}, str::ParseBoolError,
+    collections::HashMap, io::ErrorKind, path::{Path, PathBuf}, str::ParseBoolError
 };
 
 use crate::{
@@ -252,7 +250,7 @@ impl<T: AsRef<Path>> Setup for T {
                 .map(|s| s.unwrap())
                 .collect::<Vec<_>>();
             if not_found.is_empty() {
-                trace!("Ini found with all sections");
+                trace!("ini found with all sections");
                 Ok(ini)
             } else {
                 new_io_error!(
@@ -408,9 +406,8 @@ pub struct LoadOrder {
 
 impl LoadOrder {
     fn from(dll_files: &[PathBuf], parsed_order_val: &OrderMap) -> Self {
-        let mut order = LoadOrder::default();
         if dll_files.is_empty() {
-            return order;
+            return LoadOrder::default();
         }
         if let Some(files) = dll_files
             .iter()
@@ -422,16 +419,17 @@ impl LoadOrder {
         {
             for (i, dll) in files.iter().enumerate() {
                 if let Some(v) = parsed_order_val.get(dll) {
-                    order.set = true;
-                    order.i = i;
-                    order.at = *v;
-                    break;
+                    return LoadOrder {
+                        set: true,
+                        i,
+                        at: *v,
+                    }
                 }
             }
         } else {
             error!("Failed to retrieve file_name for Path in: {dll_files:?} Returning LoadOrder::default")
         };
-        order
+        LoadOrder::default()
     }
 }
 

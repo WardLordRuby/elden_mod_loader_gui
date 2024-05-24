@@ -160,7 +160,7 @@ impl ModLoaderCfg {
     }
 
     /// returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
-    /// this will filter out invalid entries, do not use unless you _know_ all entries are valid  
+    /// this will not filter out invalid entries, do not use unless you _know_ all entries are valid  
     pub fn parse_into_map(&self) -> OrderMap {
         self.iter()
             .filter_map(|(k, v)| Some((k.to_string(), v.parse::<usize>().ok()?)))

@@ -219,7 +219,7 @@ pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io:
 #[instrument(level = "trace", skip_all)]
 pub fn get_cfg(from_path: &Path) -> std::io::Result<Ini> {
     let ini = Ini::load_from_file_noescape(from_path).map_err(|err| err.into_io_error("", ""))?;
-    trace!(file = ?from_path.file_name().unwrap(), "loaded from file");
+    trace!(file = ?from_path.file_name().unwrap(), "loaded ini from file");
     Ok(ini)
 }
 
