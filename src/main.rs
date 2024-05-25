@@ -303,6 +303,13 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 };
+                let registered_files = ini.file_names();
+                if file_paths.iter().any(|f| registered_files.contains(f.file_name().expect("file selected").to_str().unwrap_or_default())) {
+                    let err_str = "A selected file is already registered to a mod";
+                    error!("{err_str}");
+                    ui.display_msg(err_str);
+                    return;
+                };
                 let files = match shorten_paths(&file_paths, &game_dir) {
                     Ok(files) => files,
                     Err(err) => {
@@ -336,13 +343,6 @@ fn main() -> Result<(), slint::PlatformError> {
                             return;
                         }
                     }
-                };
-                let registered_files = ini.files();
-                if files.iter().any(|f| registered_files.contains(f.to_string_lossy().to_string().as_str())) {
-                    let err_str = "A selected file is already registered to a mod";
-                    error!("{err_str}");
-                    ui.display_msg(err_str);
-                    return;
                 };
                 let mut results: Vec<std::io::Result<()>> = Vec::with_capacity(2);
                 let state = !files.iter().all(FileData::is_disabled);
@@ -596,14 +596,11 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 };
-                let Some(found_mod) = registered_mods
-                    .iter()
-                    .find(|reg_mod| format_key == reg_mod.name) 
-                else {
-                    error!(%key, "No mod found with");
-                    ui.display_msg(&format!("Mod: \"{key}\" not found"));
-                    reset_app_state(ini, &game_dir, None, ui.as_weak());
-                    info!("deserialized after encountered error");
+                let registered_files = ini.file_names();
+                if file_paths.iter().any(|f| registered_files.contains(f.file_name().expect("file selected").to_str().unwrap_or_default())) {
+                    let err_str = "A selected file is already registered to a mod";
+                    error!("{err_str}");
+                    ui.display_msg(err_str);
                     return;
                 };
                 let files = match shorten_paths(&file_paths, &game_dir) {

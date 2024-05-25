@@ -386,6 +386,19 @@ pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
     ))
 }
 
+// returns whats right of the right most '\' or does nothing
+#[instrument(level = "trace")]
+pub fn file_name_from_str(str: &str) -> &str {
+    let split = str.rfind('\\').unwrap_or(0);
+    if split == 0 {
+        trace!("'\\' not found");
+        return str;
+    }
+    let output = str.split_at(split + 1).1;
+    trace!(output);
+    output
+}
+
 pub enum PathResult {
     Full(PathBuf),
     Partial(PathBuf),

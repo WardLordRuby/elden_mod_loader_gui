@@ -189,12 +189,11 @@ impl<T: AsRef<Path>> ValitidityMany for [T] {
 fn validate_file(path: &Path) -> std::io::Result<()> {
     if path.extension().is_none() {
         let input_file = path.to_string_lossy().to_string();
-        let split = input_file.rfind('\\').unwrap_or(0);
         return new_io_error!(
             ErrorKind::InvalidInput,
             format!(
                 "\"{}\" does not have an extention",
-                input_file.split_at(if split != 0 { split + 1 } else { split }).1
+                file_name_from_str(&input_file)
             )
         );
     }
@@ -855,12 +854,12 @@ impl Cfg {
         registered_mods
     }
 
-    /// returns all the registered files in a `Set`
-    pub fn files(&self) -> HashSet<&str> {
+    /// returns all the registered file names in a `Set`
+    pub fn file_names(&self) -> HashSet<&str> {
         let mod_files = self.data().section(INI_SECTIONS[3]).expect("Validated by is_setup");
         mod_files.iter().filter_map(|(_, v)| {
             if v != ARRAY_VALUE {
-                Some(v)
+                Some(file_name_from_str(v))
             } else {
                 None
             }
