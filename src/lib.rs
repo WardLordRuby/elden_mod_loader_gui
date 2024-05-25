@@ -491,3 +491,87 @@ fn get_current_drive() -> std::io::Result<std::ffi::OsString> {
             "Could not get root component",
         ))
 }
+
+pub trait IntoIoError {
+    fn into_io_error(self, key: &str, context: &str) -> std::io::Error;
+}
+
+impl IntoIoError for ini::Error {
+    /// converts `ini::Error` into `io::Error` key and context are not used  
+    fn into_io_error(self, _key: &str, _context: &str) -> std::io::Error {
+        match self {
+            ini::Error::Io(err) => err,
+            ini::Error::Parse(err) => std::io::Error::new(ErrorKind::InvalidData, err),
+        }
+    }
+}
+
+impl IntoIoError for std::str::ParseBoolError {
+    /// converts `ParseBoolError` into `io::Error` key and context add context to err msg
+    #[inline]
+    fn into_io_error(self, key: &str, context: &str) -> std::io::Error {
+        std::io::Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "string: \"{context}\" found in \"{key}\" was not `true`, `false`, `1`, or `0`."
+            ),
+        )
+    }
+}
+
+impl IntoIoError for std::num::ParseIntError {
+    /// converts `ParseIntError` into `io::Error` key and context add context to err msg
+    #[inline]
+    fn into_io_error(self, key: &str, context: &str) -> std::io::Error {
+        std::io::Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "string: \"{context}\" found in \"{key}\" was not within the valid `U32 range`."
+            ),
+        )
+    }
+}
+
+pub trait ModError {
+    /// replaces self with `self` + `msg`
+    fn add_msg(&mut self, msg: &str);
+}
+
+impl ModError for std::io::Error {
+    #[inline]
+    fn add_msg(&mut self, msg: &str) {
+        std::mem::swap(
+            self,
+            &mut std::io::Error::new(self.kind(), format!("{self} {msg}")),
+        )
+    }
+}
+
+pub trait ErrorClone {
+    /// clones a immutable reference to an `Error` to a owned `io::Error`
+    fn clone_err(&self) -> std::io::Error;
+}
+
+impl ErrorClone for std::io::Error {
+    #[inline]
+    fn clone_err(&self) -> std::io::Error {
+        std::io::Error::new(self.kind(), self.to_string())
+    }
+}
+
+pub trait Merge {
+    /// joins all `io::Error`'s in a collection while leaving the collection intact
+    fn merge(&self) -> std::io::Error;
+}
+impl Merge for [std::io::Error] {
+    fn merge(&self) -> std::io::Error {
+        if self.is_empty() {
+            return std::io::Error::new(ErrorKind::InvalidInput, "Tried to merge 0 errors");
+        }
+        let mut new_err: std::io::Error = self[0].clone_err();
+        if self.len() > 1 {
+            self.iter().skip(1).for_each(|err| new_err.add_msg(&err.to_string()));
+        }
+        new_err
+    }
+}

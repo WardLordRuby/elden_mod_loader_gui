@@ -9,10 +9,10 @@ use tracing::instrument;
 use crate::{
     get_or_setup_cfg,
     utils::ini::{
-        parser::{IniProperty, ModError},
+        parser::IniProperty,
         writer::{save_bool, save_value_ext, EXT_OPTIONS, WRITE_OPTIONS},
     },
-    DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_SECTIONS, LOADER_KEYS,
+    ModError, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_SECTIONS, LOADER_KEYS,
     LOADER_SECTIONS,
 };
 
