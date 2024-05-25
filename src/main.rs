@@ -13,8 +13,7 @@ use elden_mod_loader_gui::{
 };
 use i_slint_backend_winit::WinitWindowAccessor;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, VecModel, StandardListViewItem};
-use tracing::{error, info, level_filters::LevelFilter, warn, info_span, instrument, trace};
-use tracing_subscriber::{fmt, filter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing::{error, info, warn, info_span, instrument, trace};
 use std::{
     collections::{HashMap, HashSet}, ffi::OsStr, io::ErrorKind, path::{Path, PathBuf}, rc::Rc, sync::{
         atomic::{AtomicU32, Ordering},
@@ -32,15 +31,23 @@ static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
 static RESTRICTED_FILES: OnceLock<HashSet<&OsStr>> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
 
+#[cfg(debug_assertions)]
 fn init_subscriber() {
+    use tracing::level_filters::LevelFilter;
+    use tracing_subscriber::{fmt, filter, layer::SubscriberExt, util::SubscriberInitExt};
     tracing_subscriber::registry()
         .with(fmt::layer().with_target(false).pretty())
         .with(filter::EnvFilter::builder().with_default_directive(LevelFilter::INFO.into()).from_env_lossy())
         .init();
 }
 
+#[cfg(not(debug_assertions))]
+fn init_subscriber() {
+    // MARK: TODO
+    // create subscriber that writes events to a log file that runs on a seperate thread
+}
+
 fn main() -> Result<(), slint::PlatformError> {
-    #[cfg(debug_assertions)]
     init_subscriber();
 
     slint::platform::set_platform(Box::new(
@@ -1242,6 +1249,7 @@ fn get_or_update_game_dir(update: Option<PathBuf>) -> tokio::sync::RwLockReadGua
     GAME_DIR.get().unwrap().blocking_read()
 }
 
+#[inline]
 fn populate_restricted_files() -> HashSet<&'static OsStr> {
     LOADER_FILES.iter().chain(REQUIRED_GAME_FILES.iter()).map(OsStr::new).collect()
 }

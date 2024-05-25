@@ -5,7 +5,7 @@ use elden_mod_loader_gui::{
         common::{Cfg, Config},
         writer::{new_cfg, save_bool, save_path, save_paths},
     },
-    INI_SECTIONS,
+    INI_NAME, INI_SECTIONS,
 };
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
@@ -13,7 +13,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const BENCH_TEST_FILE: &str = "temp\\benchmark_test.ini";
 const NUM_ENTRIES: u32 = 25;
 
 fn populate_non_valid_ini(len: u32, file: &Path) {
@@ -50,9 +49,10 @@ fn generate_test_paths() -> Vec<PathBuf> {
 }
 
 fn data_collection_benchmark(c: &mut Criterion) {
-    let test_file = Path::new(BENCH_TEST_FILE);
-    let ini = Cfg::read(test_file).unwrap();
-    populate_non_valid_ini(NUM_ENTRIES, test_file);
+    // to get around the validation tests we set the name of the test file to the name the _release_ code expects as valid
+    let test_file = PathBuf::from(&format!("temp\\{}", INI_NAME));
+    let ini = Cfg::read(&test_file).unwrap();
+    populate_non_valid_ini(NUM_ENTRIES, &test_file);
 
     c.bench_function("data_collection", |b| {
         b.iter(|| black_box(ini.collect_mods(Path::new(""), None, true)));
