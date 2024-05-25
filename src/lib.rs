@@ -23,6 +23,7 @@ use std::{
 };
 
 // changing the order of any of the following consts would not be good
+// adding new values to the end is perfectly fine for Ini data
 const DEFAULT_GAME_DIR: [&str; 6] = [
     "Program Files (x86)",
     "Steam",
@@ -182,7 +183,7 @@ pub fn toggle_files(
     }
 
     let num_rename_files = reg_mod.files.dll.len();
-    let is_array = reg_mod.files.len() > 1;
+    let was_array = reg_mod.is_array();
 
     let short_path_new = toggle_name_state(&reg_mod.files.dll, new_state);
     let full_path_new = join_paths(game_dir, &short_path_new);
@@ -198,7 +199,7 @@ pub fn toggle_files(
         if reg_mod.state { "enabled" } else { "disabled" }
     );
     if let Some(file) = save_file {
-        reg_mod.write_to_file(file, is_array)?
+        reg_mod.write_to_file(file, was_array)?
     }
     Ok(())
 }

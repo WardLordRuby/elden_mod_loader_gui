@@ -12,7 +12,7 @@ use elden_mod_loader_gui::{
     *,
 };
 use i_slint_backend_winit::WinitWindowAccessor;
-use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, VecModel, StandardListViewItem};
 use tracing::{error, info, level_filters::LevelFilter, warn, info_span, instrument, trace};
 use tracing_subscriber::{fmt, filter, layer::SubscriberExt, util::SubscriberInitExt};
 use std::{
@@ -189,7 +189,7 @@ fn main() -> Result<(), slint::PlatformError> {
         if !game_verified {
             ui.global::<MainLogic>().set_current_subpage(1);
         } else {
-            deserialize_current_mods(
+            deserialize_collected_mods(
                 &if let Some(mod_data) = reg_mods {
                     CollectedMods{ mods: mod_data, warnings: None }
                 } else { 
@@ -404,7 +404,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().unwrap();
-                mut_model.push(deserialize(&new_mod));
+                mut_model.push(deserialize_mod(&new_mod));
                 if new_mod.order.set {
                     model.update_order(None, &order_data, ui.as_weak());
                 }
@@ -625,7 +625,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 };
                 let num_files = files.len();
-                let was_array = found_mod.files.len() > 1;
+                let was_array = found_mod.is_array();
                 files.iter().for_each(|path| found_mod.files.add(path));
                 if let Err(err) = found_mod.write_to_file(ini_dir, was_array) {
                     error!("{err}");
@@ -647,9 +647,9 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 };
                 let (files, dll_files, config_files) = deserialize_split_files(&found_mod.files);
-                display_mod.files = ModelRc::from(files);
-                display_mod.dll_files = ModelRc::from(dll_files);
-                display_mod.config_files = ModelRc::from(config_files);
+                display_mod.files = files;
+                display_mod.dll_files = dll_files;
+                display_mod.config_files = config_files;
                 model.set_row_data(row as usize, display_mod);
                 let success = format!("Sucessfully added {} file(s) to {}", num_files, format_key);
                 info!("{success}");
@@ -1069,6 +1069,8 @@ fn main() -> Result<(), slint::PlatformError> {
             info!("deserialized after encountered error");
         }
     });
+    // MARK: OUTLINE
+    // ui.window().on_close_requested(callback)
 
     ui.invoke_focus_app();
     ui.run()
@@ -1305,15 +1307,17 @@ fn reset_app_state(mut cfg: Cfg, game_dir: &Path, loader_dir: Option<&Path>, ui_
         cfg.empty_contents();
     });
     let order_data = order_data_or_default(ui.as_weak(), loader_dir);
-    deserialize_current_mods(
+    deserialize_collected_mods(
         &cfg.collect_mods(game_dir, Some(&order_data), false),ui.as_weak()
     );
     info!("reloaded state from file");
 }
 
-type DeserializedFileData = (Rc<VecModel<slint::StandardListViewItem>>, Rc<VecModel<SharedString>>, Rc<VecModel<SharedString>>);
+type DeserializedFileData = (ModelRc<StandardListViewItem>, ModelRc<SharedString>, ModelRc<SharedString>);
+/// deserializes `SplitFiles` to `ModelRc<T>` where `T` is the type the front end expects  
+/// output is in the following order (`files`, `dll_files`, `config_files`)
 fn deserialize_split_files(split_files: &SplitFiles) -> DeserializedFileData {
-    let files: Rc<VecModel<slint::StandardListViewItem>> = Default::default();
+    let files: Rc<VecModel<StandardListViewItem>> = Default::default();
     let dll_files: Rc<VecModel<SharedString>> = Default::default();
     let config_files: Rc<VecModel<SharedString>> = Default::default();
     if !split_files.dll.is_empty() {
@@ -1327,10 +1331,10 @@ fn deserialize_split_files(split_files: &SplitFiles) -> DeserializedFileData {
     if !split_files.other.is_empty() {
         files.extend(split_files.other.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
     }
-    (files, dll_files, config_files)
+    (ModelRc::from(files), ModelRc::from(dll_files), ModelRc::from(config_files))
 }
 
-fn deserialize(mod_data: &RegMod) -> DisplayMod {
+fn deserialize_mod(mod_data: &RegMod) -> DisplayMod {
     let (files, dll_files, config_files) = deserialize_split_files(&mod_data.files);
     let name = mod_data.name.replace('_', " ");
     DisplayMod {
@@ -1341,9 +1345,9 @@ fn deserialize(mod_data: &RegMod) -> DisplayMod {
         }),
         name: SharedString::from(name),
         enabled: mod_data.state,
-        files: ModelRc::from(files),
-        config_files: ModelRc::from(config_files),
-        dll_files: ModelRc::from(dll_files),
+        files,
+        config_files,
+        dll_files,
         order: LoadOrder { 
             at: if !mod_data.order.set { 0 } else { mod_data.order.at as i32 + 1 }, 
             i: if !mod_data.order.set && mod_data.files.dll.len() != 1 { -1 } else { mod_data.order.i as i32 },
@@ -1353,7 +1357,7 @@ fn deserialize(mod_data: &RegMod) -> DisplayMod {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn deserialize_current_mods(data: &CollectedMods, ui_handle: slint::Weak<App>) {
+fn deserialize_collected_mods(data: &CollectedMods, ui_handle: slint::Weak<App>) {
     let ui = ui_handle.unwrap();
     if let Some(ref warning) = data.warnings {
         warn!("{warning}");
@@ -1361,7 +1365,7 @@ fn deserialize_current_mods(data: &CollectedMods, ui_handle: slint::Weak<App>) {
     }
 
     let display_mods: Rc<VecModel<DisplayMod>> = Default::default();
-    data.mods.iter().for_each(|mod_data| display_mods.push(deserialize(mod_data)));
+    data.mods.iter().for_each(|mod_data| display_mods.push(deserialize_mod(mod_data)));
 
     ui.global::<MainLogic>().set_current_mods(ModelRc::from(display_mods));
     ui.global::<MainLogic>().set_orders_set(data.mods.order_count() as i32);
@@ -1557,7 +1561,7 @@ async fn confirm_scan_mods(
             ui.global::<MainLogic>().set_current_subpage(0);
             let order_data = order_data_or_default(ui.as_weak(), Some(loader_dir));
             new_mods = new_ini.collect_mods(game_dir, Some(&order_data), false);
-            deserialize_current_mods(
+            deserialize_collected_mods(
                 &new_mods,ui.as_weak()
             );
             ui.display_msg(&format!("Successfully Found {len} mod(s)"));

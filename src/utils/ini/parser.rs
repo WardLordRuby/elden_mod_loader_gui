@@ -351,13 +351,13 @@ impl<T: Parsable> IniProperty<T> {
                 true => T::parse_str(ini, section, path_prefix, key, skip_validation),
                 false => new_io_error!(
                     ErrorKind::NotFound,
-                    format!("Key: \"{key}\" not found in {ini:?}")
+                    format!("Key: \"{key}\" not found in ini.")
                 ),
             },
             None => new_io_error!(
                 ErrorKind::NotFound,
                 format!(
-                    "Section: \"{}\" not found in {ini:?}",
+                    "Section: \"{}\" not found in ini.",
                     section.expect("Passed in section should be valid")
                 )
             ),
@@ -499,7 +499,7 @@ impl SplitFiles {
     fn remove(&mut self, path: &Path) -> Option<PathBuf> {
         let section = get_correct_bucket(self, path);
         if let Some(index) = section.iter().position(|f| f == path) {
-            return Some((*section).swap_remove(index));
+            return Some(section.swap_remove(index));
         }
         None
     }
@@ -568,6 +568,12 @@ impl RegMod {
         }
     }
 
+    /// returns true if `Self` is _currently_ an array
+    #[inline]
+    pub fn is_array(&self) -> bool {
+        self.files.len() > 1
+    }
+
     /// verifies that files exist and recovers from the case where the file paths are saved in the  
     /// incorect state compaired to the name of the files currently saved on disk  
     /// 
@@ -592,7 +598,7 @@ impl RegMod {
                 .iter()
                 .all(|f| matches!(game_dir.join(f).try_exists(), Ok(true)))
             {
-                let is_array = self.files.len() > 1;
+                let is_array = self.is_array();
                 self.state = alt_file_state;
                 self.files.dll = test_alt_state;
                 self.write_to_file(ini_path, is_array)?;
@@ -633,7 +639,7 @@ impl RegMod {
     /// making modifications to `self.files` to insure that the .ini file remains valid  
     pub fn write_to_file(&self, ini_path: &Path, was_array: bool) -> std::io::Result<()> {
         save_bool(ini_path, INI_SECTIONS[2], &self.name, self.state)?;
-        let is_array = self.files.len() > 1;
+        let is_array = self.is_array();
         match (was_array, is_array) {
             (false, false) => save_path(
                 ini_path,
@@ -739,10 +745,10 @@ impl Cfg {
                     .filter_map(|d| {
                         let mut curr = RegMod::from_split_files(d.0, d.1, d.2, d.3);
                         if let Err(err) = curr.verify_state(game_dir, ini_dir) {
-                            error!(%err);
+                            error!("{err}");
                             warnings.push(err);
                             if let Err(err) = remove_entry(ini_dir, INI_SECTIONS[2], &curr.name) {
-                                error!(%err);
+                                error!("{err}");
                                 warnings.push(err);
                             };
                             None
@@ -750,21 +756,21 @@ impl Cfg {
                             curr.files.other_file_refs().validate(Some(&game_dir))
                         {
                             let mut can_continue = true;
-                            let is_array = curr.files.len() > 1;
+                            let was_array = curr.is_array();
                             for i in (0..err.errors.len()).rev() {
                                 if let Some(file) = curr.files.remove(&err.error_paths[i]) {
                                     err.errors[i].add_msg(&format!(
                                         "File: {file:?} was removed, and is no longer associated with: {}",
                                         curr.name
                                     ));
-                                    warn!(warning = %err.errors[i]);
+                                    warn!("{}", err.errors[i]);
                                     warnings.push(err.errors.pop().expect("valid range"))
                                 } else {
                                     let err = err.errors.merge();
-                                    error!(%err);
+                                    error!("{err}");
                                     warnings.push(err);
                                     if let Err(err) = remove_entry(ini_dir, INI_SECTIONS[2], &curr.name) {
-                                        error!(%err);
+                                        error!("{err}");
                                         warnings.push(err);
                                     };
                                     can_continue = false;
@@ -772,8 +778,8 @@ impl Cfg {
                                 }
                             }
                             if can_continue {
-                                if let Err(err) = curr.write_to_file(ini_dir, is_array) {
-                                    error!(%err);
+                                if let Err(err) = curr.write_to_file(ini_dir, was_array) {
+                                    error!("{err}");
                                     None
                                 } else { Some(curr) }
                             } else { None }

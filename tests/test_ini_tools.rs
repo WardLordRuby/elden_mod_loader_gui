@@ -178,7 +178,7 @@ mod tests {
         let test_sections = [Some("path"), Some("paths")];
         let array_key = "test_array";
 
-        new_cfg(test_file).unwrap();
+        new_cfg_with_sections(test_file, &INI_SECTIONS).unwrap();
         save_path(test_file, test_sections[0], INI_KEYS[1], test_path).unwrap();
         save_paths(test_file, test_sections[1], array_key, &test_array).unwrap();
 
@@ -232,7 +232,7 @@ mod tests {
 
         {
             // Test if new_cfg will write all Sections to the file with .is_setup()
-            new_cfg(test_file).unwrap();
+            new_cfg_with_sections(test_file, &INI_SECTIONS).unwrap();
             assert!(test_file.is_setup(&INI_SECTIONS).is_ok());
 
             let invalid_format_1 = vec![

@@ -107,12 +107,12 @@ impl ModLoaderCfg {
                 self.update_order_entries(None)?;
                 return new_io_error!(ErrorKind::Unsupported, 
                     format!("Found load order set for files not registered with the app. The following key(s) order were changed {}", 
-                    unknown_keys.join("\n"))
+                    unknown_keys.join(", "))
                 );
             }
             return new_io_error!(ErrorKind::Other,
                 format!("Found load order set for the following files not registered with the app. {}", 
-                unknown_keys.join("\n"))
+                unknown_keys.join(", "))
             );
         }
         trace!("all load_order entries are files registered with the app");
@@ -219,10 +219,8 @@ impl NameSet for [RegMod] {
     fn dll_name_set(&self) -> DllSet {
         self.iter().flat_map(|reg_mod| {
            reg_mod.files.dll.iter().filter_map(|f|
-            Some({
-                let file_name = f.file_name()?.to_str()?;
-                omit_off_state(file_name)
-            })).collect::<Vec<_>>()
+                Some(omit_off_state(f.file_name()?.to_str()?))
+            ).collect::<Vec<_>>()
         }).collect::<HashSet<_>>()
     }
 }

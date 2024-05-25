@@ -6,7 +6,7 @@ mod tests {
         does_dir_contain, get_cfg, toggle_files,
         utils::ini::{
             parser::{IniProperty, RegMod},
-            writer::{new_cfg, save_path, save_paths},
+            writer::{save_path, save_paths},
         },
         Operation, OperationResult, INI_SECTIONS, OFF_STATE,
     };
@@ -15,7 +15,7 @@ mod tests {
         path::{Path, PathBuf},
     };
 
-    use crate::common::{file_exists, GAME_DIR};
+    use crate::common::{file_exists, new_cfg_with_sections, GAME_DIR};
 
     #[test]
     fn do_files_toggle() {
@@ -33,7 +33,7 @@ mod tests {
         let prefix_key = "test_dir";
         let prefix = Path::new("temp\\");
 
-        new_cfg(save_file).unwrap();
+        new_cfg_with_sections(save_file, &INI_SECTIONS).unwrap();
         save_path(save_file, INI_SECTIONS[1], prefix_key, prefix).unwrap();
         save_paths(save_file, INI_SECTIONS[3], test_key, &test_files).unwrap();
 

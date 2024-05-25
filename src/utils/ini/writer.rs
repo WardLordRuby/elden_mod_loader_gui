@@ -2,15 +2,16 @@ use ini::{EscapePolicy, Ini, LineSeparator, WriteOption};
 use tracing::{instrument, trace};
 
 use std::{
+    fmt::Display,
     fs::{self, read_to_string, write, File},
-    io::{ErrorKind, Write},
+    io::{Error, ErrorKind, Result, Write},
     path::Path,
 };
 
 use crate::{
     file_name_or_err, get_cfg, new_io_error, omit_off_state, parent_or_err,
     utils::ini::parser::RegMod, ARRAY_KEY, ARRAY_VALUE, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES,
-    INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
+    INI_KEYS, INI_NAME, INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
 };
 
 pub const WRITE_OPTIONS: WriteOption = WriteOption {
@@ -31,7 +32,7 @@ pub fn save_paths<P: AsRef<Path>>(
     section: Option<&str>,
     key: &str,
     files: &[P],
-) -> std::io::Result<()> {
+) -> Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
     let save_paths = files
         .iter()
@@ -47,12 +48,7 @@ pub fn save_paths<P: AsRef<Path>>(
 }
 
 #[instrument(level = "trace", skip(file_path, section, path), fields(section = section.unwrap()))]
-pub fn save_path(
-    file_path: &Path,
-    section: Option<&str>,
-    key: &str,
-    path: &Path,
-) -> std::io::Result<()> {
+pub fn save_path(file_path: &Path, section: Option<&str>, key: &str, path: &Path) -> Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
     config
         .with_section(section)
@@ -63,12 +59,7 @@ pub fn save_path(
 }
 
 #[instrument(level = "trace", skip(file_path, section), fields(section = section.unwrap()))]
-pub fn save_bool(
-    file_path: &Path,
-    section: Option<&str>,
-    key: &str,
-    value: bool,
-) -> std::io::Result<()> {
+pub fn save_bool(file_path: &Path, section: Option<&str>, key: &str, value: bool) -> Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
     config.with_section(section).set(key, value.to_string());
     config.write_to_file_opt(file_path, WRITE_OPTIONS)?;
@@ -82,7 +73,7 @@ pub fn save_value_ext(
     section: Option<&str>,
     key: &str,
     value: &str,
-) -> std::io::Result<()> {
+) -> Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
     config.with_section(section).set(key, value);
     config.write_to_file_opt(file_path, EXT_OPTIONS)?;
@@ -90,8 +81,46 @@ pub fn save_value_ext(
     Ok(())
 }
 
+fn init_default_values<K, V>(
+    writer: &mut File,
+    sections: &[Option<&str>],
+    keys: &[K],
+    values: &[V],
+    format_with_space: bool,
+) -> Result<()>
+where
+    K: Display,
+    V: Display,
+{
+    for (i, section) in sections.iter().enumerate() {
+        writeln!(writer, "[{}]", section.unwrap())?;
+        if i == 0 {
+            for j in 0..values.len() {
+                writeln!(
+                    writer,
+                    "{}",
+                    line_formater(format_with_space, &keys[j], &values[j])
+                )?
+            }
+        }
+    }
+    Ok(())
+}
+
+fn line_formater<K, V>(with_spaces: bool, k: &K, v: &V) -> String
+where
+    K: Display,
+    V: Display,
+{
+    if with_spaces {
+        format!("{k} = {v}")
+    } else {
+        format!("{k}={v}")
+    }
+}
+
 #[instrument(level = "trace", skip_all)]
-pub fn new_cfg(path: &Path) -> std::io::Result<Ini> {
+pub fn new_cfg(path: &Path) -> Result<Ini> {
     let file_name = file_name_or_err(path)?;
     let parent = parent_or_err(path)?;
 
@@ -99,29 +128,29 @@ pub fn new_cfg(path: &Path) -> std::io::Result<Ini> {
     let mut new_ini = File::create(path)?;
     trace!(?file_name, "created on disk");
 
-    if file_name == LOADER_FILES[2] {
-        for (i, section) in LOADER_SECTIONS.iter().enumerate() {
-            writeln!(new_ini, "[{}]", section.unwrap())?;
-            if i == 0 {
-                for (j, _) in LOADER_KEYS.iter().enumerate() {
-                    writeln!(new_ini, "{} = {}", LOADER_KEYS[j], DEFAULT_LOADER_VALUES[j])?
-                }
-            }
-        }
-    } else {
-        for (i, section) in INI_SECTIONS.iter().enumerate() {
-            writeln!(new_ini, "[{}]", section.unwrap())?;
-            if i == 0 {
-                writeln!(new_ini, "{}={}", INI_KEYS[i], DEFAULT_INI_VALUES[i])?
-            }
-        }
+    match file_name {
+        f_name if f_name == INI_NAME => init_default_values(
+            &mut new_ini,
+            &INI_SECTIONS,
+            &INI_KEYS,
+            &DEFAULT_INI_VALUES,
+            false,
+        )?,
+        f_name if f_name == LOADER_FILES[2] => init_default_values(
+            &mut new_ini,
+            &LOADER_SECTIONS,
+            &LOADER_KEYS,
+            &DEFAULT_LOADER_VALUES,
+            true,
+        )?,
+        _ => panic!("No default data implemented for {file_name:?}"),
     }
     trace!("default sections wrote to file");
     get_cfg(path)
 }
 
 #[instrument(level = "trace", skip(file_path))]
-pub fn remove_array(file_path: &Path, key: &str) -> std::io::Result<()> {
+pub fn remove_array(file_path: &Path, key: &str) -> Result<()> {
     let content = read_to_string(file_path)?;
 
     let mut skip_next_line = false;
@@ -147,22 +176,19 @@ pub fn remove_array(file_path: &Path, key: &str) -> std::io::Result<()> {
 }
 
 #[instrument(level = "trace", skip(file_path), fields(section = section.unwrap()))]
-pub fn remove_entry(file_path: &Path, section: Option<&str>, key: &str) -> std::io::Result<()> {
+pub fn remove_entry(file_path: &Path, section: Option<&str>, key: &str) -> Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
-    config.delete_from(section, key).ok_or(std::io::Error::new(
-        ErrorKind::Other,
-        format!(
-            "Could not delete \"{key}\" from Section: \"{}\"",
-            &section.expect("Passed in section should be valid")
-        ),
-    ))?;
+    config.delete_from(section, key).ok_or(Error::other(format!(
+        "Could not delete \"{key}\" from Section: \"{}\"",
+        &section.expect("Passed in section should be valid")
+    )))?;
     config.write_to_file_opt(file_path, WRITE_OPTIONS)?;
     trace!("removed entry from file");
     Ok(())
 }
 
 #[instrument(level = "trace", skip(loader_dir), fields(mod_name = entry.name))]
-pub fn remove_order_entry(entry: &RegMod, loader_dir: &Path) -> std::io::Result<()> {
+pub fn remove_order_entry(entry: &RegMod, loader_dir: &Path) -> Result<()> {
     if !entry.order.set {
         return new_io_error!(
             ErrorKind::InvalidInput,
@@ -170,7 +196,7 @@ pub fn remove_order_entry(entry: &RegMod, loader_dir: &Path) -> std::io::Result<
         );
     }
     let file_name = file_name_or_err(&entry.files.dll[entry.order.i])?;
-    let file_name = file_name.to_str().ok_or(std::io::Error::new(
+    let file_name = file_name.to_str().ok_or(Error::new(
         ErrorKind::InvalidData,
         format!("{file_name:?} is not valid UTF-8"),
     ))?;
