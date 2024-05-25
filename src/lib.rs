@@ -12,7 +12,7 @@ use ini::Ini;
 use tracing::{info, instrument, trace, warn};
 use utils::ini::{
     common::{Cfg, Config},
-    parser::{IniProperty, IntoIoError, RegMod, Setup},
+    parser::{IniProperty, RegMod, Setup},
     writer::{new_cfg, save_path},
 };
 
@@ -412,7 +412,7 @@ impl Cfg {
     #[instrument(skip_all)]
     pub fn attempt_locate_game(&mut self) -> std::io::Result<PathResult> {
         if let Ok(path) =
-            IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[1], false)
+            IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[1], None, false)
         {
             info!("\"game_dir\" from ini is valid");
             return Ok(PathResult::Full(path.value));

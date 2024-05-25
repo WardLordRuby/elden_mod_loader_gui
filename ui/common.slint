@@ -19,7 +19,7 @@ export enum Message { confirm, deny, esc }
 export global MainLogic {
     callback toggle-mod(string, bool) -> bool;
     callback select-mod-files(string);
-    callback add-to-mod(string);
+    callback add-to-mod(int);
     callback remove-mod(string, int);
     callback edit-config([string]);
     callback edit-config-item(StandardListViewItem);

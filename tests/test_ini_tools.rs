@@ -98,11 +98,11 @@ mod tests {
 
         let config = get_cfg(test_file).unwrap();
         let parse_test_1 =
-            IniProperty::<PathBuf>::read(&config, test_section[0], INI_KEYS[1], false)
+            IniProperty::<PathBuf>::read(&config, test_section[0], INI_KEYS[1], None, false)
                 .unwrap()
                 .value;
         let parse_test_2 =
-            IniProperty::<PathBuf>::read(&config, test_section[0], "random_dir", false)
+            IniProperty::<PathBuf>::read(&config, test_section[0], "random_dir", None, false)
                 .unwrap()
                 .value;
 
@@ -205,7 +205,8 @@ mod tests {
             vec_pathbuf_err.to_string()
         );
 
-        let path_result = IniProperty::<PathBuf>::read(&config, test_sections[1], array_key, false);
+        let path_result =
+            IniProperty::<PathBuf>::read(&config, test_sections[1], array_key, None, false);
         assert_eq!(
             path_result.unwrap_err().to_string(),
             pathbuf_err.to_string()

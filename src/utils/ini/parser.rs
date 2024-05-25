@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    files_not_found, get_cfg, new_io_error, omit_off_state, toggle_files, toggle_name_state, 
+    files_not_found, get_cfg, new_io_error, omit_off_state, toggle_files, toggle_name_state, IntoIoError, ModError, Merge, file_name_from_str,
     utils::ini::{
         common::Config, 
         writer::{remove_array, remove_entry, save_bool, save_path, save_paths}
@@ -300,12 +300,18 @@ impl IniProperty<PathBuf> {
         ini: &Ini,
         section: Option<&str>,
         key: &str,
+        path_prefix: Option<&Path>,
         skip_validation: bool,
     ) -> std::io::Result<IniProperty<PathBuf>> {
+        if section == INI_SECTIONS[1] && path_prefix.is_some() {
+            return new_io_error!(ErrorKind::InvalidInput, format!("path_prefix is invalid when reading a path from \"{}\"", INI_SECTIONS[1].unwrap()));
+        } else if section == INI_SECTIONS[3] && path_prefix.is_none() {
+            return new_io_error!(ErrorKind::InvalidInput, format!("path_prefix is required when reading a path from \"{}\"", INI_SECTIONS[3].unwrap()));
+        }
         Ok(IniProperty {
             //section: section.map(String::from),
             //key: key.to_string(),
-            value: IniProperty::is_valid(ini, section, key, skip_validation, None)?,
+            value: IniProperty::is_valid(ini, section, key, skip_validation, path_prefix)?,
         })
     }
 }
@@ -432,6 +438,16 @@ impl LoadOrder {
     }
 }
 
+fn get_correct_bucket<'a>(buckets: &'a mut SplitFiles, entry: &Path) -> &'a mut Vec<PathBuf> {
+    let file_data = entry.to_string_lossy();
+    let file_data = FileData::from(&file_data);
+    match file_data.extension {
+        ".ini" => &mut buckets.config,
+        ".dll" => &mut buckets.dll,
+        _ => &mut buckets.other,
+    }
+}
+
 impl SplitFiles {
     fn from(in_files: Vec<PathBuf>) -> Self {
         let len = in_files.len();
@@ -481,17 +497,17 @@ impl SplitFiles {
 
     /// removes and returns entry using `swap_remove`
     fn remove(&mut self, path: &Path) -> Option<PathBuf> {
-        let file_data = path.to_string_lossy();
-        let file_data = FileData::from(&file_data);
-        let section = match file_data.extension {
-            ".ini" => &mut self.config,
-            ".dll" => &mut self.dll,
-            _ => &mut self.other,
-        };
+        let section = get_correct_bucket(self, path);
         if let Some(index) = section.iter().position(|f| f == path) {
             return Some((*section).swap_remove(index));
         }
         None
+    }
+
+    /// adds a path to the correct field within `Self`
+    pub fn add(&mut self, path: &Path) {
+        let section = get_correct_bucket(self, path);
+        section.push(PathBuf::from(path))
     }
 
     #[inline]
@@ -820,6 +836,35 @@ impl Cfg {
             trace!("collected {} mods", collected_mods.mods.len());
             collected_mods
         }
+    }
+
+    /// parses the data associated with a given key into a `RegMod` if found  
+    pub fn get_mod(&self, name: &slint::SharedString, game_dir: &Path, order_map: Option<&OrderMap>) -> std::io::Result<RegMod> {
+        let key = name.replace(' ', "_");
+        let split_files = if self.data().get_from(INI_SECTIONS[3], &key).ok_or(
+            std::io::Error::new(
+                ErrorKind::InvalidInput,
+                format!("{key} not found in section: {}", INI_SECTIONS[3].unwrap())
+                )
+            )? == ARRAY_VALUE {
+                SplitFiles::from(
+                    IniProperty::<Vec<PathBuf>>::read(self.data(), INI_SECTIONS[3], &key, game_dir, false)?.value
+                )
+            } else {
+                SplitFiles::from(
+                    vec![IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[3], &key, Some(game_dir), false)?.value]
+                )
+            };
+        Ok(RegMod {
+            order: if let Some(map) = order_map {
+                LoadOrder::from(&split_files.dll, map)
+            } else {
+                LoadOrder::default()
+            },
+            state: IniProperty::<bool>::read(self.data(), INI_SECTIONS[2], &key)?.value,
+            files: split_files,
+            name: key,
+        })
     }
 
     /// returns all the keys(as_lowercase) collected into a `Set` 

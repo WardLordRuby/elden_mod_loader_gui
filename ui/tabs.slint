@@ -184,7 +184,7 @@ export component ModEdit inherits Tab {
                     height: Formatting.default-element-height;
                     primary: !SettingsLogic.dark-mode;
                     text: @tr("Add Files");
-                    clicked => { MainLogic.add-to-mod(MainLogic.current-mods[mod-index].name) }
+                    clicked => { MainLogic.add-to-mod(mod-index) }
                 }
                 if has-config : Button {
                     width: button-width;

@@ -5,10 +5,7 @@
 use elden_mod_loader_gui::{
     utils::{
         ini::{
-            mod_loader::{Countable, ModLoader, NameSet},
-            parser::{CollectedMods, RegMod, Setup},
-            writer::*,
-            common::*,
+            common::*, mod_loader::{Countable, ModLoader, NameSet}, parser::{CollectedMods, RegMod, Setup, SplitFiles}, writer::*
         },
         installer::{remove_mod_files, scan_for_mods, InstallData}
     },
@@ -35,13 +32,16 @@ static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
 static RESTRICTED_FILES: OnceLock<HashSet<&OsStr>> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
 
+fn init_subscriber() {
+    tracing_subscriber::registry()
+        .with(fmt::layer().with_target(false).pretty())
+        .with(filter::EnvFilter::builder().with_default_directive(LevelFilter::INFO.into()).from_env_lossy())
+        .init();
+}
+
 fn main() -> Result<(), slint::PlatformError> {
-    if cfg!(debug_assertions) {
-        tracing_subscriber::registry()
-            .with(fmt::layer().with_target(false).pretty())
-            .with(filter::EnvFilter::builder().with_default_directive(LevelFilter::INFO.into()).from_env_lossy())
-            .init();
-    }
+    #[cfg(debug_assertions)]
+    init_subscriber();
 
     slint::platform::set_platform(Box::new(
         i_slint_backend_winit::Backend::new().expect("This app is being run on windows"),
@@ -515,33 +515,20 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             let game_dir = get_or_update_game_dir(None);
-            let format_key = key.replace(' ', "_");
-            // MARK: OPTIMIZE
-            // we need a way to only collect the mod we are after
-            // we have the key already so it is very inefficent to collect all and search threw throw away data
-            let mut reg_mods = {
-                let data = ini.collect_mods(game_dir.as_path(), None, false);
-                if let Some(warning) = data.warnings {
-                    warn!("{warning}");
-                    ui.display_msg(&warning.to_string());
+            match ini.get_mod(&key, &game_dir, None) {
+                Ok(ref mut reg_mod) => {
+                    if let Err(err) = toggle_files(&game_dir, state, reg_mod, Some(ini.path())) {
+                        error!("{err}");
+                        ui.display_msg(&err.to_string());
+                    } else {
+                        return state;
+                    };
                 }
-                data.mods
-            };
-
-            if let Some(found_mod) =
-                reg_mods.iter_mut().find(|reg_mod| format_key == reg_mod.name)
-            {
-                let result = toggle_files(&game_dir, state, found_mod, Some(ini.path()));
-                if result.is_ok() {
-                    return state;
+                Err(err) => {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
                 }
-                let err = result.unwrap_err();
-                error!("{err}");
-                ui.display_msg(&err.to_string());
-            } else {
-                error!("Mod: \"{key}\" not found");
-                ui.display_msg(&format!("Mod: \"{key}\" not found"))
-            };
+            }
             reset_app_state(ini, &game_dir, None, ui.as_weak());
             !state
         }
@@ -555,14 +542,14 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_add_to_mod({
         let ui_handle = ui.as_weak();
-        move |key| {
+        move |row| {
             let span = info_span!("add_to_mod");
             let _gaurd = span.enter();
 
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
             let game_dir = get_or_update_game_dir(None);
-            let mut ini = match Cfg::read(ini_dir) {
+            let ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     error!("{err}");
@@ -570,22 +557,9 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
-            // MARK: OPTIMIZE
-            // we need a way to only collect the mod we are after
-            // in this case we can collect the mod from the front end since we are just going to modify some fields on it
-            // then push it back to the front end | then we will be able to not have to deserialize here at all
-            let registered_mods = {
-                let data = ini.collect_mods(game_dir.as_path(), None, false);
-                if let Some(warning) = data.warnings {
-                    warn!("{warning}");
-                    ui.display_msg(&warning.to_string());
-                }
-                data.mods
-            };
             let span_clone = span.clone();
             slint::spawn_local(async move {
                 let _gaurd = span_clone.enter();
-                let format_key = key.replace(' ', "_");
                 let mut file_paths = match get_user_files(&game_dir, ui.as_weak()) {
                     Ok(paths) => paths,
                     Err(err) => {
@@ -603,12 +577,25 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg(err_str);
                     return;
                 };
+                let model = ui.global::<MainLogic>().get_current_mods();
+                let mut display_mod = model.row_data(row as usize).expect("front end gives us valid row");
+                let format_key = display_mod.name.replace(' ', "_");
+                let mut found_mod = match ini.get_mod(&display_mod.name, &game_dir, None) {
+                    Ok(reg_mod) => reg_mod,
+                    Err(err) => {
+                        error!("{err}");
+                        ui.display_msg(&err.to_string());
+                        reset_app_state(ini, &game_dir, None, ui.as_weak());
+                        info!("deserialized after encountered error");
+                        return;                     
+                    }
+                };
                 let files = match shorten_paths(&file_paths, &game_dir) {
                     Ok(files) => files,
                     Err(err) => {
                         if file_paths.len() == err.err_paths_long.len() {
                             let ui_handle = ui.as_weak();
-                            match install_new_files_to_mod(found_mod, file_paths, &game_dir, ui_handle).await {
+                            match install_new_files_to_mod(&found_mod, file_paths, &game_dir, ui_handle).await {
                                 Ok(installed_files) => {
                                     file_paths = installed_files;
                                     match shorten_paths(&file_paths, &game_dir) {
@@ -637,65 +624,36 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }
                 };
-                let registered_files = ini.files();
-                if files.iter().any(|f| registered_files.contains(f.to_string_lossy().to_string().as_str())) {
-                    let err_str = "A selected file is already registered to a mod";
-                    error!("{err_str}");
-                    ui.display_msg(err_str);
+                let num_files = files.len();
+                let was_array = found_mod.files.len() > 1;
+                files.iter().for_each(|path| found_mod.files.add(path));
+                if let Err(err) = found_mod.write_to_file(ini_dir, was_array) {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
                     return;
                 };
-                let num_files = files.len();
-                let mut new_data = found_mod.files.dll.clone();
-                new_data.extend(files.iter().map(PathBuf::from));
-                let mut results = Vec::with_capacity(3);
-                let new_data_refs = found_mod.files.add_other_files_to_files(&new_data);
-                if found_mod.files.len() == 1 {
-                    results.push(remove_entry(
-                        ini.path(),
-                        INI_SECTIONS[3],
-                        &found_mod.name,
-                    ));
-                } else {
-                    results.push(remove_array(ini.path(), &found_mod.name));
-                }
-                results.push(save_paths(ini.path(), INI_SECTIONS[3], &found_mod.name, &new_data_refs));
-                if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
-                    error!("{err}");
+                
+                if let Err(err) = found_mod.verify_state(&game_dir, ini.path()) {
                     ui.display_msg(&err.to_string());
                     let _ = remove_entry(
                         ini.path(),
                         INI_SECTIONS[2],
-                        &format_key,
+                        &found_mod.name,
                     );
-                }
-                let new_data_owned = new_data_refs.iter().map(PathBuf::from).collect();
-                let mut updated_mod = RegMod::new(&found_mod.name, found_mod.state, new_data_owned);
-                
-                updated_mod
-                    .verify_state(&game_dir, ini.path())
-                    .unwrap_or_else(|err| {
-                        ui.display_msg(&err.to_string());
-                        let _ = remove_entry(
-                            ini.path(),
-                            INI_SECTIONS[2],
-                            &updated_mod.name,
-                        );
-                        results.push(Err(err));
-                    });
-                if !results.iter().any(|r| r.is_err()) {
-                    let success = format!("Sucessfully added {} file(s) to {}", num_files, format_key);
-                    info!("{success}");
-                    ui.display_msg(&success);
-                }
-                ini.update().unwrap_or_else(|err| {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
-                    ini = Cfg::default(ini_dir);
-                });
-                let order_data = order_data_or_default(ui.as_weak(), None);
-                deserialize_current_mods(
-                    &ini.collect_mods(game_dir.as_path(), Some(&order_data), false),ui.as_weak()
-                );
+                    let err_str = format!("Failed to verify state, mod was removed {err}");
+                    error!("{err_str}");
+                    ui.display_msg(&err_str);
+                    reset_app_state(ini, &game_dir, None, ui.as_weak());
+                    return;
+                };
+                let (files, dll_files, config_files) = deserialize_split_files(&found_mod.files);
+                display_mod.files = ModelRc::from(files);
+                display_mod.dll_files = ModelRc::from(dll_files);
+                display_mod.config_files = ModelRc::from(config_files);
+                model.set_row_data(row as usize, display_mod);
+                let success = format!("Sucessfully added {} file(s) to {}", num_files, format_key);
+                info!("{success}");
+                ui.display_msg(&success);
             })
             .unwrap();
         }
@@ -1353,21 +1311,27 @@ fn reset_app_state(mut cfg: Cfg, game_dir: &Path, loader_dir: Option<&Path>, ui_
     info!("reloaded state from file");
 }
 
-fn deserialize(mod_data: &RegMod) -> DisplayMod {
+type DeserializedFileData = (Rc<VecModel<slint::StandardListViewItem>>, Rc<VecModel<SharedString>>, Rc<VecModel<SharedString>>);
+fn deserialize_split_files(split_files: &SplitFiles) -> DeserializedFileData {
     let files: Rc<VecModel<slint::StandardListViewItem>> = Default::default();
     let dll_files: Rc<VecModel<SharedString>> = Default::default();
     let config_files: Rc<VecModel<SharedString>> = Default::default();
-    if !mod_data.files.dll.is_empty() {
-        files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(omit_off_state(&f.to_string_lossy())).into()));
-        dll_files.extend(mod_data.files.dll.iter().map(|f| SharedString::from(omit_off_state(&f.file_name().unwrap().to_string_lossy()))));
+    if !split_files.dll.is_empty() {
+        files.extend(split_files.dll.iter().map(|f| SharedString::from(omit_off_state(&f.to_string_lossy())).into()));
+        dll_files.extend(split_files.dll.iter().map(|f| SharedString::from(omit_off_state(&f.file_name().unwrap().to_string_lossy()))));
     };
-    if !mod_data.files.config.is_empty() {
-        files.extend(mod_data.files.config.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
-        config_files.extend(mod_data.files.config.iter().map(|f| SharedString::from(f.to_string_lossy().to_string())));
+    if !split_files.config.is_empty() {
+        files.extend(split_files.config.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
+        config_files.extend(split_files.config.iter().map(|f| SharedString::from(f.to_string_lossy().to_string())));
     };
-    if !mod_data.files.other.is_empty() {
-        files.extend(mod_data.files.other.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
-    };
+    if !split_files.other.is_empty() {
+        files.extend(split_files.other.iter().map(|f| SharedString::from(f.to_string_lossy().to_string()).into()));
+    }
+    (files, dll_files, config_files)
+}
+
+fn deserialize(mod_data: &RegMod) -> DisplayMod {
+    let (files, dll_files, config_files) = deserialize_split_files(&mod_data.files);
     let name = mod_data.name.replace('_', " ");
     DisplayMod {
         displayname: SharedString::from(if mod_data.name.chars().count() > 20 {
