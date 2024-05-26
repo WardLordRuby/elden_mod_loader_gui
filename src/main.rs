@@ -102,7 +102,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let mod_loader: ModLoader;
         let mut mod_loader_cfg: ModLoaderCfg;
         let mut reg_mods = None;
-        let mut order_data: OrderMap;
+        let mut order_data = None;
         let game_dir = match ini.attempt_locate_game() {
             Ok(PathResult::Full(path)) => {
                 mod_loader = ModLoader::properties(&path).unwrap_or_else(|err| {
@@ -116,19 +116,20 @@ fn main() -> Result<(), slint::PlatformError> {
                         errors.push(err);
                         ModLoaderCfg::default(mod_loader.path())
                     });
+                    order_data = match mod_loader_cfg.parse_section() {
+                        Ok(data) => Some(data),
+                        Err(err) => {
+                            error!("code 5: {err}");
+                            errors.push(err);
+                            None
+                        }
+                    };
                 } else {
                     mod_loader_cfg = ModLoaderCfg::default(mod_loader.path());
                 }
-                order_data = match mod_loader_cfg.parse_section() {
-                    Ok(data) => data,
-                    Err(err) => {
-                        error!("code 5: {err}");
-                        errors.push(err);
-                        HashMap::new()
-                    }
-                };
+
                 reg_mods = {
-                    let data = ini.collect_mods(&path, Some(&order_data), false);
+                    let data = ini.collect_mods(&path, order_data.as_ref(), false);
                     if let Some(warning) = data.warnings {
                         warn!("code 6: {warning}");
                         errors.push(warning);
@@ -137,10 +138,14 @@ fn main() -> Result<(), slint::PlatformError> {
                 };
                 if let Some(ref mods) = reg_mods {
                     let dlls = mods.dll_name_set();
-                    if let Err(err) = mod_loader_cfg.verify_keys(&dlls, mods.order_count()) {
-                        if err.kind() == ErrorKind::Unsupported {
-                            order_data = mod_loader_cfg.parse_into_map();
-                            reg_mods = Some(ini.collect_mods(&path, Some(&order_data), false).mods);
+                    if mod_loader.installed() {
+                        if let Err(err) = mod_loader_cfg.verify_keys(&dlls, mods.order_count()) {
+                            if err.kind() == ErrorKind::Unsupported {
+                                order_data = Some(mod_loader_cfg.parse_into_map());
+                                reg_mods = Some(ini.collect_mods(&path, order_data.as_ref(), false).mods);
+                            }
+                            warn!("code 6: {err}");
+                            errors.push(err);
                         }
                         warn!("code 7: {err}");
                         errors.push(err);
@@ -159,7 +164,6 @@ fn main() -> Result<(), slint::PlatformError> {
             Ok(PathResult::Partial(path) | PathResult::None(path)) => {
                 mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
-                order_data = HashMap::new();
                 game_verified = false;
                 Some(path)
             }   
@@ -169,7 +173,6 @@ fn main() -> Result<(), slint::PlatformError> {
                 errors.push(err);
                 mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
-                order_data = HashMap::new();
                 game_verified = false;
                 None
             }
@@ -200,7 +203,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 &if let Some(mod_data) = reg_mods {
                     CollectedMods{ mods: mod_data, warnings: None }
                 } else { 
-                    ini.collect_mods(game_dir.as_ref().expect("game verified"), Some(&order_data),!mod_loader.installed())
+                    ini.collect_mods(game_dir.as_ref().expect("game verified"), order_data.as_ref(),!mod_loader.installed())
                 },ui.as_weak()
             );
             ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled());
@@ -249,7 +252,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         } else if game_verified {
                             ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
                             let _ = receive_msg().await;
-                            if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(&ini), Some(&order_data)).await {
+                            if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(&ini), order_data.as_ref()).await {
                                 ui.display_msg(&err.to_string());
                             };
                         }
@@ -257,7 +260,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         if !mod_loader.installed() {
                             ui.display_msg(&format!("This tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease install files to \"{}\"\nand relaunch Elden Mod Loader GUI", get_or_update_game_dir(None).display()));
                         } else if ini.mods_is_empty() {
-                            if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(&ini), Some(&order_data)).await {
+                            if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(&ini), order_data.as_ref()).await {
                                 ui.display_msg(&err.to_string());
                             }
                         }
