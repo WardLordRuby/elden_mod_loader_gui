@@ -140,7 +140,7 @@ pub fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf
 
 /// toggle the state of the files saved in `reg_mod.files.dll`  
 /// this function updates the reg_mod's modified files and state  
-#[instrument(skip(game_dir, reg_mod, save_file), fields(name = reg_mod.name, prev_state = reg_mod.state))]
+#[instrument(level = "trace", skip(game_dir, reg_mod, save_file), fields(name = reg_mod.name, prev_state = reg_mod.state))]
 pub fn toggle_files(
     game_dir: &Path,
     new_state: bool,
@@ -171,6 +171,7 @@ pub fn toggle_files(
             Ok(())
         })
     }
+
     if reg_mod.state == new_state
         && reg_mod
             .files
@@ -193,11 +194,14 @@ pub fn toggle_files(
 
     reg_mod.files.dll = short_path_new;
     reg_mod.state = new_state;
-    info!(
-        "{} {}",
-        reg_mod.name,
-        if reg_mod.state { "enabled" } else { "disabled" }
-    );
+    if !reg_mod.files.dll.is_empty()
+        && (reg_mod.files.dll[0].ends_with(LOADER_FILES[1])
+            || reg_mod.files.dll[0].ends_with(LOADER_FILES[0]))
+    {
+        info!("All mods {}", DisplayState(reg_mod.state))
+    } else {
+        info!("{} {}", reg_mod.name, DisplayState(reg_mod.state));
+    }
     if let Some(file) = save_file {
         reg_mod.write_to_file(file, was_array)?
     }
@@ -206,11 +210,11 @@ pub fn toggle_files(
 
 /// if cfg file does not exist or is not set up with provided sections this function will  
 /// create a new ".ini" file in the given path  
-#[instrument(skip_all, fields(cfg_dir = %from_path.display()))]
+#[instrument(level = "trace", skip_all, fields(cfg_dir = %from_path.display()))]
 pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io::Result<Ini> {
     match from_path.is_setup(sections) {
         Ok(ini) => return Ok(ini),
-        Err(err) => warn!("{err}, creating new"),
+        Err(err) => warn!("{err}"),
     }
     new_cfg(from_path)
 }
@@ -410,12 +414,12 @@ impl Cfg {
     /// returns various levels of a Path: "game_dir"  
     /// first tries to validate the path saved in the .ini if that fails then tries to located the "game_dir" on disk  
     /// if that fails will return a `PathResult::Partial` that is known to exist if not returns `PathResult::None` that contains just the found drive
-    #[instrument(skip_all)]
+    #[instrument(level = "trace", skip_all)]
     pub fn attempt_locate_game(&mut self) -> std::io::Result<PathResult> {
         if let Ok(path) =
             IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[1], None, false)
         {
-            info!("\"game_dir\" from ini is valid");
+            info!("game_dir from ini is valid");
             return Ok(PathResult::Full(path.value));
         }
         let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
@@ -423,7 +427,7 @@ impl Cfg {
             does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES),
             Ok(OperationResult::Bool(true))
         ) {
-            info!("located valid \"game_dir\" on drive");
+            info!("Located valid game_dir on drive");
             save_path(
                 self.path(),
                 INI_SECTIONS[1],
@@ -434,10 +438,10 @@ impl Cfg {
             return Ok(PathResult::Full(try_locate));
         }
         if try_locate.components().count() > 1 {
-            info!("Partial \"game_dir\" found");
+            info!("Partial game_dir found");
             return Ok(PathResult::Partial(try_locate));
         }
-        warn!("Could not locate \"game_dir\"");
+        warn!("Could not locate game_dir");
         Ok(PathResult::None(try_locate))
     }
 }
@@ -493,6 +497,30 @@ fn get_current_drive() -> std::io::Result<std::ffi::OsString> {
         ))
 }
 
+pub struct DisplayStrs<'a>(pub Vec<&'a str>);
+
+impl<'a> std::fmt::Display for DisplayStrs<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "[{}]", self.0.join(", "))
+    }
+}
+
+pub struct DisplayState(pub bool);
+
+impl std::fmt::Display for DisplayState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", if self.0 { "enabled" } else { "disabled" })
+    }
+}
+
+pub struct DisplayTheme(pub bool);
+
+impl std::fmt::Display for DisplayTheme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", if self.0 { "Dark" } else { "Light" })
+    }
+}
+
 pub trait IntoIoError {
     fn into_io_error(self, key: &str, context: &str) -> std::io::Error;
 }
@@ -535,15 +563,16 @@ impl IntoIoError for std::num::ParseIntError {
 
 pub trait ModError {
     /// replaces self with `self` + `msg`
-    fn add_msg(&mut self, msg: &str);
+    fn add_msg(&mut self, msg: &str, add_new_line: bool);
 }
 
 impl ModError for std::io::Error {
     #[inline]
-    fn add_msg(&mut self, msg: &str) {
+    fn add_msg(&mut self, msg: &str, add_new_line: bool) {
+        let formatter = if add_new_line { "\n" } else { " " };
         std::mem::swap(
             self,
-            &mut std::io::Error::new(self.kind(), format!("{self} {msg}")),
+            &mut std::io::Error::new(self.kind(), format!("{self}{formatter}{msg}")),
         )
     }
 }
@@ -562,16 +591,18 @@ impl ErrorClone for std::io::Error {
 
 pub trait Merge {
     /// joins all `io::Error`'s in a collection while leaving the collection intact
-    fn merge(&self) -> std::io::Error;
+    fn merge(&self, add_new_line: bool) -> std::io::Error;
 }
 impl Merge for [std::io::Error] {
-    fn merge(&self) -> std::io::Error {
+    fn merge(&self, add_new_line: bool) -> std::io::Error {
         if self.is_empty() {
             return std::io::Error::new(ErrorKind::InvalidInput, "Tried to merge 0 errors");
         }
         let mut new_err: std::io::Error = self[0].clone_err();
         if self.len() > 1 {
-            self.iter().skip(1).for_each(|err| new_err.add_msg(&err.to_string()));
+            self.iter()
+                .skip(1)
+                .for_each(|err| new_err.add_msg(&err.to_string(), add_new_line));
         }
         new_err
     }

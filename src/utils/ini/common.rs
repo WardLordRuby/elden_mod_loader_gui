@@ -4,7 +4,7 @@ use std::{
     marker::Sized,
     path::{Path, PathBuf},
 };
-use tracing::instrument;
+use tracing::{info, instrument};
 
 use crate::{
     get_or_setup_cfg,
@@ -12,8 +12,8 @@ use crate::{
         parser::IniProperty,
         writer::{save_bool, save_value_ext, EXT_OPTIONS, WRITE_OPTIONS},
     },
-    ModError, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_SECTIONS, LOADER_KEYS,
-    LOADER_SECTIONS,
+    DisplayTheme, ModError, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_SECTIONS,
+    LOADER_KEYS, LOADER_SECTIONS,
 };
 
 pub trait Config {
@@ -66,7 +66,7 @@ pub struct Cfg {
 }
 
 impl Config for Cfg {
-    #[instrument(name = "cfg_read", skip_all)]
+    #[instrument(level = "trace", name = "cfg_read", skip_all)]
     fn read(ini_dir: &Path) -> io::Result<Self>
     where
         Self: Sized,
@@ -93,7 +93,7 @@ impl Config for Cfg {
     }
 
     #[inline]
-    #[instrument(name = "cfg_update")]
+    #[instrument(level = "trace", name = "cfg_update", skip_all)]
     fn update(&mut self) -> io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &INI_SECTIONS)?;
         Ok(())
@@ -154,12 +154,12 @@ impl Config for Cfg {
         mut in_err: io::Error,
     ) -> io::Error {
         if let Err(err) = save_bool(&self.dir, section, key, DEFAULT_INI_VALUES[0]) {
-            in_err.add_msg(&err.to_string());
+            in_err.add_msg(&err.to_string(), false);
         } else {
-            in_err.add_msg(&format!(
-                "Sucessfully reset {key} to {}",
-                DEFAULT_INI_VALUES[0]
-            ));
+            in_err.add_msg(
+                &format!("Sucessfully reset {key} to {}", DEFAULT_INI_VALUES[0]),
+                false,
+            );
         };
         in_err
     }
@@ -170,7 +170,10 @@ impl Cfg {
     /// if error calls `self.save_default_val` to correct error  
     pub fn get_dark_mode(&self) -> io::Result<bool> {
         match IniProperty::<bool>::read(&self.data, INI_SECTIONS[0], INI_KEYS[0]) {
-            Ok(dark_mode) => Ok(dark_mode.value),
+            Ok(dark_mode) => {
+                info!("{} theme loaded", DisplayTheme(dark_mode.value));
+                Ok(dark_mode.value)
+            }
             Err(err) => Err(self.save_default_val(INI_SECTIONS[0], INI_KEYS[0], err)),
         }
     }
@@ -183,7 +186,7 @@ pub struct ModLoaderCfg {
 }
 
 impl Config for ModLoaderCfg {
-    #[instrument(name = "mod_loader_read", skip_all)]
+    #[instrument(level = "trace", name = "mod_loader_read", skip_all)]
     fn read(ini_dir: &Path) -> io::Result<Self>
     where
         Self: Sized,
@@ -210,7 +213,7 @@ impl Config for ModLoaderCfg {
     }
 
     #[inline]
-    #[instrument(name = "mod_loader_update")]
+    #[instrument(level = "trace", name = "mod_loader_update", skip_all)]
     fn update(&mut self) -> io::Result<()> {
         self.data = get_or_setup_cfg(&self.dir, &LOADER_SECTIONS)?;
         Ok(())
@@ -276,9 +279,9 @@ impl Config for ModLoaderCfg {
             _ => panic!("Unknown key was passed in"),
         };
         if let Err(err) = save_value_ext(&self.dir, section, key, default_val) {
-            in_err.add_msg(&err.to_string());
+            in_err.add_msg(&err.to_string(), false);
         } else {
-            in_err.add_msg(&format!("Sucessfully reset {key} to {default_val}"));
+            in_err.add_msg(&format!("Sucessfully reset {key} to {default_val}"), false);
         };
         in_err
     }
@@ -289,7 +292,10 @@ impl ModLoaderCfg {
     /// if error calls `self.save_default_val` to correct error  
     pub fn get_load_delay(&self) -> io::Result<u32> {
         match IniProperty::<u32>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[0]) {
-            Ok(delay_time) => Ok(delay_time.value),
+            Ok(delay_time) => {
+                info!("Load delay: {}", delay_time.value);
+                Ok(delay_time.value)
+            }
             Err(err) => Err(self.save_default_val(LOADER_SECTIONS[0], LOADER_KEYS[0], err)),
         }
     }
@@ -298,7 +304,10 @@ impl ModLoaderCfg {
     /// if error calls `self.save_default_val` to correct error  
     pub fn get_show_terminal(&self) -> io::Result<bool> {
         match IniProperty::<bool>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[1]) {
-            Ok(bool) => Ok(bool.value),
+            Ok(show_terminal) => {
+                info!("Show terminal: {}", show_terminal.value);
+                Ok(show_terminal.value)
+            }
             Err(err) => Err(self.save_default_val(LOADER_SECTIONS[0], LOADER_KEYS[1], err)),
         }
     }

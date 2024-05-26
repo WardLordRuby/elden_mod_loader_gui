@@ -1,5 +1,5 @@
 use ini::{EscapePolicy, Ini, LineSeparator, WriteOption};
-use tracing::{instrument, trace};
+use tracing::{info, instrument, trace};
 
 use std::{
     fmt::Display,
@@ -126,26 +126,30 @@ pub fn new_cfg(path: &Path) -> Result<Ini> {
 
     fs::create_dir_all(parent)?;
     let mut new_ini = File::create(path)?;
-    trace!(?file_name, "created on disk");
 
     match file_name {
-        f_name if f_name == INI_NAME => init_default_values(
-            &mut new_ini,
-            &INI_SECTIONS,
-            &INI_KEYS,
-            &DEFAULT_INI_VALUES,
-            false,
-        )?,
-        f_name if f_name == LOADER_FILES[2] => init_default_values(
-            &mut new_ini,
-            &LOADER_SECTIONS,
-            &LOADER_KEYS,
-            &DEFAULT_LOADER_VALUES,
-            true,
-        )?,
+        f_name if f_name == INI_NAME => {
+            init_default_values(
+                &mut new_ini,
+                &INI_SECTIONS,
+                &INI_KEYS,
+                &DEFAULT_INI_VALUES,
+                false,
+            )?;
+            info!("Created new ini: {}", INI_NAME);
+        }
+        f_name if f_name == LOADER_FILES[2] => {
+            init_default_values(
+                &mut new_ini,
+                &LOADER_SECTIONS,
+                &LOADER_KEYS,
+                &DEFAULT_LOADER_VALUES,
+                true,
+            )?;
+            info!("Created new ini: {}", LOADER_FILES[2]);
+        }
         _ => panic!("No default data implemented for {file_name:?}"),
     }
-    trace!("default sections wrote to file");
     get_cfg(path)
 }
 

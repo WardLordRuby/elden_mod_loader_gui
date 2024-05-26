@@ -1,5 +1,5 @@
 use ini::{Ini, Properties};
-use tracing::{error, instrument, trace, warn};
+use tracing::{error, instrument, trace, warn, info};
 use std::{
     collections::{HashMap, HashSet}, io::ErrorKind, path::{Path, PathBuf}, str::ParseBoolError
 };
@@ -9,7 +9,7 @@ use crate::{
     utils::ini::{
         common::Config, 
         writer::{remove_array, remove_entry, save_bool, save_path, save_paths}
-    }, Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES, OrderMap
+    }, Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES, OrderMap, DisplayStrs, DisplayState
 };
 
 pub trait Parsable: Sized {
@@ -128,7 +128,7 @@ impl Parsable for Vec<PathBuf> {
             return Ok(parsed_value);
         }
         if let Err(err_data) = parsed_value.validate(partial_path) {
-            return Err(err_data.errors.merge());
+            return Err(err_data.errors.merge(true));
         };
         Ok(parsed_value)
     }
@@ -236,7 +236,7 @@ impl<T: AsRef<Path>> Setup for T {
     /// - **File::open** does not return an error  
     ///  
     /// it is safe to call unwrap on `get_cfg(self)` if this returns `Ok`
-    #[instrument(name = "ini_is_setup", skip(self))]
+    #[instrument(level = "trace", name = "ini_is_setup", skip(self))]
     fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<ini::Ini> {
         let file_data = self.as_ref().to_string_lossy();
         let file_data = FileData::from(&file_data);
@@ -255,9 +255,9 @@ impl<T: AsRef<Path>> Setup for T {
                 new_io_error!(
                     ErrorKind::InvalidData,
                     format!(
-                        "Could not find section(s): {:?} in {:?}",
-                        not_found,
-                        self.as_ref().file_name().unwrap()
+                        "Could not find section(s): {}, in: {}",
+                        DisplayStrs(not_found),
+                        self.as_ref().file_name().unwrap().to_str().unwrap()
                     )
                 )
             }
@@ -602,12 +602,17 @@ impl RegMod {
                 self.state = alt_file_state;
                 self.files.dll = test_alt_state;
                 self.write_to_file(ini_path, is_array)?;
-                trace!(new_fnames = ?self.files.dll, "recovered from Error: file names saved in the incorrect state")
+                info!(
+                    "{}'s files were saved in the incorrect state, updated files to reflect the correct state: {}",
+                    self.name.replace('_', " "),
+                    DisplayState(alt_file_state)
+                );
+                trace!(new_fnames = ?self.files.dll, "Recovered from Error: file names saved in the incorrect state")
             } else {
                 return new_io_error!(
                     ErrorKind::NotFound,
                     format!(
-                        "One or more of: \"{:?}\" can not be found on machine",
+                        "One or more of: {:?}, can not be found on machine",
                         self.files.dll
                     )
                 );
@@ -616,7 +621,7 @@ impl RegMod {
             return new_io_error!(
                 ErrorKind::PermissionDenied,
                 format!(
-                    "One or more of: \"{:?}\"'s existance can neither be confirmed nor denied",
+                    "One or more of: {:?}, existance can neither be confirmed nor denied",
                     self.files.dll
                 )
             );
@@ -624,8 +629,8 @@ impl RegMod {
         if (!self.state && self.files.dll.iter().any(FileData::is_enabled))
             || (self.state && self.files.dll.iter().any(FileData::is_disabled))
         {
-            warn!(
-                "wrong file state for \"{}\" chaning file extentions",
+            info!(
+                "Wrong file state for \"{}\" chaning file state",
                 self.name
             );
             return toggle_files(game_dir, self.state, self, Some(ini_path))
@@ -692,7 +697,7 @@ impl Cfg {
     /// - `self.files.dll` are valid to exist on disk check `self.verify_state()` for how it can recover  
     /// - `self.files.other_file_refs()` are valid to exist on disk  
     ///   - if they are not files are removed and user can re-add them  
-    #[instrument(skip(self, game_dir, include_load_order))]
+    #[instrument(level = "trace", skip(self, game_dir, include_load_order))]
     pub fn collect_mods<P: AsRef<Path>>(
         &self,
         game_dir: P,
@@ -762,13 +767,14 @@ impl Cfg {
                                     err.errors[i].add_msg(&format!(
                                         "File: {file:?} was removed, and is no longer associated with: {}",
                                         curr.name
-                                    ));
+                                    ), true);
                                     warn!("{}", err.errors[i]);
                                     warnings.push(err.errors.pop().expect("valid range"))
                                 } else {
-                                    let err = err.errors.merge();
-                                    error!("{err}");
-                                    warnings.push(err);
+                                    err.errors.into_iter().for_each(|err| {
+                                        error!("{err}");
+                                        warnings.push(err);
+                                    });
                                     if let Err(err) = remove_entry(ini_dir, INI_SECTIONS[2], &curr.name) {
                                         error!("{err}");
                                         warnings.push(err);
@@ -788,7 +794,7 @@ impl Cfg {
                     .collect(), 
                 warnings: if warnings.is_empty() { None } else if warnings.len() == 1 {
                         Some(warnings.remove(0))
-                    } else { Some(warnings.merge()) }
+                    } else { Some(warnings.merge(true)) }
                 }
         }
 
@@ -845,6 +851,7 @@ impl Cfg {
     }
 
     /// parses the data associated with a given key into a `RegMod` if found  
+    #[instrument(level = "trace", skip_all)]
     pub fn get_mod(&self, name: &slint::SharedString, game_dir: &Path, order_map: Option<&OrderMap>) -> std::io::Result<RegMod> {
         let key = name.replace(' ', "_");
         let split_files = if self.data().get_from(INI_SECTIONS[3], &key).ok_or(
@@ -918,7 +925,7 @@ impl Cfg {
     }
 }
 
-#[instrument(skip_all)]
+#[instrument(level = "trace", skip_all)]
 fn sync_keys<'a>(cfg: &'a Cfg) -> CollectedMaps<'a> {
     fn collect_paths(section: &Properties) -> HashMap<&str, Vec<&str>> {
         section
@@ -955,7 +962,7 @@ fn sync_keys<'a>(cfg: &'a Cfg) -> CollectedMaps<'a> {
         state_data.remove(key);
         remove_entry(cfg.path(), INI_SECTIONS[2], key)
             .expect("Key is valid & ini has already been read");
-        warn!(key, "has no matching files");
+        warn!("{key} has no matching files");
     }
 
     let invalid_files = file_data
@@ -972,7 +979,7 @@ fn sync_keys<'a>(cfg: &'a Cfg) -> CollectedMaps<'a> {
                 .expect("Key is valid & ini has already been read");
         }
         file_data.remove(key);
-        warn!(key, "has no matching state");
+        warn!("{key} has no matching state");
     }
 
     assert_eq!(state_data.len(), file_data.len());

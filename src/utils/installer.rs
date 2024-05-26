@@ -324,7 +324,7 @@ impl InstallData {
     }
 
     /// returns a collection of `(from_path, to_path)` for easy copy operations  
-    #[instrument(skip_all)]
+    #[instrument(level = "trace", skip_all)]
     pub fn zip_from_to_paths(&self) -> std::io::Result<Vec<(&Path, &Path)>> {
         if self.from_paths.len() != self.to_paths.len() {
             error!(
@@ -561,7 +561,6 @@ pub fn remove_mod_files(
     if reg_mod.order.set {
         remove_order_entry(reg_mod, loader_dir)?;
     }
-    info!("{} uninstalled", reg_mod.name);
     Ok(())
 }
 
@@ -628,6 +627,6 @@ pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> 
         mod_data.verify_state(game_dir, ini_dir)?;
     }
     let mods_found = file_sets.len();
-    info!(mods_found, "scanned for mods");
+    info!(mods_found, "Scanned for mods");
     Ok(mods_found)
 }

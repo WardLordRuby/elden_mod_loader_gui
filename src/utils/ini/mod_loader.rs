@@ -10,7 +10,7 @@ use crate::{
         parser::RegMod,
         writer::new_cfg,
         common::{ModLoaderCfg, Config},
-    }, Operation, OperationResult, LOADER_FILES, OrderMap,
+    }, Operation, OperationResult, LOADER_FILES, OrderMap, DisplayState
 };
 
 #[derive(Debug, Default)]
@@ -25,7 +25,7 @@ impl ModLoader {
     /// the _elden_mod_loader_ dll hook by TechieW
     /// 
     /// can only error if it finds loader hook installed && "elden_mod_loader_config.ini" is not found so it fails on writing a new one to disk
-    #[instrument(name = "mod_loader_properties", skip_all)]
+    #[instrument(level = "trace", name = "mod_loader_properties", skip_all)]
     pub fn properties(game_dir: &Path) -> std::io::Result<ModLoader> {
         let mut cfg_dir = game_dir.join(LOADER_FILES[2]);
         let mut properties = ModLoader::default();
@@ -45,14 +45,14 @@ impl ModLoader {
             _ => unreachable!(),
         };
         if properties.installed && properties.path == Path::new("") {
-            info!("{} not found, creating new", LOADER_FILES[2]);
+            info!("{} not found", LOADER_FILES[2]);
             new_cfg(&cfg_dir)?;
             properties.path = cfg_dir;
         }
         if !properties.installed {
-            warn!("Mod loader dll hook not found");
+            warn!("Mod loader dll hook: {}, not found", LOADER_FILES[1]);
         } else {
-            info!(dll_hook_disabled = properties.disabled, "elden_mod_loader files found");
+            trace!(dll_hook = %DisplayState(!properties.disabled), "elden_mod_loader files found");
         }
         Ok(properties)
     }
@@ -106,12 +106,12 @@ impl ModLoaderCfg {
             if update_order {
                 self.update_order_entries(None)?;
                 return new_io_error!(ErrorKind::Unsupported, 
-                    format!("Found load order set for files not registered with the app. The following key(s) order were changed {}", 
+                    format!("Found load order set for files not registered with the app. The following key(s) order were changed: {}", 
                     unknown_keys.join(", "))
                 );
             }
             return new_io_error!(ErrorKind::Other,
-                format!("Found load order set for the following files not registered with the app. {}", 
+                format!("Found load order set for the following files not registered with the app: {}", 
                 unknown_keys.join(", "))
             );
         }
