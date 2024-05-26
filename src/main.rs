@@ -351,30 +351,6 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }
                 };
-                let mut results: Vec<std::io::Result<()>> = Vec::with_capacity(2);
-                let state = !files.iter().all(FileData::is_disabled);
-                results.push(save_bool(
-                    ini.path(),
-                    INI_SECTIONS[2],
-                    &format_key,
-                    state,
-                ));
-                match files.len() {
-                    0 => return,
-                    1 => results.push(save_path(
-                        ini.path(),
-                        INI_SECTIONS[3],
-                        &format_key,
-                        files[0],
-                    )),
-                    2.. => results.push(save_paths(ini.path(), INI_SECTIONS[3], &format_key, &files)),
-                }
-                if let Some(err) = results.iter().find_map(|result| result.as_ref().err()) {
-                    ui.display_msg(&err.to_string());
-                    // If something fails to save attempt to create a corrupt entry so
-                    // sync keys will take care of any invalid ini entries
-                    let _ = remove_entry(ini.path(), INI_SECTIONS[2], &format_key);
-                }
                 let loader_dir = get_loader_ini_dir();
                 let mut loader_cfg = ModLoaderCfg::read(loader_dir).unwrap_or_else(|err| {
                     error!("{err}");
@@ -386,21 +362,31 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg(&err.to_string());
                     HashMap::new()
                 });
-                let mut new_mod = RegMod::with_load_order(&format_key, state, files.iter().map(PathBuf::from).collect(), &order_data);
-
-                new_mod
-                .verify_state(&game_dir, ini.path())
-                .unwrap_or_else(|err| {
-                    // Toggle files returned an error lets try it again
-                    if new_mod.verify_state(&game_dir, ini.path()).is_err() {
-                        ui.display_msg(&err.to_string());
-                        let _ = remove_entry(
-                            ini.path(),
-                            INI_SECTIONS[2],
-                            &new_mod.name,
-                        );
-                    };
-                });
+                let mut new_mod = RegMod::with_load_order(&format_key, true, files.iter().map(PathBuf::from).collect(), &order_data);
+                if !new_mod.files.dll.is_empty() {
+                    if new_mod.files.dll.iter().all(FileData::is_disabled) {
+                        new_mod.state = false;
+                    }
+                    new_mod
+                    .verify_state(&game_dir, ini.path())
+                    .unwrap_or_else(|err| {
+                        // Toggle files returned an error lets try it again
+                        if new_mod.verify_state(&game_dir, ini.path()).is_err() {
+                            ui.display_msg(&err.to_string());
+                            let _ = remove_entry(
+                                ini.path(),
+                                INI_SECTIONS[2],
+                                &new_mod.name,
+                            );
+                        };
+                    });
+                }
+                if let Err(err) = new_mod.write_to_file(ini.path(), false) {
+                    let _ = remove_entry(ini.path(), INI_SECTIONS[2], &new_mod.name);
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
+                    return;
+                };
 
                 ui.global::<MainLogic>().set_line_edit_text(SharedString::new());
                 ini.update().unwrap_or_else(|err| {
@@ -524,6 +510,11 @@ fn main() -> Result<(), slint::PlatformError> {
             let game_dir = get_or_update_game_dir(None);
             match ini.get_mod(&key, &game_dir, None) {
                 Ok(ref mut reg_mod) => {
+                    if reg_mod.files.dll.is_empty() {
+                        info!("Can not toggle {}, if mod has no .dll files", reg_mod.name);
+                        ui.display_msg(&format!("To toggle \"{}\" please add a .dll file", reg_mod.name));
+                        return !state;
+                    }
                     if let Err(err) = toggle_files(&game_dir, state, reg_mod, Some(ini.path())) {
                         error!("{err}");
                         ui.display_msg(&err.to_string());
