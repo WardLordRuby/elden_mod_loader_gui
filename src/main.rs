@@ -1248,13 +1248,9 @@ async fn receive_msg() -> Message {
     message
 }
 
-// MARK: FIXME
-// Need a stable file dialog before release
-// rfd will hang if user decides to create new folders or files, or select the dropdown on "open"
-
 fn get_user_folder(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<PathBuf> {
     let ui = ui_handle.unwrap();
-    match rfd::FileDialog::new()
+    let f_result = match rfd::FileDialog::new()
         .set_directory(path)
         .set_parent(&ui.window().window_handle())
         .pick_folder()
@@ -1264,12 +1260,20 @@ fn get_user_folder(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<
             Ok(file)
         }
         None => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
-    }
+    };
+    // workaround for whatever bug in rfd that doesn't interact well with the app when a user
+    // performs a secondary action within the file dialog
+    let mut size = ui.window().size();
+    size.height += 1;
+    ui.window().set_size(size);
+    size.height -= 1;
+    ui.window().set_size(size);
+    f_result
 }
 
 fn get_user_files(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<Vec<PathBuf>> {
     let ui = ui_handle.unwrap();
-    match rfd::FileDialog::new()
+    let f_result = match rfd::FileDialog::new()
         .set_directory(path)
         .set_parent(&ui.window().window_handle())
         .pick_files()
@@ -1281,19 +1285,28 @@ fn get_user_files(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<V
                 if files.iter().any(|file| {
                     restricted_files.contains(file.file_name().expect("has valid name"))
                 }) {
-                    return new_io_error!(
+                    new_io_error!(
                         ErrorKind::InvalidData,
                         "Error: Tried to add a restricted file"
-                    );
+                    )
+                } else {
+                    trace!("User Selected Files: {files:?}");
+                    Ok(files)
                 }
-                trace!("User Selected Files: {files:?}");
-                Ok(files)
             }
         },
         None => {
             new_io_error!(ErrorKind::InvalidInput, "No Files Selected")
         }
-    }
+    };
+    // workaround for whatever bug in rfd that doesn't interact well with the app when a user
+    // performs a secondary action within the file dialog
+    let mut size = ui.window().size();
+    size.height += 1;
+    ui.window().set_size(size);
+    size.height -= 1;
+    ui.window().set_size(size);
+    f_result
 }
 
 fn get_ini_dir() -> &'static PathBuf {
