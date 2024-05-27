@@ -504,21 +504,20 @@ fn get_current_drive() -> std::io::Result<std::ffi::OsString> {
 }
 
 pub fn format_panic_info(info: &std::panic::PanicInfo) -> String {
-    let payload_str = if let Some(s) = info.payload().downcast_ref::<&str>() {
-        format!("PANIC: {s},")
-    } else {
-        "PANIC:".to_string()
-    };
-
-    if let Some(location) = info.location() {
+    let payload_str = if let Some(location) = info.location() {
         format!(
-            "{} occurred in file '{}' at line {}",
-            payload_str,
+            "PANIC {}:{}:{}:",
             location.file(),
-            location.line()
+            location.line(),
+            location.column(),
         )
     } else {
-        format!("{} could not get panic location", payload_str)
+        String::from("PANIC:")
+    };
+    if let Some(msg) = info.payload().downcast_ref::<&str>() {
+        format!("{payload_str} {msg}")
+    } else {
+        format!("{payload_str} no attached message")
     }
 }
 
