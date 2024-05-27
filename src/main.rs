@@ -32,26 +32,39 @@ static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
 static RESTRICTED_FILES: OnceLock<HashSet<&OsStr>> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
 
+#[cfg(not(debug_assertions))]
+fn init_subscriber() -> std::io::Result<Option<tracing_appender::non_blocking::WorkerGuard>> {
+    if Cfg::read(get_ini_dir()).map_err(|_| true).unwrap().get_save_log().unwrap_or(true) {
+        let file = std::fs::File::create(std::env::current_dir()?.join(LOG_NAME))?;
+        let (non_blocking, guard) = tracing_appender::non_blocking(file);
+        tracing_subscriber::registry()
+            .with(fmt::layer().with_target(false).with_ansi(false).without_time().fmt_fields(fmt::format::PrettyFields::new()).with_writer(non_blocking))
+            .with(filter::LevelFilter::INFO)
+            .init();
+        return Ok(Some(guard));
+        // MARK: TODO
+        // create custom formatter to make the Panic messages print pretty
+    }
+    Ok(None)
+}
+
 #[cfg(debug_assertions)]
-fn init_subscriber() {
+fn init_subscriber() -> std::io::Result<Option<()>>{
     tracing_subscriber::registry()
         .with(fmt::layer().with_target(false).pretty())
         .with(filter::EnvFilter::builder().with_default_directive(filter::LevelFilter::INFO.into()).from_env_lossy())
         .init();
-}
-
-#[cfg(not(debug_assertions))]
-fn init_subscriber() {
-    tracing_subscriber::registry()
-        .with(fmt::layer().with_target(false).without_time().fmt_fields(fmt::format::PrettyFields::new()))
-        .with(filter::LevelFilter::INFO)
-        .init();
-    // MARK: TODO
-    // create subscriber that writes events to a log file that runs on a seperate thread
+    Ok(None)
 }
 
 fn main() -> Result<(), slint::PlatformError> {
-    init_subscriber();
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        error!(name: "PANIC", "{}", format_panic_info(info));
+        prev(info);
+    }));
+
+    let _guard = init_subscriber().unwrap_or(None);
 
     slint::platform::set_platform(Box::new(
         i_slint_backend_winit::Backend::new().expect("This app is being run on windows"),
@@ -144,11 +157,15 @@ fn main() -> Result<(), slint::PlatformError> {
                     let dlls = mods.dll_name_set();
                     if mod_loader.installed() {
                         if let Err(err) = mod_loader_cfg.verify_keys(&dlls, mods.order_count()) {
-                            if err.kind() == ErrorKind::Unsupported {
-                                order_data = Some(mod_loader_cfg.parse_into_map());
-                                reg_mods = Some(ini.collect_mods(&path, order_data.as_ref(), false).mods);
+                            match err.kind() {
+                                ErrorKind::Unsupported => {
+                                    order_data = Some(mod_loader_cfg.parse_into_map());
+                                    reg_mods = Some(ini.collect_mods(&path, order_data.as_ref(), false).mods);
+                                    warn!("{err}");
+                                },
+                                ErrorKind::Other => info!("{err}"),
+                                _ => error!("code 6: {err}"),
                             }
-                            warn!("code 6: {err}");
                             errors.push(err);
                         }
                     }
@@ -408,8 +425,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 info!(
                     files = new_mod.files.file_refs().len(),
-                    enabled = new_mod.state,
-                    order = %if new_mod.order.set { new_mod.order.at.to_string() } else { "Not set".to_string() },
+                    state = %DisplayState(new_mod.state),
+                    order = %DisplayOrder(new_mod.order.set, new_mod.order.at),
                     "{mod_name} added with"
                 );
             }).unwrap();
@@ -456,8 +473,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 };
                 match files_not_found(&try_path, &REQUIRED_GAME_FILES) {
                     Ok(not_found) => if not_found.is_empty() {
-                        let result = save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[1], &try_path);
-                        if result.is_err() && save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[1], &try_path).is_err() {
+                        let result = save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[2], &try_path);
+                        if result.is_err() && save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[2], &try_path).is_err() {
                             let err = result.unwrap_err();
                             error!("Failed to save directory. {err}");
                             ui.display_msg(&err.to_string());
@@ -1082,8 +1099,6 @@ fn main() -> Result<(), slint::PlatformError> {
             info!("Re-loaded all mods after encountered error");
         }
     });
-    // MARK: OUTLINE
-    // ui.window().on_close_requested(callback)
 
     ui.invoke_focus_app();
     ui.run()
@@ -1570,7 +1585,7 @@ async fn confirm_scan_mods(
         std::fs::remove_file(ini.path())?;
         new_cfg(ini.path())?;
         save_bool(ini.path(), INI_SECTIONS[0], INI_KEYS[0], dark_mode)?;
-        save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[1], game_dir)?;
+        save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[2], game_dir)?;
     } else {
         old_mods = Vec::new();
     }

@@ -83,7 +83,7 @@ impl Parsable for PathBuf {
             return Ok(parsed_value);
         }
         parsed_value.as_path().validate(partial_path)?;
-        if key == INI_KEYS[1] {
+        if key == INI_KEYS[2] {
             match files_not_found(&parsed_value, &REQUIRED_GAME_FILES) {
                 Ok(not_found) => {
                     if !not_found.is_empty() {

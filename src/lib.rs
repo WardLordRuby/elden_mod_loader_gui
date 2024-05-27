@@ -41,6 +41,7 @@ pub const REQUIRED_GAME_FILES: [&str; 3] = [
 
 pub const OFF_STATE: &str = ".disabled";
 
+pub const LOG_NAME: &str = "EML_gui_log.txt";
 pub const INI_NAME: &str = "EML_gui_config.ini";
 pub const INI_SECTIONS: [Option<&str>; 4] = [
     Some("app-settings"),
@@ -48,8 +49,8 @@ pub const INI_SECTIONS: [Option<&str>; 4] = [
     Some("registered-mods"),
     Some("mod-files"),
 ];
-pub const INI_KEYS: [&str; 2] = ["dark_mode", "game_dir"];
-pub const DEFAULT_INI_VALUES: [bool; 1] = [true];
+pub const INI_KEYS: [&str; 3] = ["dark_mode", "save_log", "game_dir"];
+pub const DEFAULT_INI_VALUES: [bool; 2] = [true, true];
 pub const ARRAY_KEY: &str = "array[]";
 pub const ARRAY_VALUE: &str = "array";
 
@@ -200,7 +201,11 @@ pub fn toggle_files(
     {
         info!("All mods {}", DisplayState(reg_mod.state))
     } else {
-        info!("{} {}", reg_mod.name, DisplayState(reg_mod.state));
+        info!(
+            "{} {}",
+            DisplayName(&reg_mod.name),
+            DisplayState(reg_mod.state)
+        );
     }
     if let Some(file) = save_file {
         reg_mod.write_to_file(file, was_array)?
@@ -417,9 +422,9 @@ impl Cfg {
     #[instrument(level = "trace", skip_all)]
     pub fn attempt_locate_game(&mut self) -> std::io::Result<PathResult> {
         if let Ok(path) =
-            IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[1], None, false)
+            IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[2], None, false)
         {
-            info!("game_dir from ini is valid");
+            info!("Game dir from ini is valid");
             return Ok(PathResult::Full(path.value));
         }
         let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
@@ -431,10 +436,10 @@ impl Cfg {
             save_path(
                 self.path(),
                 INI_SECTIONS[1],
-                INI_KEYS[1],
+                INI_KEYS[2],
                 try_locate.as_path(),
             )?;
-            self.set(INI_SECTIONS[1], INI_KEYS[1], &try_locate.to_string_lossy());
+            self.set(INI_SECTIONS[1], INI_KEYS[2], &try_locate.to_string_lossy());
             return Ok(PathResult::Full(try_locate));
         }
         if try_locate.components().count() > 1 {
@@ -497,25 +502,73 @@ fn get_current_drive() -> std::io::Result<std::ffi::OsString> {
         ))
 }
 
+pub fn format_panic_info(info: &std::panic::PanicInfo) -> String {
+    let payload_str = if let Some(s) = info.payload().downcast_ref::<&str>() {
+        format!("PANIC: {s},")
+    } else {
+        "PANIC:".to_string()
+    };
+
+    if let Some(location) = info.location() {
+        format!(
+            "{} occurred in file '{}' at line {}",
+            payload_str,
+            location.file(),
+            location.line()
+        )
+    } else {
+        format!("{} could not get panic location", payload_str)
+    }
+}
+
 pub struct DisplayStrs<'a>(pub Vec<&'a str>);
 
 impl<'a> std::fmt::Display for DisplayStrs<'a> {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "[{}]", self.0.join(", "))
+    }
+}
+
+pub struct DisplayName<'a>(pub &'a str);
+
+impl<'a> std::fmt::Display for DisplayName<'a> {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.replace('_', " "))
     }
 }
 
 pub struct DisplayState(pub bool);
 
 impl std::fmt::Display for DisplayState {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", if self.0 { "enabled" } else { "disabled" })
+    }
+}
+
+pub struct DisplayOrder(pub bool, pub usize);
+
+impl std::fmt::Display for DisplayOrder {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            if self.0 {
+                (self.1 + 1).to_string()
+            } else {
+                "not set".to_string()
+            }
+        )
     }
 }
 
 pub struct DisplayTheme(pub bool);
 
 impl std::fmt::Display for DisplayTheme {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", if self.0 { "Dark" } else { "Light" })
     }

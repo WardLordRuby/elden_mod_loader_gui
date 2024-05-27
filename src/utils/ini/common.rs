@@ -153,7 +153,12 @@ impl Config for Cfg {
         key: &str,
         mut in_err: io::Error,
     ) -> io::Error {
-        if let Err(err) = save_bool(&self.dir, section, key, DEFAULT_INI_VALUES[0]) {
+        let default_val = match key {
+            k if k == INI_KEYS[0] => DEFAULT_INI_VALUES[0],
+            k if k == INI_KEYS[1] => DEFAULT_INI_VALUES[1],
+            _ => panic!("Unknown key was passed in"),
+        };
+        if let Err(err) = save_bool(&self.dir, section, key, default_val) {
             in_err.add_msg(&err.to_string(), false);
         } else {
             in_err.add_msg(
@@ -175,6 +180,18 @@ impl Cfg {
                 Ok(dark_mode.value)
             }
             Err(err) => Err(self.save_default_val(INI_SECTIONS[0], INI_KEYS[0], err)),
+        }
+    }
+
+    /// returns the value stored with key "dark_mode" as a `bool`  
+    /// if error calls `self.save_default_val` to correct error  
+    pub fn get_save_log(&self) -> io::Result<bool> {
+        match IniProperty::<bool>::read(&self.data, INI_SECTIONS[0], INI_KEYS[1]) {
+            Ok(save_log) => {
+                info!("Save log: {}", save_log.value);
+                Ok(save_log.value)
+            }
+            Err(err) => Err(self.save_default_val(INI_SECTIONS[0], INI_KEYS[1], err)),
         }
     }
 }

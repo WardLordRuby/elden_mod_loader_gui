@@ -92,13 +92,13 @@ mod tests {
 
         {
             new_cfg_with_sections(test_file, &test_section).unwrap();
-            save_path(test_file, test_section[0], INI_KEYS[1], test_path_1).unwrap();
+            save_path(test_file, test_section[0], INI_KEYS[2], test_path_1).unwrap();
             save_path(test_file, test_section[0], "random_dir", test_path_2).unwrap();
         }
 
         let config = get_cfg(test_file).unwrap();
         let parse_test_1 =
-            IniProperty::<PathBuf>::read(&config, test_section[0], INI_KEYS[1], None, false)
+            IniProperty::<PathBuf>::read(&config, test_section[0], INI_KEYS[2], None, false)
                 .unwrap()
                 .value;
         let parse_test_2 =
@@ -179,7 +179,7 @@ mod tests {
         let array_key = "test_array";
 
         new_cfg_with_sections(test_file, &INI_SECTIONS).unwrap();
-        save_path(test_file, test_sections[0], INI_KEYS[1], test_path).unwrap();
+        save_path(test_file, test_sections[0], INI_KEYS[2], test_path).unwrap();
         save_paths(test_file, test_sections[1], array_key, &test_array).unwrap();
 
         let config = get_cfg(test_file).unwrap();
@@ -196,7 +196,7 @@ mod tests {
         let vec_result = IniProperty::<Vec<PathBuf>>::read(
             &config,
             test_sections[0],
-            INI_KEYS[1],
+            INI_KEYS[2],
             test_path,
             false,
         );
@@ -289,7 +289,7 @@ mod tests {
             .unwrap();
             save_bool(test_file, INI_SECTIONS[2], "no_matching_path", true).unwrap();
 
-            save_path(test_file, INI_SECTIONS[1], INI_KEYS[1], game_path).unwrap();
+            save_path(test_file, INI_SECTIONS[1], INI_KEYS[2], game_path).unwrap();
         }
 
         // -------------------------------------sync_keys() runs from inside Cfg.collect_mods()------------------------------------------------
