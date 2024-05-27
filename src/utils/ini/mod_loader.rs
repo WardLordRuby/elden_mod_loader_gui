@@ -1,16 +1,18 @@
-use tracing::{trace, warn, instrument, info};
 use std::{
     collections::HashSet,
     io::ErrorKind,
     path::{Path, PathBuf},
 };
+use tracing::{info, instrument, trace, warn};
 
 use crate::{
-    does_dir_contain, omit_off_state, new_io_error, utils::ini::{
+    does_dir_contain, new_io_error, omit_off_state,
+    utils::ini::{
+        common::{Config, ModLoaderCfg},
         parser::RegMod,
         writer::new_cfg,
-        common::{ModLoaderCfg, Config},
-    }, Operation, OperationResult, LOADER_FILES, OrderMap, DisplayState
+    },
+    DisplayState, Operation, OperationResult, OrderMap, LOADER_FILES,
 };
 
 #[derive(Debug, Default)]
@@ -23,7 +25,7 @@ pub struct ModLoader {
 impl ModLoader {
     /// returns struct `ModLoader` that contains properties about the current installation of  
     /// the _elden_mod_loader_ dll hook by TechieW
-    /// 
+    ///
     /// can only error if it finds loader hook installed && "elden_mod_loader_config.ini" is not found so it fails on writing a new one to disk
     #[instrument(level = "trace", name = "mod_loader_properties", skip_all)]
     pub fn properties(game_dir: &Path) -> std::io::Result<ModLoader> {
@@ -59,7 +61,11 @@ impl ModLoader {
 
     /// only use this if `ModLoader::properties()` returns err and you have an idea of the current state
     pub fn new(disabled: bool) -> Self {
-        ModLoader { installed: true, disabled, path: PathBuf::new() }
+        ModLoader {
+            installed: true,
+            disabled,
+            path: PathBuf::new(),
+        }
     }
 
     #[inline]
@@ -96,7 +102,7 @@ impl ModLoaderCfg {
             if !dlls.contains(k.as_str()) {
                 unknown_keys.push(k.to_owned());
                 if i < order_count {
-                    update_order = true; 
+                    update_order = true;
                     self.mut_section().remove(k);
                     self.mut_section().append(k, "69420");
                 }
@@ -105,14 +111,17 @@ impl ModLoaderCfg {
         if !unknown_keys.is_empty() {
             if update_order {
                 self.update_order_entries(None)?;
-                return new_io_error!(ErrorKind::Unsupported, 
+                return new_io_error!(ErrorKind::Unsupported,
                     format!("Found load order set for files not registered with the app. The following key(s) order were changed: {}", 
                     unknown_keys.join(", "))
                 );
             }
-            return new_io_error!(ErrorKind::Other,
-                format!("Found load order set for the following files not registered with the app: {}", 
-                unknown_keys.join(", "))
+            return new_io_error!(
+                ErrorKind::Other,
+                format!(
+                    "Found load order set for the following files not registered with the app: {}",
+                    unknown_keys.join(", ")
+                )
             );
         }
         trace!("all load_order entries are files registered with the app");
@@ -217,10 +226,15 @@ pub trait NameSet {
 
 impl NameSet for [RegMod] {
     fn dll_name_set(&self) -> DllSet {
-        self.iter().flat_map(|reg_mod| {
-           reg_mod.files.dll.iter().filter_map(|f|
-                Some(omit_off_state(f.file_name()?.to_str()?))
-            ).collect::<Vec<_>>()
-        }).collect::<HashSet<_>>()
+        self.iter()
+            .flat_map(|reg_mod| {
+                reg_mod
+                    .files
+                    .dll
+                    .iter()
+                    .filter_map(|f| Some(omit_off_state(f.file_name()?.to_str()?)))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<HashSet<_>>()
     }
 }

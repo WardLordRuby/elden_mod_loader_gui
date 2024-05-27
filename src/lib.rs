@@ -1,5 +1,6 @@
 pub mod utils {
     pub mod installer;
+    pub mod subscriber;
     pub mod ini {
         pub mod common;
         pub mod mod_loader;

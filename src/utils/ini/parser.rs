@@ -1,15 +1,21 @@
 use ini::{Ini, Properties};
-use tracing::{error, instrument, trace, warn, info};
 use std::{
-    collections::{HashMap, HashSet}, io::ErrorKind, path::{Path, PathBuf}, str::ParseBoolError
+    collections::{HashMap, HashSet},
+    io::ErrorKind,
+    path::{Path, PathBuf},
+    str::ParseBoolError,
 };
+use tracing::{error, info, instrument, trace, warn};
 
 use crate::{
-    files_not_found, get_cfg, new_io_error, omit_off_state, toggle_files, toggle_name_state, IntoIoError, ModError, Merge, file_name_from_str,
+    file_name_from_str, files_not_found, get_cfg, new_io_error, omit_off_state, toggle_files,
+    toggle_name_state,
     utils::ini::{
-        common::Config, 
-        writer::{remove_array, remove_entry, save_bool, save_path, save_paths}
-    }, Cfg, FileData, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES, OrderMap, DisplayStrs, DisplayState
+        common::Config,
+        writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
+    },
+    Cfg, DisplayState, DisplayStrs, FileData, IntoIoError, Merge, ModError, OrderMap, ARRAY_KEY,
+    ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
 };
 
 pub trait Parsable: Sized {
@@ -30,7 +36,8 @@ impl Parsable for bool {
         key: &str,
         _skip_validation: bool,
     ) -> std::io::Result<Self> {
-        let str = ini.get_from(section, key)
+        let str = ini
+            .get_from(section, key)
             .expect("Validated by IniProperty::is_valid");
         parse_bool(str).map_err(|err| err.into_io_error(key, str))
     }
@@ -53,11 +60,10 @@ impl Parsable for u32 {
         key: &str,
         _skip_validation: bool,
     ) -> std::io::Result<Self> {
-        let str = ini.get_from(section, key)
+        let str = ini
+            .get_from(section, key)
             .expect("Validated by IniProperty::is_valid");
-        str
-            .parse::<u32>()
-            .map_err(|err| err.into_io_error(key, str))
+        str.parse::<u32>().map_err(|err| err.into_io_error(key, str))
     }
 }
 
@@ -207,11 +213,14 @@ fn validate_existance(path: &Path) -> std::io::Result<()> {
         Ok(true) => {
             trace!(file = ?path.file_name().unwrap(), "exists on disk");
             Ok(())
-        },
+        }
         Ok(false) => {
             new_io_error!(
                 ErrorKind::NotFound,
-                format!("{:?} can not be found on machine", path.file_name().unwrap())
+                format!(
+                    "{:?} can not be found on machine",
+                    path.file_name().unwrap()
+                )
             )
         }
         Err(_) => new_io_error!(
@@ -304,9 +313,21 @@ impl IniProperty<PathBuf> {
         skip_validation: bool,
     ) -> std::io::Result<IniProperty<PathBuf>> {
         if section == INI_SECTIONS[1] && path_prefix.is_some() {
-            return new_io_error!(ErrorKind::InvalidInput, format!("path_prefix is invalid when reading a path from \"{}\"", INI_SECTIONS[1].unwrap()));
+            return new_io_error!(
+                ErrorKind::InvalidInput,
+                format!(
+                    "path_prefix is invalid when reading a path from \"{}\"",
+                    INI_SECTIONS[1].unwrap()
+                )
+            );
         } else if section == INI_SECTIONS[3] && path_prefix.is_none() {
-            return new_io_error!(ErrorKind::InvalidInput, format!("path_prefix is required when reading a path from \"{}\"", INI_SECTIONS[3].unwrap()));
+            return new_io_error!(
+                ErrorKind::InvalidInput,
+                format!(
+                    "path_prefix is required when reading a path from \"{}\"",
+                    INI_SECTIONS[3].unwrap()
+                )
+            );
         }
         Ok(IniProperty {
             //section: section.map(String::from),
@@ -428,7 +449,7 @@ impl LoadOrder {
                         set: true,
                         i,
                         at: *v,
-                    }
+                    };
                 }
             }
         } else {
@@ -576,7 +597,7 @@ impl RegMod {
 
     /// verifies that files exist and recovers from the case where the file paths are saved in the  
     /// incorect state compaired to the name of the files currently saved on disk  
-    /// 
+    ///
     /// then verifies that the saved state matches the state of the files  
     /// if not correct, runs toggle files to put them in the correct state  
     #[instrument(level = "trace", skip_all)]
@@ -629,11 +650,8 @@ impl RegMod {
         if (!self.state && self.files.dll.iter().any(FileData::is_enabled))
             || (self.state && self.files.dll.iter().any(FileData::is_disabled))
         {
-            info!(
-                "Wrong file state for \"{}\" chaning file state",
-                self.name
-            );
-            return toggle_files(game_dir, self.state, self, Some(ini_path))
+            info!("Wrong file state for \"{}\" chaning file state", self.name);
+            return toggle_files(game_dir, self.state, self, Some(ini_path));
         }
         trace!(fnames = ?self.files.dll, state = self.state, "verified");
         Ok(())
@@ -691,7 +709,7 @@ type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a st
 impl Cfg {
     /// returns only valid mod data, if data was found to be invalid a message  
     /// is given to inform the user of why a mod was not included  
-    /// 
+    ///
     /// validateds data in the following ways:
     /// - ensures data has both files and state associated with the same name  
     /// - `self.files.dll` are valid to exist on disk check `self.verify_state()` for how it can recover  
@@ -791,7 +809,7 @@ impl Cfg {
                             } else { None }
                         } else { Some(curr) }
                     })
-                    .collect(), 
+                    .collect(),
                 warnings: if warnings.is_empty() { None } else if warnings.len() == 1 {
                         Some(warnings.remove(0))
                     } else { Some(warnings.merge(true)) }
@@ -852,21 +870,44 @@ impl Cfg {
 
     /// parses the data associated with a given key into a `RegMod` if found  
     #[instrument(level = "trace", skip_all)]
-    pub fn get_mod(&self, name: &slint::SharedString, game_dir: &Path, order_map: Option<&OrderMap>) -> std::io::Result<RegMod> {
+    pub fn get_mod(
+        &self,
+        name: &slint::SharedString,
+        game_dir: &Path,
+        order_map: Option<&OrderMap>,
+    ) -> std::io::Result<RegMod> {
         let key = name.replace(' ', "_");
-        let split_files = if self.data().get_from(INI_SECTIONS[3], &key).ok_or(
-            std::io::Error::new(
-                ErrorKind::InvalidInput,
-                format!("{key} not found in section: {}", INI_SECTIONS[3].unwrap())
-                )
-            )? == ARRAY_VALUE {
+        let split_files =
+            if self
+                .data()
+                .get_from(INI_SECTIONS[3], &key)
+                .ok_or(std::io::Error::new(
+                    ErrorKind::InvalidInput,
+                    format!("{key} not found in section: {}", INI_SECTIONS[3].unwrap()),
+                ))?
+                == ARRAY_VALUE
+            {
                 SplitFiles::from(
-                    IniProperty::<Vec<PathBuf>>::read(self.data(), INI_SECTIONS[3], &key, game_dir, false)?.value
+                    IniProperty::<Vec<PathBuf>>::read(
+                        self.data(),
+                        INI_SECTIONS[3],
+                        &key,
+                        game_dir,
+                        false,
+                    )?
+                    .value,
                 )
             } else {
-                SplitFiles::from(
-                    vec![IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[3], &key, Some(game_dir), false)?.value]
-                )
+                SplitFiles::from(vec![
+                    IniProperty::<PathBuf>::read(
+                        self.data(),
+                        INI_SECTIONS[3],
+                        &key,
+                        Some(game_dir),
+                        false,
+                    )?
+                    .value,
+                ])
             };
         Ok(RegMod {
             order: if let Some(map) = order_map {
@@ -880,20 +921,19 @@ impl Cfg {
         })
     }
 
-    /// returns all the keys(as_lowercase) collected into a `Set` 
+    /// returns all the keys(as_lowercase) collected into a `Set`
     /// this also calls sync keys if invalid keys are found
     #[instrument(level = "trace", skip_all)]
     pub fn keys(&mut self) -> HashSet<String> {
         fn are_keys_ok(data: &ini::Ini) -> Option<HashSet<String>> {
             let reg_mods = data.section(INI_SECTIONS[2]).expect("Validated by is_setup");
             let mut keys = reg_mods.iter().map(|(k, _)| k.to_lowercase()).collect::<HashSet<_>>();
-            let filtered_mod_files = data.section(INI_SECTIONS[3]).expect("Validated by is_setup").iter().filter_map(|(k, _)| {
-                if k != ARRAY_KEY {
-                    Some(k)
-                } else {
-                    None
-                }
-            }).collect::<Vec<_>>();
+            let filtered_mod_files = data
+                .section(INI_SECTIONS[3])
+                .expect("Validated by is_setup")
+                .iter()
+                .filter_map(|(k, _)| if k != ARRAY_KEY { Some(k) } else { None })
+                .collect::<Vec<_>>();
             match filtered_mod_files.iter().all(|k| !keys.insert(k.to_lowercase())) {
                 true => Some(keys),
                 false => None,
@@ -902,7 +942,7 @@ impl Cfg {
 
         if let Some(keys) = are_keys_ok(self.data()) {
             trace!("keys collected");
-            return keys
+            return keys;
         }
         let registered_mods = {
             let (mods_map, _) = sync_keys(self);
@@ -915,13 +955,16 @@ impl Cfg {
     /// returns all the registered file names in a `Set`
     pub fn file_names(&self) -> HashSet<&str> {
         let mod_files = self.data().section(INI_SECTIONS[3]).expect("Validated by is_setup");
-        mod_files.iter().filter_map(|(_, v)| {
-            if v != ARRAY_VALUE {
-                Some(file_name_from_str(v))
-            } else {
-                None
-            }
-        }).collect::<HashSet<_>>()
+        mod_files
+            .iter()
+            .filter_map(|(_, v)| {
+                if v != ARRAY_VALUE {
+                    Some(file_name_from_str(v))
+                } else {
+                    None
+                }
+            })
+            .collect::<HashSet<_>>()
     }
 }
 
@@ -944,10 +987,12 @@ fn sync_keys<'a>(cfg: &'a Cfg) -> CollectedMaps<'a> {
             .collect()
     }
 
-    let mod_state_data = cfg.data()
+    let mod_state_data = cfg
+        .data()
         .section(INI_SECTIONS[2])
         .expect("Validated by Ini::is_setup on startup");
-    let dll_data = cfg.data()
+    let dll_data = cfg
+        .data()
         .section(INI_SECTIONS[3])
         .expect("Validated by Ini::is_setup on startup");
     let mut state_data = mod_state_data.iter().collect::<HashMap<&str, &str>>();
