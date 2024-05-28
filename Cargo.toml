@@ -13,7 +13,7 @@ FileDescription = "Elden Ring mod manager made by: WardLordRuby"
 ProductVersion = "0.9.4-beta"
 
 [profile.release]
-opt-level = "z"  # Optimize for size.
+opt-level = "s"  # Optimize for size.
 lto = true
 
 [dependencies]
