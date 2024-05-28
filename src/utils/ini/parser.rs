@@ -14,8 +14,8 @@ use crate::{
         common::Config,
         writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
     },
-    Cfg, DisplayState, DisplayStrs, FileData, IntoIoError, Merge, ModError, OrderMap, ARRAY_KEY,
-    ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
+    Cfg, DisplayName, DisplayState, DisplayStrs, FileData, IntoIoError, Merge, ModError, OrderMap,
+    ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
 };
 
 pub trait Parsable: Sized {
@@ -601,7 +601,7 @@ impl RegMod {
     /// then verifies that the saved state matches the state of the files  
     /// if not correct, runs toggle files to put them in the correct state  
     #[instrument(level = "trace", skip_all)]
-    pub fn verify_state(&mut self, game_dir: &Path, ini_path: &Path) -> std::io::Result<()> {
+    pub fn verify_state(&mut self, game_dir: &Path, ini_dir: &Path) -> std::io::Result<()> {
         fn count_try_verify_ouput(paths: &[PathBuf], game_dir: &Path) -> (usize, usize, usize) {
             let (mut exists, mut no_exist, mut errors) = (0_usize, 0_usize, 0_usize);
             paths.iter().for_each(|p| match game_dir.join(p).try_exists() {
@@ -622,10 +622,10 @@ impl RegMod {
                 let is_array = self.is_array();
                 self.state = alt_file_state;
                 self.files.dll = test_alt_state;
-                self.write_to_file(ini_path, is_array)?;
+                self.write_to_file(ini_dir, is_array)?;
                 info!(
                     "{}'s files were saved in the incorrect state, updated files to reflect the correct state: {}",
-                    self.name.replace('_', " "),
+                    DisplayName(&self.name),
                     DisplayState(alt_file_state)
                 );
                 trace!(new_fnames = ?self.files.dll, "Recovered from Error: file names saved in the incorrect state")
@@ -650,8 +650,11 @@ impl RegMod {
         if (!self.state && self.files.dll.iter().any(FileData::is_enabled))
             || (self.state && self.files.dll.iter().any(FileData::is_disabled))
         {
-            info!("Wrong file state for \"{}\" chaning file state", self.name);
-            return toggle_files(game_dir, self.state, self, Some(ini_path));
+            info!(
+                "Wrong file state for \"{}\" chaning file state",
+                DisplayName(&self.name)
+            );
+            return toggle_files(game_dir, self.state, self, Some(ini_dir));
         }
         trace!(fnames = ?self.files.dll, state = self.state, "verified");
         Ok(())
@@ -660,40 +663,52 @@ impl RegMod {
     /// saves `self.state` and all `self.files` to file  
     /// it is important to keep track of the length of `self.files.file_refs()` before  
     /// making modifications to `self.files` to insure that the .ini file remains valid  
-    pub fn write_to_file(&self, ini_path: &Path, was_array: bool) -> std::io::Result<()> {
-        save_bool(ini_path, INI_SECTIONS[2], &self.name, self.state)?;
+    pub fn write_to_file(&self, ini_dir: &Path, was_array: bool) -> std::io::Result<()> {
+        save_bool(ini_dir, INI_SECTIONS[2], &self.name, self.state)?;
         let is_array = self.is_array();
         match (was_array, is_array) {
             (false, false) => save_path(
-                ini_path,
+                ini_dir,
                 INI_SECTIONS[3],
                 &self.name,
                 self.files.file_refs()[0],
             )?,
             (false, true) => save_paths(
-                ini_path,
+                ini_dir,
                 INI_SECTIONS[3],
                 &self.name,
                 &self.files.file_refs(),
             )?,
             (true, false) => {
-                remove_array(ini_path, &self.name)?;
+                remove_array(ini_dir, &self.name)?;
                 save_path(
-                    ini_path,
+                    ini_dir,
                     INI_SECTIONS[3],
                     &self.name,
                     self.files.file_refs()[0],
                 )?
             }
             (true, true) => {
-                remove_array(ini_path, &self.name)?;
+                remove_array(ini_dir, &self.name)?;
                 save_paths(
-                    ini_path,
+                    ini_dir,
                     INI_SECTIONS[3],
                     &self.name,
                     &self.files.file_refs(),
                 )?;
             }
+        }
+        Ok(())
+    }
+
+    /// removes `self` from the given ini_dir, removes files based on the current status of self.is_array()  
+    /// note if you modify `self.files` you might run into unexpected behavior
+    pub fn remove_from_file(&self, ini_dir: &Path) -> std::io::Result<()> {
+        remove_entry(ini_dir, INI_SECTIONS[2], &self.name)?;
+        if self.is_array() {
+            remove_array(ini_dir, &self.name)?;
+        } else {
+            remove_entry(ini_dir, INI_SECTIONS[3], &self.name)?;
         }
         Ok(())
     }
@@ -770,7 +785,7 @@ impl Cfg {
                         if let Err(err) = curr.verify_state(game_dir, ini_dir) {
                             error!("{err}");
                             warnings.push(err);
-                            if let Err(err) = remove_entry(ini_dir, INI_SECTIONS[2], &curr.name) {
+                            if let Err(err) = curr.remove_from_file(ini_dir) {
                                 error!("{err}");
                                 warnings.push(err);
                             };
@@ -784,7 +799,7 @@ impl Cfg {
                                 if let Some(file) = curr.files.remove(&err.error_paths[i]) {
                                     err.errors[i].add_msg(&format!(
                                         "File: {file:?} was removed, and is no longer associated with: {}",
-                                        curr.name
+                                        DisplayName(&curr.name)
                                     ), true);
                                     warn!("{}", err.errors[i]);
                                     warnings.push(err.errors.pop().expect("valid range"))
@@ -793,7 +808,7 @@ impl Cfg {
                                         error!("{err}");
                                         warnings.push(err);
                                     });
-                                    if let Err(err) = remove_entry(ini_dir, INI_SECTIONS[2], &curr.name) {
+                                    if let Err(err) = curr.remove_from_file(ini_dir) {
                                         error!("{err}");
                                         warnings.push(err);
                                     };

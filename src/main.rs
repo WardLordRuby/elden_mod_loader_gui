@@ -134,27 +134,17 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
 
                 reg_mods = {
-                    let data = ini.collect_mods(&path, order_data.as_ref(), false);
-                    if let Some(warning) = data.warnings {
-                        errors.push(warning);
-                    }
-                    info!(
-                        "Found {} mod(s) registered in: {}",
-                        data.mods.len(),
-                        INI_NAME
-                    );
-                    Some(data.mods)
-                };
-                if let Some(ref mods) = reg_mods {
-                    let dlls = mods.dll_name_set();
+                    let mut collection = ini.collect_mods(&path, order_data.as_ref(), false);
+                    let dlls = collection.mods.dll_name_set();
                     if mod_loader.installed() {
-                        if let Err(err) = mod_loader_cfg.verify_keys(&dlls, mods.order_count()) {
+                        if let Err(err) =
+                            mod_loader_cfg.verify_keys(&dlls, collection.mods.order_count())
+                        {
                             match err.kind() {
                                 ErrorKind::Unsupported => {
                                     order_data = Some(mod_loader_cfg.parse_into_map());
-                                    reg_mods = Some(
-                                        ini.collect_mods(&path, order_data.as_ref(), false).mods,
-                                    );
+                                    collection =
+                                        ini.collect_mods(&path, order_data.as_ref(), false);
                                     warn!("{err}");
                                 }
                                 ErrorKind::Other => info!("{err}"),
@@ -163,14 +153,23 @@ fn main() -> Result<(), slint::PlatformError> {
                             errors.push(err);
                         }
                     }
-                }
-                if reg_mods.is_some() && reg_mods.as_ref().unwrap().len() != ini.mods_registered() {
-                    ini = Cfg::read(current_ini).unwrap_or_else(|err| {
-                        error!("code 7: {err}");
-                        errors.push(err);
-                        Cfg::default(current_ini)
-                    })
-                }
+                    if collection.mods.len() != ini.mods_registered() {
+                        ini = Cfg::read(current_ini).unwrap_or_else(|err| {
+                            error!("code 7: {err}");
+                            errors.push(err);
+                            Cfg::default(current_ini)
+                        })
+                    }
+                    if let Some(warning) = collection.warnings.take() {
+                        errors.push(warning);
+                    }
+                    info!(
+                        "Found {} mod(s) registered in: {}",
+                        collection.mods.len(),
+                        INI_NAME
+                    );
+                    Some(collection)
+                };
                 game_verified = true;
                 Some(path)
             }
@@ -217,10 +216,7 @@ fn main() -> Result<(), slint::PlatformError> {
         } else {
             deserialize_collected_mods(
                 &if let Some(mod_data) = reg_mods {
-                    CollectedMods {
-                        mods: mod_data,
-                        warnings: None,
-                    }
+                    mod_data
                 } else {
                     ini.collect_mods(
                         game_dir.as_ref().expect("game verified"),
@@ -396,22 +392,16 @@ fn main() -> Result<(), slint::PlatformError> {
                     if new_mod.files.dll.iter().all(FileData::is_disabled) {
                         new_mod.state = false;
                     }
-                    new_mod
-                    .verify_state(&game_dir, ini.path())
-                    .unwrap_or_else(|err| {
+                    if let Err(err) = new_mod.verify_state(&game_dir, ini.path()) {
                         // Toggle files returned an error lets try it again
                         if new_mod.verify_state(&game_dir, ini.path()).is_err() {
                             ui.display_msg(&err.to_string());
-                            let _ = remove_entry(
-                                ini.path(),
-                                INI_SECTIONS[2],
-                                &new_mod.name,
-                            );
+                            return;
                         };
-                    });
+                    };
                 }
                 if let Err(err) = new_mod.write_to_file(ini.path(), false) {
-                    let _ = remove_entry(ini.path(), INI_SECTIONS[2], &new_mod.name);
+                    let _ = new_mod.remove_from_file(ini.path());
                     error!("{err}");
                     ui.display_msg(&err.to_string());
                     return;
@@ -542,10 +532,13 @@ fn main() -> Result<(), slint::PlatformError> {
             match ini.get_mod(&key, &game_dir, None) {
                 Ok(ref mut reg_mod) => {
                     if reg_mod.files.dll.is_empty() {
-                        info!("Can not toggle {}, if mod has no .dll files", reg_mod.name);
+                        info!(
+                            "Can not toggle {}, if mod has no .dll files",
+                            DisplayName(&reg_mod.name)
+                        );
                         ui.display_msg(&format!(
                             "To toggle \"{}\" please add a .dll file",
-                            reg_mod.name
+                            DisplayName(&reg_mod.name)
                         ));
                         return !state;
                     }
@@ -667,11 +660,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
                 if let Err(err) = found_mod.verify_state(&game_dir, ini.path()) {
                     ui.display_msg(&err.to_string());
-                    let _ = remove_entry(
-                        ini.path(),
-                        INI_SECTIONS[2],
-                        &found_mod.name,
-                    );
+                    let _ = found_mod.remove_from_file(ini.path());
                     let err_str = format!("Failed to verify state, mod was removed {err}");
                     error!("{err_str}");
                     ui.display_msg(&err_str);
@@ -752,10 +741,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 }
-                // MARK: TODO
-                // now that we don't rely on Cfg.collect_mods we need to clean up our entries and not rely on sync keys to do our cleanup
-                // we can let sync keys take care of removing files from ini
-                if let Err(err) = remove_entry(ini_dir, INI_SECTIONS[2], &found_mod.name) {
+                if let Err(err) = found_mod.remove_from_file(ini_dir) {
                     error!("{err}");
                     ui.display_msg(&err.to_string());
                     return;
@@ -1674,7 +1660,7 @@ async fn confirm_remove_mod(
             ErrorKind::ConnectionAborted,
             format!(
                 "Files registered with: {}, are still installed at \"{}\"",
-                reg_mod.name,
+                DisplayName(&reg_mod.name),
                 install_dir.display()
             )
         );
@@ -1688,7 +1674,7 @@ async fn confirm_remove_mod(
             ErrorKind::ConnectionAborted,
             format!(
                 "Files registered with: {}, are still installed at \"{}\"",
-                reg_mod.name,
+                DisplayName(&reg_mod.name),
                 install_dir.display()
             )
         );
