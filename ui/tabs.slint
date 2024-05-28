@@ -58,6 +58,7 @@ export component ModEdit inherits Tab {
         alignment: space-between;
 
         load-order-box := GroupBox {
+            init => { init-selected-index() }
             property <int> temp;
             title: @tr("Load Order");
             enabled: MainLogic.current-mods[mod-index].dll-files.length > 0 && SettingsLogic.loader-installed;
@@ -108,10 +109,10 @@ export component ModEdit inherits Tab {
                                     self.checked = !self.checked;
                                     MainLogic.force-deserialize()
                                 }
+                                temp = 0;
                             } else {
                                 MainLogic.current-mods[mod-index].order.at = 0
                             }
-                            temp = 0;
                             redraw-elements()
                         }
                     }
@@ -139,17 +140,13 @@ export component ModEdit inherits Tab {
                     if selected-index != -1 && v > 0 {
                         temp =  MainLogic.modify-order(selected-dll, selected-dll, v - 1, mod-index, selected-index);
                         if temp != -1 {
-                            MainLogic.orders-set = MainLogic.orders-set + temp
+                            MainLogic.orders-set = MainLogic.orders-set + temp;
+                            MainLogic.current-mods[mod-index].order.at = v;
                         } else {
                             MainLogic.force-deserialize()
                         }
-                    } else {
-                        MainLogic.current-mods[mod-index].order.at = v
+                        temp = 0
                     }
-                    if temp != -1 {
-                        MainLogic.current-mods[mod-index].order.at = v
-                    }
-                    temp = 0
                 }
 
                 // Might be able to remove this hack after properly having sorting data parsed
