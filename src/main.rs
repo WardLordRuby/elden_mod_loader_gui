@@ -1728,10 +1728,16 @@ async fn confirm_scan_mods(
             data.mods
         };
         let dark_mode = ui.global::<SettingsLogic>().get_dark_mode();
+        let save_log = ini.get_save_log().unwrap_or(true);
 
         std::fs::remove_file(ini.path())?;
         new_cfg(ini.path())?;
-        save_bool(ini.path(), INI_SECTIONS[0], INI_KEYS[0], dark_mode)?;
+        if dark_mode != DEFAULT_INI_VALUES[0] {
+            save_bool(ini.path(), INI_SECTIONS[0], INI_KEYS[0], dark_mode)?;
+        }
+        if save_log != DEFAULT_INI_VALUES[1] {
+            save_bool(ini.path(), INI_SECTIONS[0], INI_KEYS[1], save_log)?;
+        }
         save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[2], game_dir)?;
     } else {
         old_mods = Vec::new();
