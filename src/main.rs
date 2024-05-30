@@ -671,6 +671,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 display_mod.files = files;
                 display_mod.dll_files = dll_files;
                 display_mod.config_files = config_files;
+                if !found_mod.order.set {
+                    match found_mod.files.dll.len() {
+                        0 => (),
+                        1 => display_mod.order.i = 0,
+                        2.. => display_mod.order.i = -1,
+                    }
+                }
                 model.set_row_data(row as usize, display_mod);
                 let success = format!("Added {} file(s) to: {}", num_files, DisplayName(&found_mod.name));
                 info!("{success}");
