@@ -499,7 +499,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                         let _ = get_or_update_game_dir(Some(try_path));
                     } else {
-                        error!("Required game files not found in: \"{}\", files missing: {}", try_path.display(), DisplayStrs(not_found));
+                        error!("Required game files not found in: \"{}\", files missing: {}", try_path.display(), DisplayStrs(&not_found));
                         ui.display_msg(&format!("Could not find Elden Ring in:\n\"{}\"", try_path.display()));
                     }
                     Err(err) => {

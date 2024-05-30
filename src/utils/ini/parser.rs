@@ -14,8 +14,8 @@ use crate::{
         common::Config,
         writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
     },
-    Cfg, DisplayName, DisplayState, DisplayStrs, FileData, IntoIoError, Merge, ModError, OrderMap,
-    ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
+    Cfg, DisplayName, DisplayPaths, DisplayState, DisplayStrs, FileData, IntoIoError, Merge,
+    ModError, OrderMap, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
 };
 
 pub trait Parsable: Sized {
@@ -97,7 +97,7 @@ impl Parsable for PathBuf {
                             ErrorKind::NotFound,
                             format!(
                                 "Could not verify the install directory of Elden Ring, the following files were not found: {}",
-                                DisplayStrs(not_found),
+                                DisplayStrs(&not_found),
                             )
                         );
                     }
@@ -271,7 +271,7 @@ impl<T: AsRef<Path>> Setup for T {
                     ErrorKind::InvalidData,
                     format!(
                         "Could not find section(s): {}, in: {}",
-                        DisplayStrs(not_found),
+                        DisplayStrs(&not_found),
                         self.as_ref()
                             .file_name()
                             .expect("valid file")
@@ -625,10 +625,18 @@ impl RegMod {
         if no_exist != 0 && errors == 0 {
             let alt_file_state = !FileData::state_data(&self.files.dll[0].to_string_lossy()).0;
             let test_alt_state = toggle_name_state(&self.files.dll, alt_file_state);
-            if test_alt_state
+            let not_found = test_alt_state
                 .iter()
-                .all(|f| matches!(game_dir.join(f).try_exists(), Ok(true)))
-            {
+                .zip(&self.files.dll)
+                .filter_map(|(new, original)| {
+                    if !matches!(game_dir.join(new).try_exists(), Ok(true)) {
+                        Some(original.as_path())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            if not_found.is_empty() {
                 let is_array = self.is_array();
                 self.state = alt_file_state;
                 self.files.dll = test_alt_state;
@@ -643,8 +651,8 @@ impl RegMod {
                 return new_io_error!(
                     ErrorKind::NotFound,
                     format!(
-                        "One or more of: {:?}, can not be found on machine",
-                        self.files.dll
+                        "File(s): {}, can not be found on machine",
+                        DisplayPaths(&not_found)
                     )
                 );
             }
@@ -652,8 +660,8 @@ impl RegMod {
             return new_io_error!(
                 ErrorKind::PermissionDenied,
                 format!(
-                    "One or more of: {:?}, existance can neither be confirmed nor denied",
-                    self.files.dll
+                    "One or more of: {}, existance can neither be confirmed nor denied",
+                    DisplayPaths(&self.files.dll)
                 )
             );
         }

@@ -112,15 +112,15 @@ impl ModLoaderCfg {
             if update_order {
                 self.update_order_entries(None)?;
                 return new_io_error!(ErrorKind::Unsupported,
-                    format!("Found load order set for files not registered with the app. The following key(s) order were changed: {}", 
-                    DisplayStrs(unknown_keys))
+                    format!("Found load order set for file(s) not registered with the app. The following key(s) order were changed: {}", 
+                    DisplayStrs(&unknown_keys))
                 );
             }
             return new_io_error!(
                 ErrorKind::Other,
                 format!(
-                    "Found load order set for the following files not registered with the app: {}",
-                    DisplayStrs(unknown_keys)
+                    "Found load order set for the following file(s) not registered with the app: {}",
+                    DisplayStrs(&unknown_keys)
                 )
             );
         }

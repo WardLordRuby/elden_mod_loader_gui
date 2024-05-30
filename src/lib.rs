@@ -522,10 +522,9 @@ pub fn format_panic_info(info: &std::panic::PanicInfo) -> String {
     }
 }
 
-pub struct DisplayStrs<S: AsRef<str>>(pub Vec<S>);
+pub struct DisplayStrs<'a, S: AsRef<str>>(pub &'a [S]);
 
-impl<S: AsRef<str>> std::fmt::Display for DisplayStrs<S> {
-    #[inline]
+impl<'a, S: AsRef<str>> std::fmt::Display for DisplayStrs<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if self.0.is_empty() {
             panic!("Tried to format an empty Vec");
@@ -540,6 +539,28 @@ impl<S: AsRef<str>> std::fmt::Display for DisplayStrs<S> {
                 write!(f, "{}, ", e.as_ref())
             } else {
                 write!(f, "{}]", e.as_ref())
+            }
+        })
+    }
+}
+
+pub struct DisplayPaths<'a, P: AsRef<Path>>(pub &'a [P]);
+
+impl<'a, P: AsRef<Path>> std::fmt::Display for DisplayPaths<'a, P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.0.is_empty() {
+            panic!("Tried to format an empty Vec");
+        }
+        if self.0.len() == 1 {
+            return write!(f, "{}", self.0[0].as_ref().display());
+        }
+        write!(f, "[")?;
+        let last_e = self.0.len() - 1;
+        self.0.iter().enumerate().try_for_each(|(i, e)| {
+            if i != last_e {
+                write!(f, "{}, ", e.as_ref().display())
+            } else {
+                write!(f, "{}]", e.as_ref().display())
             }
         })
     }
