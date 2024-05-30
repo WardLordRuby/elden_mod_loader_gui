@@ -741,47 +741,62 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 }
-                if let Err(err) = found_mod.remove_from_file(ini_dir) {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
-                    return;
-                };
-                match confirm_remove_mod(ui.as_weak(), &game_dir, loader.path(), &found_mod).await {
+                let mut messages = Vec::with_capacity(3);
+                match confirm_remove_mod(ui.as_weak(), &game_dir, loader.path(), &found_mod, ini_dir).await {
                     Ok(_) => {
                         let success = format!("{key} uninstalled, all associated files were removed");
                         info!("{success}");
-                        ui.display_msg(&success);
+                        messages.push(success);
+                        ui.global::<MainLogic>().set_current_subpage(0);
                     },
                     Err(err) => {
                         match err.kind() {
+                            ErrorKind::Interrupted => {
+                                info!("{err}");
+                                return;
+                            },
                             ErrorKind::ConnectionAborted => info!("{err}"),
-                            _ => error!("{err}"),
+                            _ => {
+                                error!("{err}");
+                                ui.display_msg(&err.to_string());
+                                let _ = receive_msg().await;
+                                reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
+                                return;
+                            }
                         }
+                        if let Err(err) = found_mod.remove_from_file(ini_dir) {
+                            error!("{err}");
+                            ui.display_msg(&err.to_string());
+                            return;
+                        };
+                        ui.global::<MainLogic>().set_current_subpage(0);
                         let deregister = format!("De-registered mod: {key}");
                         info!("{deregister}");
-                        ui.display_msg(&deregister);
-                        let _ = receive_msg().await;
-                        ui.display_msg(&err.to_string())
+                        messages.push(deregister);
+                        messages.push(err.to_string());
                     }
                 }
                 let dlls = reg_mods.dll_name_set();
                 let order_count = reg_mods.order_count();
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
-                ui.global::<MainLogic>().set_current_subpage(0);
                 mut_model.remove(row as usize);
                 loader.verify_keys(&dlls, order_count).unwrap_or_else(|err| {
                     warn!("{err}");
-                    ui.display_msg(&err.to_string());
+                    messages.push(err.to_string());
                 });
                 let order_data = loader.parse_section().unwrap_or_else(|err| {
                     error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    messages.push(err.to_string());
                     HashMap::new()
                 });
                 if found_mod.order.set {
                     ui.global::<MainLogic>().set_orders_set(order_count as i32);
                     model.update_order(None, &order_data, ui.as_weak());
+                }
+                for message in messages {
+                    ui.display_msg(&message);
+                    let _ = receive_msg().await;
                 }
             }).unwrap();
         }
@@ -1643,7 +1658,25 @@ async fn confirm_remove_mod(
     game_dir: &Path,
     loader_dir: &Path,
     reg_mod: &RegMod,
+    ini_dir: &Path,
 ) -> std::io::Result<()> {
+    async fn match_user_msg(mod_name: &str, install_dir: &Path) -> std::io::Result<()> {
+        match receive_msg().await {
+            Message::Confirm => Ok(()),
+            Message::Deny => {
+                new_io_error!(
+                    ErrorKind::ConnectionAborted,
+                    format!(
+                        "Files registered with: {}, are still installed at \"{}\"",
+                        DisplayName(mod_name),
+                        install_dir.display()
+                    )
+                )
+            }
+            Message::Esc => new_io_error!(ErrorKind::Interrupted, "De-registration canceled"),
+        }
+    }
+
     let ui = ui_handle.unwrap();
     let install_dir = match reg_mod
         .files
@@ -1658,30 +1691,15 @@ async fn confirm_remove_mod(
         "Do you want to remove mod files from the game directory?",
         true,
     );
-    if receive_msg().await != Message::Confirm {
-        return new_io_error!(
-            ErrorKind::ConnectionAborted,
-            format!(
-                "Files registered with: {}, are still installed at \"{}\"",
-                DisplayName(&reg_mod.name),
-                install_dir.display()
-            )
-        );
-    };
+    match_user_msg(&reg_mod.name, &install_dir).await?;
+
     ui.display_confirm(
         "This is a distructive action. Are you sure you want to continue?",
         false,
     );
-    if receive_msg().await != Message::Confirm {
-        return new_io_error!(
-            ErrorKind::ConnectionAborted,
-            format!(
-                "Files registered with: {}, are still installed at \"{}\"",
-                DisplayName(&reg_mod.name),
-                install_dir.display()
-            )
-        );
-    };
+    match_user_msg(&reg_mod.name, &install_dir).await?;
+
+    reg_mod.remove_from_file(ini_dir)?;
     remove_mod_files(game_dir, loader_dir, reg_mod)
 }
 
