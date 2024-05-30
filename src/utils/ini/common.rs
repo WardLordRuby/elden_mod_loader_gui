@@ -161,10 +161,7 @@ impl Config for Cfg {
         if let Err(err) = save_bool(&self.dir, section, key, default_val) {
             in_err.add_msg(&err.to_string(), false);
         } else {
-            in_err.add_msg(
-                &format!("Sucessfully reset {key} to {}", DEFAULT_INI_VALUES[0]),
-                false,
-            );
+            in_err.add_msg(&format!("Reset: {key}, to: {default_val}"), false);
         };
         in_err
     }
@@ -187,10 +184,7 @@ impl Cfg {
     /// if error calls `self.save_default_val` to correct error  
     pub fn get_save_log(&self) -> io::Result<bool> {
         match IniProperty::<bool>::read(&self.data, INI_SECTIONS[0], INI_KEYS[1]) {
-            Ok(save_log) => {
-                info!("Save log: {}", save_log.value);
-                Ok(save_log.value)
-            }
+            Ok(save_log) => Ok(save_log.value),
             Err(err) => Err(self.save_default_val(INI_SECTIONS[0], INI_KEYS[1], err)),
         }
     }
@@ -298,7 +292,7 @@ impl Config for ModLoaderCfg {
         if let Err(err) = save_value_ext(&self.dir, section, key, default_val) {
             in_err.add_msg(&err.to_string(), false);
         } else {
-            in_err.add_msg(&format!("Sucessfully reset {key} to {default_val}"), false);
+            in_err.add_msg(&format!("Reset: {key}, to: {default_val}"), false);
         };
         in_err
     }

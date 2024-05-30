@@ -93,7 +93,13 @@ impl Parsable for PathBuf {
             match files_not_found(&parsed_value, &REQUIRED_GAME_FILES) {
                 Ok(not_found) => {
                     if !not_found.is_empty() {
-                        return new_io_error!(ErrorKind::NotFound, format!("Could not verify the install directory of Elden Ring, the following files were not found: \n{}", not_found.join("\n")));
+                        return new_io_error!(
+                            ErrorKind::NotFound,
+                            format!(
+                                "Could not verify the install directory of Elden Ring, the following files were not found: {}",
+                                DisplayStrs(not_found),
+                            )
+                        );
                     }
                 }
                 Err(err) => return Err(err),
@@ -211,7 +217,7 @@ fn validate_file(path: &Path) -> std::io::Result<()> {
 fn validate_existance(path: &Path) -> std::io::Result<()> {
     match path.try_exists() {
         Ok(true) => {
-            trace!(file = ?path.file_name().unwrap(), "exists on disk");
+            trace!(file = ?path.file_name().expect("valid directory"), "exists on disk");
             Ok(())
         }
         Ok(false) => {
@@ -219,7 +225,7 @@ fn validate_existance(path: &Path) -> std::io::Result<()> {
                 ErrorKind::NotFound,
                 format!(
                     "{:?} can not be found on machine",
-                    path.file_name().unwrap()
+                    file_name_from_str(path.to_str().unwrap_or_default())
                 )
             )
         }
@@ -774,7 +780,7 @@ impl Cfg {
                 .collect::<ModData>();
 
             // if this fails `sync_keys()` did not do its job
-            assert_eq!(map_data.1.len(), mod_data.len());
+            debug_assert_eq!(map_data.1.len(), mod_data.len());
 
             mod_data.sort_by_key(|(_, _, _, l)| if l.set { l.at } else { usize::MAX });
             mod_data[count..].sort_by_key(|(key, _, _, _)| *key);
@@ -1022,7 +1028,10 @@ fn sync_keys<'a>(cfg: &'a Cfg) -> CollectedMaps<'a> {
         state_data.remove(key);
         remove_entry(cfg.path(), INI_SECTIONS[2], key)
             .expect("Key is valid & ini has already been read");
-        warn!("{key} has no matching files");
+        warn!(
+            "{} has no registered files, mod was removed",
+            DisplayName(key)
+        );
     }
 
     let invalid_files = file_data
@@ -1039,9 +1048,12 @@ fn sync_keys<'a>(cfg: &'a Cfg) -> CollectedMaps<'a> {
                 .expect("Key is valid & ini has already been read");
         }
         file_data.remove(key);
-        warn!("{key} has no matching state");
+        warn!(
+            "{} has no saved state data, mod was removed",
+            DisplayName(key)
+        );
     }
 
-    assert_eq!(state_data.len(), file_data.len());
+    debug_assert_eq!(state_data.len(), file_data.len());
     (state_data, file_data)
 }

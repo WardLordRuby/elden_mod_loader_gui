@@ -12,7 +12,7 @@ use crate::{
         parser::RegMod,
         writer::new_cfg,
     },
-    DisplayState, Operation, OperationResult, OrderMap, LOADER_FILES,
+    DisplayState, DisplayStrs, Operation, OperationResult, OrderMap, LOADER_FILES,
 };
 
 #[derive(Debug, Default)]
@@ -113,14 +113,14 @@ impl ModLoaderCfg {
                 self.update_order_entries(None)?;
                 return new_io_error!(ErrorKind::Unsupported,
                     format!("Found load order set for files not registered with the app. The following key(s) order were changed: {}", 
-                    unknown_keys.join(", "))
+                    DisplayStrs(unknown_keys))
                 );
             }
             return new_io_error!(
                 ErrorKind::Other,
                 format!(
                     "Found load order set for the following files not registered with the app: {}",
-                    unknown_keys.join(", ")
+                    DisplayStrs(unknown_keys)
                 )
             );
         }

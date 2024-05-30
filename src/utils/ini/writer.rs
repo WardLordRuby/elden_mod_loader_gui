@@ -10,8 +10,9 @@ use std::{
 
 use crate::{
     file_name_or_err, get_cfg, new_io_error, omit_off_state, parent_or_err,
-    utils::ini::parser::RegMod, ARRAY_KEY, ARRAY_VALUE, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES,
-    INI_KEYS, INI_NAME, INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
+    utils::ini::parser::RegMod, DisplayName, ARRAY_KEY, ARRAY_VALUE, DEFAULT_INI_VALUES,
+    DEFAULT_LOADER_VALUES, INI_KEYS, INI_NAME, INI_SECTIONS, LOADER_FILES, LOADER_KEYS,
+    LOADER_SECTIONS,
 };
 
 pub const WRITE_OPTIONS: WriteOption = WriteOption {
@@ -119,7 +120,7 @@ where
     }
 }
 
-#[instrument(level = "trace", skip_all)]
+#[instrument(level = "trace", skip_all, fields(path = %path.display()))]
 pub fn new_cfg(path: &Path) -> Result<Ini> {
     let file_name = file_name_or_err(path)?;
     let parent = parent_or_err(path)?;
@@ -183,7 +184,7 @@ pub fn remove_array(file_path: &Path, key: &str) -> Result<()> {
 pub fn remove_entry(file_path: &Path, section: Option<&str>, key: &str) -> Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
     config.delete_from(section, key).ok_or(Error::other(format!(
-        "Could not delete \"{key}\" from Section: \"{}\"",
+        "Could not delete: {key}, from Section: {}",
         &section.expect("Passed in section should be valid")
     )))?;
     config.write_to_file_opt(file_path, WRITE_OPTIONS)?;
@@ -196,7 +197,7 @@ pub fn remove_order_entry(entry: &RegMod, loader_dir: &Path) -> Result<()> {
     if !entry.order.set {
         return new_io_error!(
             ErrorKind::InvalidInput,
-            format!("{} has no order data", entry.name)
+            format!("{} has no order data", DisplayName(&entry.name))
         );
     }
     let file_name = file_name_or_err(&entry.files.dll[entry.order.i])?;
