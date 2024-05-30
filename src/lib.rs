@@ -521,12 +521,26 @@ pub fn format_panic_info(info: &std::panic::PanicInfo) -> String {
     }
 }
 
-pub struct DisplayStrs<'a>(pub Vec<&'a str>);
+pub struct DisplayStrs<S: AsRef<str>>(pub Vec<S>);
 
-impl<'a> std::fmt::Display for DisplayStrs<'a> {
+impl<S: AsRef<str>> std::fmt::Display for DisplayStrs<S> {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "[{}]", self.0.join(", "))
+        if self.0.is_empty() {
+            panic!("Tried to format an empty Vec");
+        }
+        if self.0.len() == 1 {
+            return write!(f, "{}", self.0[0].as_ref());
+        }
+        write!(f, "[")?;
+        let last_e = self.0.len() - 1;
+        self.0.iter().enumerate().try_for_each(|(i, e)| {
+            if i != last_e {
+                write!(f, "{}, ", e.as_ref())
+            } else {
+                write!(f, "{}]", e.as_ref())
+            }
+        })
     }
 }
 
@@ -553,15 +567,11 @@ pub struct DisplayOrder(pub bool, pub usize);
 impl std::fmt::Display for DisplayOrder {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            if self.0 {
-                (self.1 + 1).to_string()
-            } else {
-                "not set".to_string()
-            }
-        )
+        if self.0 {
+            write!(f, "{}", self.1 + 1)
+        } else {
+            write!(f, "not set")
+        }
     }
 }
 
