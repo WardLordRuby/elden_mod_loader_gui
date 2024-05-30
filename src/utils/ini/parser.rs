@@ -977,18 +977,14 @@ impl Cfg {
         registered_mods
     }
 
-    /// returns all the registered file names in a `Set`
-    pub fn file_names(&self) -> HashSet<&str> {
+    /// returns all the registered file (as _short_paths_) in a `HashSet`
+    // we _need_ to compare short_paths for the intened functionality to be correct
+    // this is because mods typically have the same file names but in seprate directories
+    pub fn files(&self) -> HashSet<&str> {
         let mod_files = self.data().section(INI_SECTIONS[3]).expect("Validated by is_setup");
         mod_files
             .iter()
-            .filter_map(|(_, v)| {
-                if v != ARRAY_VALUE {
-                    Some(file_name_from_str(v))
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(_, v)| if v != ARRAY_VALUE { Some(v) } else { None })
             .collect::<HashSet<_>>()
     }
 }

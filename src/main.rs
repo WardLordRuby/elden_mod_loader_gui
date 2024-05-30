@@ -336,13 +336,6 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 };
-                let registered_files = ini.file_names();
-                if file_paths.iter().any(|f| registered_files.contains(f.file_name().expect("file selected").to_str().unwrap_or_default())) {
-                    let err_str = "A selected file is already registered to a mod";
-                    error!("{err_str}");
-                    ui.display_msg(err_str);
-                    return;
-                };
                 let files = match shorten_paths(&file_paths, &game_dir) {
                     Ok(files) => files,
                     Err(err) => {
@@ -376,6 +369,13 @@ fn main() -> Result<(), slint::PlatformError> {
                             return;
                         }
                     }
+                };
+                let registered_files = ini.files();
+                if files.iter().any(|f| registered_files.contains(f.to_str().unwrap_or_default())) {
+                    let err_str = "A selected file is already registered to a mod";
+                    error!("{err_str}");
+                    ui.display_msg(err_str);
+                    return;
                 };
                 let loader_dir = get_loader_ini_dir();
                 let mut loader_cfg = ModLoaderCfg::read(loader_dir).unwrap_or_else(|err| {
@@ -596,13 +596,6 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 };
-                let registered_files = ini.file_names();
-                if file_paths.iter().any(|f| registered_files.contains(f.file_name().expect("file selected").to_str().unwrap_or_default())) {
-                    let err_str = "A selected file is already registered to a mod";
-                    error!("{err_str}");
-                    ui.display_msg(err_str);
-                    return;
-                };
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut display_mod = model.row_data(row as usize).expect("front end gives us valid row");
                 let mut found_mod = match ini.get_mod(&display_mod.name, &game_dir, None) {
@@ -648,6 +641,13 @@ fn main() -> Result<(), slint::PlatformError> {
                             return;
                         }
                     }
+                };
+                let registered_files = ini.files();
+                if files.iter().any(|f| registered_files.contains(f.to_str().unwrap_or_default())) {
+                    let err_str = "A selected file is already registered to a mod";
+                    error!("{err_str}");
+                    ui.display_msg(err_str);
+                    return;
                 };
                 let num_files = files.len();
                 let was_array = found_mod.is_array();
