@@ -234,6 +234,7 @@ pub fn get_cfg(from_path: &Path) -> std::io::Result<Ini> {
     Ok(ini)
 }
 
+#[derive(Debug)]
 pub enum Operation {
     All,
     Any,
@@ -248,7 +249,7 @@ pub enum OperationResult<'a, T: ?Sized> {
 /// `Operation::All` and `Operation::Any` map to `OperationResult::bool(_result_)`  
 /// `Operation::Count` maps to `OperationResult::Count((_num_found_, _HashSet<_&input_list_>))`  
 /// when matching you will always have to `_ => unreachable()` for the return type you will never get
-#[instrument(level = "trace", skip_all)]
+#[instrument(level = "trace", skip(dir, list))]
 pub fn does_dir_contain<'a, T>(
     dir: &Path,
     operation: Operation,
@@ -267,12 +268,12 @@ where
     match operation {
         Operation::All => Ok(OperationResult::Bool({
             let result = list.iter().all(|&check_file| str_names.contains(check_file));
-            trace!(result, "all files found");
+            trace!(operation_result = result);
             result
         })),
         Operation::Any => Ok(OperationResult::Bool({
             let result = list.iter().any(|&check_file| str_names.contains(check_file));
-            trace!(result, "any file found");
+            trace!(operation_result = result);
             result
         })),
         Operation::Count => {
@@ -282,7 +283,7 @@ where
                 .copied()
                 .collect::<HashSet<_>>();
             let num_found = collection.len();
-            trace!(num_found, "files found");
+            trace!(files_found = num_found);
             Ok(OperationResult::Count((num_found, collection)))
         }
     }
@@ -425,7 +426,7 @@ impl Cfg {
         if let Ok(path) =
             IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[2], None, false)
         {
-            info!("Game dir from ini is valid");
+            info!("Saved game directory in: {INI_NAME}, is valid");
             return Ok(PathResult::Full(path.value));
         }
         let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
@@ -433,35 +434,36 @@ impl Cfg {
             does_dir_contain(&try_locate, Operation::All, &REQUIRED_GAME_FILES),
             Ok(OperationResult::Bool(true))
         ) {
-            info!("Located valid game_dir on drive");
-            save_path(
-                self.path(),
-                INI_SECTIONS[1],
-                INI_KEYS[2],
-                try_locate.as_path(),
-            )?;
+            info!(
+                "Located valid game directory on drive: {}",
+                get_drive(&try_locate)
+                    .unwrap_or_else(|_| std::ffi::OsString::from(""))
+                    .to_str()
+                    .unwrap_or("")
+            );
+            save_path(self.path(), INI_SECTIONS[1], INI_KEYS[2], &try_locate)?;
             self.set(INI_SECTIONS[1], INI_KEYS[2], &try_locate.to_string_lossy());
             return Ok(PathResult::Full(try_locate));
         }
         if try_locate.components().count() > 1 {
-            info!("Partial game_dir found");
+            info!("Partial game directory found");
             return Ok(PathResult::Partial(try_locate));
         }
-        warn!("Could not locate game_dir");
+        warn!("Could not locate game directory");
         Ok(PathResult::None(try_locate))
     }
 }
 
 #[instrument(level = "trace", skip_all)]
 fn attempt_locate_dir(target_path: &[&str]) -> std::io::Result<PathBuf> {
-    let drive = get_current_drive()?;
+    let curr_drive = get_drive(&std::env::current_dir()?)?;
 
-    trace!(?drive, "Drive Found");
+    trace!(?curr_drive, "Drive Found");
 
-    match test_path_buf(PathBuf::from(&drive), target_path) {
+    match test_path_buf(PathBuf::from(&curr_drive), target_path) {
         Ok(path) => Ok(path),
         Err(err) => {
-            if &drive == "C:\\" {
+            if &curr_drive == "C:\\" {
                 Err(err)
             } else {
                 test_path_buf(PathBuf::from("C:\\"), target_path)
@@ -488,9 +490,8 @@ fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> std::io::Result<Pat
     Ok(path)
 }
 
-fn get_current_drive() -> std::io::Result<std::ffi::OsString> {
-    std::env::current_dir()?
-        .components()
+fn get_drive(path: &Path) -> std::io::Result<std::ffi::OsString> {
+    path.components()
         .next()
         .map(|root| {
             let mut drive = root.as_os_str().to_ascii_uppercase();
