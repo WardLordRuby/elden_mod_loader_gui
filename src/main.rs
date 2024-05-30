@@ -974,7 +974,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_add_remove_order({
         let ui_handle = ui.as_weak();
-        move |state, key, value| -> i32 {
+        move |state, key, row, value| -> i32 {
             let span = info_span!("add_remove_order");
             let _gaurd = span.enter();
 
@@ -1014,7 +1014,7 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             let model = ui.global::<MainLogic>().get_current_mods();
             let mut selected_mod =
-                model.row_data(value as usize).expect("front end gives us valid row");
+                model.row_data(row as usize).expect("front end gives us valid row");
             selected_mod.order.set = state;
             if !state {
                 selected_mod.order.at = 0;
@@ -1022,9 +1022,9 @@ fn main() -> Result<(), slint::PlatformError> {
                     selected_mod.order.i = -1;
                 }
             }
-            model.set_row_data(value as usize, selected_mod);
+            model.set_row_data(row as usize, selected_mod);
             match load_order.parse_section() {
-                Ok(ref order_map) => model.update_order(Some(value), order_map, ui.as_weak()),
+                Ok(ref order_map) => model.update_order(Some(row), order_map, ui.as_weak()),
                 Err(err) => {
                     error!("{err}");
                     ui.display_msg(&err.to_string());
