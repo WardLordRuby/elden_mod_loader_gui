@@ -131,14 +131,14 @@ impl Config for Cfg {
     #[inline]
     fn mods_is_empty(&self) -> bool {
         self.data.section(INI_SECTIONS[2]).is_none()
-            || self.data.section(INI_SECTIONS[2]).unwrap().is_empty()
+            || self.data.section(INI_SECTIONS[2]).expect("Cfg verified").is_empty()
     }
 
     fn mods_registered(&self) -> usize {
         if self.mods_is_empty() {
             0
         } else {
-            self.data.section(INI_SECTIONS[2]).unwrap().len()
+            self.data.section(INI_SECTIONS[2]).expect("Cfg verified").len()
         }
     }
 
@@ -180,7 +180,7 @@ impl Cfg {
         }
     }
 
-    /// returns the value stored with key "dark_mode" as a `bool`  
+    /// returns the value stored with key "save_log" as a `bool`  
     /// if error calls `self.save_default_val` to correct error  
     pub fn get_save_log(&self) -> io::Result<bool> {
         match IniProperty::<bool>::read(&self.data, INI_SECTIONS[0], INI_KEYS[1]) {
@@ -262,14 +262,21 @@ impl Config for ModLoaderCfg {
     #[inline]
     fn mods_is_empty(&self) -> bool {
         self.data.section(LOADER_SECTIONS[1]).is_none()
-            || self.data.section(LOADER_SECTIONS[1]).unwrap().is_empty()
+            || self
+                .data
+                .section(LOADER_SECTIONS[1])
+                .expect("ModLoader installed and verified")
+                .is_empty()
     }
 
     fn mods_registered(&self) -> usize {
         if self.mods_is_empty() {
             0
         } else {
-            self.data.section(LOADER_SECTIONS[1]).unwrap().len()
+            self.data
+                .section(LOADER_SECTIONS[1])
+                .expect("ModLoader installed and verified")
+                .len()
         }
     }
 
@@ -326,13 +333,17 @@ impl ModLoaderCfg {
     /// retuns mutable reference to key value pairs stored in "loadorder"  
     #[inline]
     pub fn mut_section(&mut self) -> &mut ini::Properties {
-        self.data.section_mut(LOADER_SECTIONS[1]).unwrap()
+        self.data
+            .section_mut(LOADER_SECTIONS[1])
+            .expect("ModLoader installed and verified")
     }
 
     /// retuns immutable reference to key value pairs stored in "loadorder"  
     #[inline]
     pub fn section(&self) -> &ini::Properties {
-        self.data.section(LOADER_SECTIONS[1]).unwrap()
+        self.data
+            .section(LOADER_SECTIONS[1])
+            .expect("ModLoader installed and verified")
     }
 
     /// get an iterator of the key value pairs stored in "loadorder"  

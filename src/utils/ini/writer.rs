@@ -94,7 +94,7 @@ where
     V: Display,
 {
     for (i, section) in sections.iter().enumerate() {
-        writeln!(writer, "[{}]", section.unwrap())?;
+        writeln!(writer, "[{}]", section.expect("section is always some"))?;
         if i == 0 {
             for j in 0..values.len() {
                 writeln!(

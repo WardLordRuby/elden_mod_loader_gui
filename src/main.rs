@@ -416,7 +416,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 });
 
                 let model = ui.global::<MainLogic>().get_current_mods();
-                let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().unwrap();
+                let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
                 mut_model.push(deserialize_mod(&new_mod));
                 if new_mod.order.set {
                     model.update_order(None, &order_data, ui.as_weak());
@@ -767,7 +767,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 let dlls = reg_mods.dll_name_set();
                 let order_count = reg_mods.order_count();
                 let model = ui.global::<MainLogic>().get_current_mods();
-                let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().unwrap();
+                let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
                 ui.global::<MainLogic>().set_current_subpage(0);
                 mut_model.remove(row as usize);
                 loader.verify_keys(&dlls, order_count).unwrap_or_else(|err| {
@@ -998,7 +998,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 return error;
             };
             let model = ui.global::<MainLogic>().get_current_mods();
-            let mut selected_mod = model.row_data(value as usize).unwrap();
+            let mut selected_mod =
+                model.row_data(value as usize).expect("front end gives us valid row");
             selected_mod.order.set = state;
             if !state {
                 selected_mod.order.at = 0;
@@ -1061,7 +1062,8 @@ fn main() -> Result<(), slint::PlatformError> {
 
             if to_k != from_k {
                 let model = ui.global::<MainLogic>().get_current_mods();
-                let mut selected_mod = model.row_data(row as usize).unwrap();
+                let mut selected_mod =
+                    model.row_data(row as usize).expect("front end gives us valid row");
                 selected_mod.order.i = dll_i;
                 if !selected_mod.order.set {
                     selected_mod.order.set = true
@@ -1079,8 +1081,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             } else if value != row {
                 let model = ui.global::<MainLogic>().get_current_mods();
-                let mut curr_row = model.row_data(row as usize).unwrap();
-                let mut replace_row = model.row_data(value as usize).unwrap();
+                let mut curr_row =
+                    model.row_data(row as usize).expect("front end gives us valid row");
+                let mut replace_row =
+                    model.row_data(value as usize).expect("front end gives us valid row");
                 std::mem::swap(&mut curr_row.order.at, &mut replace_row.order.at);
                 model.set_row_data(row as usize, replace_row);
                 model.set_row_data(value as usize, curr_row);
@@ -1169,7 +1173,7 @@ impl Sortable for ModelRc<DisplayMod> {
                     continue;
                 }
                 if let Some(index) = unsorted_idx.iter().position(|&x| x == *new_order) {
-                    let swap_row = self.row_data(*new_order).unwrap();
+                    let swap_row = self.row_data(*new_order).expect("`ModLoaderCfg.parse_section()` makes sure that `new_order` is always valid");
                     if let Some(ref key) = selected_key {
                         if swap_row.name == key {
                             selected_i = unsorted_i;
@@ -1418,7 +1422,9 @@ fn deserialize_split_files(split_files: &SplitFiles) -> DeserializedFileData {
                 .map(|f| SharedString::from(omit_off_state(&f.to_string_lossy())).into()),
         );
         dll_files.extend(split_files.dll.iter().map(|f| {
-            SharedString::from(omit_off_state(&f.file_name().unwrap().to_string_lossy()))
+            SharedString::from(omit_off_state(
+                &f.file_name().expect("file validated").to_string_lossy(),
+            ))
         }));
     };
     if !split_files.config.is_empty() {

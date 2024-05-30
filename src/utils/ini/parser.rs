@@ -261,7 +261,7 @@ impl<T: AsRef<Path>> Setup for T {
             let not_found = sections
                 .iter()
                 .filter(|&&s| ini.section(s).is_none())
-                .map(|s| s.unwrap())
+                .map(|s| s.expect("sections are always some"))
                 .collect::<Vec<_>>();
             if not_found.is_empty() {
                 trace!("ini found with all sections");
@@ -272,7 +272,11 @@ impl<T: AsRef<Path>> Setup for T {
                     format!(
                         "Could not find section(s): {}, in: {}",
                         DisplayStrs(not_found),
-                        self.as_ref().file_name().unwrap().to_str().unwrap()
+                        self.as_ref()
+                            .file_name()
+                            .expect("valid file")
+                            .to_str()
+                            .unwrap_or_default()
                     )
                 )
             }
