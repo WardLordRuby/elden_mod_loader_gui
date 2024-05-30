@@ -13,7 +13,7 @@ use ini::Ini;
 use tracing::{info, instrument, trace, warn};
 use utils::ini::{
     common::{Cfg, Config},
-    parser::{IniProperty, RegMod, Setup},
+    parser::{IniProperty, LoadOrder, RegMod, Setup},
     writer::{new_cfg, save_path},
 };
 
@@ -563,13 +563,11 @@ impl std::fmt::Display for DisplayState {
     }
 }
 
-pub struct DisplayOrder(pub bool, pub usize);
-
-impl std::fmt::Display for DisplayOrder {
+impl std::fmt::Display for LoadOrder {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.0 {
-            write!(f, "{}", self.1 + 1)
+        if self.set {
+            write!(f, "{}", self.at + 1)
         } else {
             write!(f, "not set")
         }

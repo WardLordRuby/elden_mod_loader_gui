@@ -424,7 +424,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 info!(
                     files = new_mod.files.file_refs().len(),
                     state = %DisplayState(new_mod.state),
-                    order = %DisplayOrder(new_mod.order.set, new_mod.order.at),
+                    order = %new_mod.order,
                     "{mod_name} added with"
                 );
             }).unwrap();
