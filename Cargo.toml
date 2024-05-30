@@ -1,6 +1,6 @@
 [package]
 name = "elden_mod_loader_gui"
-version = "0.9.4"
+version = "0.9.5"
 authors = ["WardLordRuby"]
 edition = "2021"
 build = "build.rs"
@@ -10,14 +10,14 @@ build = "build.rs"
 [package.metadata.winresource]
 ProductName = "Elden Mod Loader GUI"
 FileDescription = "Elden Ring mod manager made by: WardLordRuby"
-ProductVersion = "0.9.4-beta"
+ProductVersion = "0.9.5-beta"
 
 [profile.release]
 opt-level = "s"  # Optimize for size.
 lto = true
 
 [dependencies]
-tokio = { version = "1.37.0", features = ["sync"] }
+tokio = { version = "1.38.0", features = ["sync"] }
 slint = { version = "1.6.0", features = ["raw-window-handle-06"] }
 i-slint-backend-winit = "1.6.0"
 winit = "0.29.4"

@@ -56,6 +56,11 @@ pub fn save_path(file_path: &Path, section: Option<&str>, key: &str, path: &Path
         .set(key, path.to_string_lossy().to_string());
     config.write_to_file_opt(file_path, WRITE_OPTIONS)?;
     trace!("saved path to file");
+    if let Some(span) = tracing::Span::current().metadata() {
+        if key == INI_KEYS[2] && span.name() != "scan_for_mods" {
+            info!("Game directory saved as: '{}'", path.display());
+        }
+    }
     Ok(())
 }
 

@@ -478,7 +478,6 @@ fn main() -> Result<(), slint::PlatformError> {
                             ui.display_msg(&err.to_string());
                             return;
                         };
-                        info!("game_dir saved as: \"{}\"", try_path.display());
                         let mod_loader = ModLoader::properties(&try_path).unwrap_or_default();
                         ui.global::<SettingsLogic>()
                             .set_game_path(try_path.to_string_lossy().to_string().into());
@@ -789,7 +788,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
                 mut_model.remove(row as usize);
                 loader.verify_keys(&dlls, order_count).unwrap_or_else(|err| {
-                    warn!("{err}");
+                    match err.kind() {
+                        ErrorKind::Other => info!("{err}"),
+                        ErrorKind::Unsupported => warn!("{err}"),
+                        _ => error!("{err}"),
+                    }
                     messages.push(err.to_string());
                 });
                 let order_data = loader.parse_section().unwrap_or_else(|err| {
@@ -873,7 +876,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.display_msg(&err.to_string());
                 return !state;
             }
-            info!("show_terminal set to {}", state);
+            info!("Show terminal set to: {}", state);
             state
         }
     });
@@ -895,7 +898,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.display_msg(&format!("Failed to set load delay\n\n{err}"));
                 return;
             }
-            info!("load_delay set to {}ms", time);
+            info!("Load delay set to: {}ms", time);
             ui.global::<SettingsLogic>()
                 .set_load_delay(SharedString::from(format!("{time}ms")));
             ui.global::<SettingsLogic>().set_delay_input(SharedString::new());
@@ -1674,7 +1677,7 @@ async fn confirm_remove_mod(
                 new_io_error!(
                     ErrorKind::ConnectionAborted,
                     format!(
-                        "Files registered with: {}, are still installed at \"{}\"",
+                        "Files registered with: {}, are still installed at '{}'",
                         DisplayName(mod_name),
                         install_dir.display()
                     )

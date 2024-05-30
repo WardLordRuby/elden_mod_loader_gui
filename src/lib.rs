@@ -426,7 +426,7 @@ impl Cfg {
         if let Ok(path) =
             IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[2], None, false)
         {
-            info!("Saved game directory in: {INI_NAME}, is valid");
+            info!("Game directory in: {INI_NAME}, is valid");
             return Ok(PathResult::Full(path.value));
         }
         let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());

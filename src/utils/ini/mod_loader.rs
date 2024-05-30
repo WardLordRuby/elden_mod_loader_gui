@@ -165,8 +165,7 @@ impl ModLoaderCfg {
     /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  
     /// then writes the updated key values to file
     ///
-    /// error cases:
-    /// - section is not set to "loadorder"  
+    /// error case:
     /// - fails to write to file  
     #[instrument(level = "trace", skip(self))]
     pub fn update_order_entries(&mut self, stable: Option<&str>) -> std::io::Result<()> {
@@ -221,7 +220,7 @@ impl Countable for [RegMod] {
 
 type DllSet<'a> = HashSet<&'a str>;
 pub trait NameSet {
-    fn dll_name_set(&self) -> HashSet<&str>;
+    fn dll_name_set(&self) -> DllSet;
 }
 
 impl NameSet for [RegMod] {

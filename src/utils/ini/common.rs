@@ -311,7 +311,7 @@ impl ModLoaderCfg {
     pub fn get_load_delay(&self) -> io::Result<u32> {
         match IniProperty::<u32>::read(&self.data, LOADER_SECTIONS[0], LOADER_KEYS[0]) {
             Ok(delay_time) => {
-                info!("Load delay: {}", delay_time.value);
+                info!("Load delay: {}ms", delay_time.value);
                 Ok(delay_time.value)
             }
             Err(err) => Err(self.save_default_val(LOADER_SECTIONS[0], LOADER_KEYS[0], err)),
