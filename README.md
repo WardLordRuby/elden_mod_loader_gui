@@ -1,11 +1,14 @@
 [TechieW-Loader-Link]: https://www.nexusmods.com/eldenring/mods/117  
+[Download]: https://img.shields.io/github/downloads/WardLordRuby/elden_mod_loader_gui/total?label=Download&labelColor=%2323282e&color=%230e8726&link=https%3A%2F%2Fgithub.com%2FWardLordRuby%2Felden_mod_loader_gui%2Freleases%2Fdownload%2Fv0.9.5-beta%2Felden_mod_loader_gui.exe  
+[License]: https://img.shields.io/github/license/WardLordRuby/elden_mod_loader_gui?labelColor=2323282e  
 [Download-Link]: https://github.com/WardLordRuby/elden_mod_loader_gui/releases
 <div align="center">
     <img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML-icon.png" width="20%" height="20%">
 </div>
 
 # Elden Mod Loader GUI   
-  
+![Download] ![License]  
+
 A simple Mod Manager for Elden Mod Loader  
 This is a GUI tool that wraps [Elden Mod Loader][TechieW-Loader-Link] by: TechieW  
 His loader files are required to be installed for this app to work  
@@ -27,7 +30,8 @@ Make sure to have EAC disabled before launching Elden Ring with mods installed
 The app will generate its own config file and attempt to locate the install directory of Elden Ring. If it succeeds  
 and finds that *Elden Mod Loader* is installed, the app is immediately ready to use! Otherwise it will prompt you to  
 select the install directory for your copy of Elden Ring. If you move the app you will have to move the config file  
-as well. It is not recommended to edit this apps ini file manually.  
+as well. It is not recommended to edit this apps ini file manually. If you want to disable logging you can set  
+'save_log' to 'false' in "EML_config.ini"  
 
 ## Features  
 
@@ -46,11 +50,8 @@ as well. It is not recommended to edit this apps ini file manually.
 * If registred mod contains an ini file you are able to open config files from within the app  
 * Swap between Dark and Light themes for the app  
 * On de-registration of a mod app will make sure it is set to enabled  
-
-##### To be added:  
-
-* Dump logs to file on app crash (v0.9.5 feat)  
-* Full app-tracing (v0.9.5 feat)  
+* Writes logs to file "EML_gui_log.txt"  
+* Logs panic messages to file  
 
 ## Screenshots  
 
@@ -58,5 +59,5 @@ as well. It is not recommended to edit this apps ini file manually.
     <img src="https://i.imgur.com/qJC5Tyy.png" width="26%" height="26%">
     <img src="https://i.imgur.com/vuMAqmt.png" width="26%" height="26%">
     <img src="https://i.imgur.com/xd0XlBC.png" width="26%" height="26%">
-    <img src="https://i.imgur.com/GMJCNQE.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/xRe7Ig4.png" width="26%" height="26%">
 </div>
