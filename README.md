@@ -5,7 +5,7 @@
 </div>
 
 # Elden Mod Loader GUI   
-[![GitHub Downloads](https://img.shields.io/github/downloads/WardLordRuby/elden_mod_loader_gui/total?label=Download&labelColor=%2323282e&color=%230e8726)][Download-Link]
+[![GitHub Downloads](https://img.shields.io/github/downloads/WardLordRuby/elden_mod_loader_gui/total?label=Downloads&labelColor=%2323282e&color=%230e8726)][Download-Link]
 [![GitHub License](https://img.shields.io/github/license/WardLordRuby/elden_mod_loader_gui?label=License&labelColor=%2323282e)](LICENSE)
 
 A simple Mod Manager for Elden Mod Loader  
