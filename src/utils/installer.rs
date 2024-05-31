@@ -572,10 +572,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> 
     if !matches!(scan_dir.try_exists(), Ok(true)) {
         return new_io_error!(
             ErrorKind::BrokenPipe,
-            format!(
-                "\"mods\" folder does not exist in \"{}\"",
-                game_dir.display()
-            )
+            format!("\"mods\" folder does not exist in '{}'", game_dir.display())
         );
     };
     let num_files = items_in_directory(&scan_dir, FileType::File)?;

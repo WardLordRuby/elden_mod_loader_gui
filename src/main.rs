@@ -148,7 +148,6 @@ fn main() -> Result<(), slint::PlatformError> {
                                     order_data = Some(mod_loader_cfg.parse_into_map());
                                     ini.update().unwrap_or_else(|err| {
                                         error!(err_code = 6, "{err}");
-                                        ui.display_msg(&err.to_string());
                                     });
                                     collection =
                                         ini.collect_mods(&path, order_data.as_ref(), false);
@@ -498,7 +497,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                         let _ = get_or_update_game_dir(Some(try_path));
                     } else {
-                        error!("Required game files not found in: \"{}\", files missing: {}", try_path.display(), DisplayStrs(&not_found));
+                        error!("Required game files not found in: '{}', files missing: {}", try_path.display(), DisplayStrs(&not_found));
                         ui.display_msg(&format!("Could not find Elden Ring in:\n\"{}\"", try_path.display()));
                     }
                     Err(err) => {

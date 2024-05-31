@@ -134,7 +134,7 @@ impl ModLoaderCfg {
     pub fn parse_section(&mut self) -> std::io::Result<OrderMap> {
         let map = self.parse_into_map();
         if self.section().len() != map.len() {
-            trace!("fixing usize parse error in \"{}\"", LOADER_FILES[2]);
+            trace!("fixing usize parse error in: {}", LOADER_FILES[2]);
             self.update_order_entries(None)?;
             return Ok(self.parse_into_map());
         }
@@ -142,11 +142,11 @@ impl ModLoaderCfg {
         values.sort();
         for (i, value) in values.iter().enumerate() {
             if i != **value {
-                trace!(
-                    "values in \"{}\" are not in order, sorting entries",
+                self.update_order_entries(None)?;
+                info!(
+                    "Found entries out of order, sorted load order entries in: {}",
                     LOADER_FILES[2]
                 );
-                self.update_order_entries(None)?;
                 return Ok(self.parse_into_map());
             }
         }
