@@ -5,8 +5,8 @@
 </div>
 
 # Elden Mod Loader GUI   
-[![GitHub Downloads](https://img.shields.io/github/downloads/WardLordRuby/elden_mod_loader_gui/total?label=Download&labelColor=%2323282e&color=%230e8726)](link=https%3A%2F%2Fgithub.com%2FWardLordRuby%2Felden_mod_loader_gui%2Freleases%2Fdownload%2Fv0.9.5-beta%2Felden_mod_loader_gui.exe) 
-[![GitHub License](https://img.shields.io/github/license/WardLordRuby/elden_mod_loader_gui?labelColor=%2323282e)](link=https%3A%2F%2Fgithub.com%2FWardLordRuby%2Felden_mod_loader_gui%2Fblob%2Fmain%2FLICENSE)
+[![GitHub Downloads](https://img.shields.io/github/downloads/WardLordRuby/elden_mod_loader_gui/total?label=Download&labelColor=%2323282e&color=%230e8726)](https%3A%2F%2Fgithub.com%2FWardLordRuby%2Felden_mod_loader_gui%2Freleases%2Fdownload%2Fv0.9.5-beta%2Felden_mod_loader_gui.exe) 
+[![GitHub License](https://img.shields.io/github/license/WardLordRuby/elden_mod_loader_gui?labelColor=%2323282e)](https%3A%2F%2Fgithub.com%2FWardLordRuby%2Felden_mod_loader_gui%2Fblob%2Fmain%2FLICENSE)
 
 A simple Mod Manager for Elden Mod Loader  
 This is a GUI tool that wraps [Elden Mod Loader][TechieW-Loader-Link] by: TechieW  
