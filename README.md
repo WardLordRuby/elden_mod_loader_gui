@@ -30,7 +30,7 @@ The app will generate its own config file and attempt to locate the install dire
 and finds that *Elden Mod Loader* is installed, the app is immediately ready to use! Otherwise it will prompt you to  
 select the install directory for your copy of Elden Ring. If you move the app you will have to move the config file  
 as well. It is not recommended to edit this apps ini file manually. If you want to disable logging you can set  
-'save_log' to 'false' in "EML_config.ini"  
+'save_log' to 'false' in "EML_gui_config.ini"  
 
 ## Features  
 
@@ -50,7 +50,11 @@ as well. It is not recommended to edit this apps ini file manually. If you want 
 * Swap between Dark and Light themes for the app  
 * On de-registration of a mod app will make sure it is set to enabled  
 * Writes logs to file "EML_gui_log.txt"  
-* Logs panic messages to file  
+* Logs panic messages to file
+
+##### Planned changes:
+
+* Update to the load order interface, to better reflect the _offical_ behavior of load order  
 
 ## Screenshots  
 
