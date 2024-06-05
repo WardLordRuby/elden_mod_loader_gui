@@ -232,15 +232,19 @@ component TabItem inherits Rectangle {
     states [
         pressed when touch.pressed : {
             state.opacity: 0.9;
+            label.opacity: 0.9;
         }
         hover when touch.has-hover : {
             state.opacity: 1;
+            label.opacity: 1;
         }
         un-selected when !root.selected : {
             state.opacity: 0.80;
+            label.opacity: 0.80;
         }
         selected when root.selected : {
             state.opacity: 1;
+            label.opacity: 1;
         }
     ]
     
