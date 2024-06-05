@@ -297,6 +297,7 @@ pub struct IniProperty<T: Parsable> {
 }
 
 impl IniProperty<bool> {
+    /// reads and parses a `bool` from a given Ini
     pub fn read(ini: &Ini, section: Option<&str>, key: &str) -> std::io::Result<IniProperty<bool>> {
         Ok(IniProperty {
             //section: section.map(String::from),
@@ -306,6 +307,7 @@ impl IniProperty<bool> {
     }
 }
 impl IniProperty<u32> {
+    /// reads and parses a `u32` from a given Ini
     pub fn read(ini: &Ini, section: Option<&str>, key: &str) -> std::io::Result<IniProperty<u32>> {
         Ok(IniProperty {
             //section: section.map(String::from),
@@ -315,6 +317,10 @@ impl IniProperty<u32> {
     }
 }
 impl IniProperty<PathBuf> {
+    /// reads, parses and optionally validates a `Pathbuf` from a given Ini  
+    /// **Important:**
+    /// - When reading a full length path, e.g. from Section: "paths", you _must not_ give a `path_prefix`  
+    /// - When reading a partial path, e.g. from Section: "mod-files", you _must_ give a `path_prefix`  
     pub fn read(
         ini: &Ini,
         section: Option<&str>,
@@ -323,20 +329,14 @@ impl IniProperty<PathBuf> {
         skip_validation: bool,
     ) -> std::io::Result<IniProperty<PathBuf>> {
         if section == INI_SECTIONS[1] && path_prefix.is_some() {
-            return new_io_error!(
-                ErrorKind::InvalidInput,
-                format!(
-                    "path_prefix is invalid when reading a path from \"{}\"",
-                    INI_SECTIONS[1].unwrap()
-                )
+            panic!(
+                "path_prefix is invalid when reading a path from \"{}\"",
+                INI_SECTIONS[1].unwrap()
             );
         } else if section == INI_SECTIONS[3] && path_prefix.is_none() {
-            return new_io_error!(
-                ErrorKind::InvalidInput,
-                format!(
-                    "path_prefix is required when reading a path from \"{}\"",
-                    INI_SECTIONS[3].unwrap()
-                )
+            panic!(
+                "path_prefix is required when reading a path from \"{}\"",
+                INI_SECTIONS[3].unwrap()
             );
         }
         Ok(IniProperty {
@@ -348,6 +348,7 @@ impl IniProperty<PathBuf> {
 }
 
 impl IniProperty<Vec<PathBuf>> {
+    /// reads, parses and optionally validates a `Vec<PathBuf>` from a given Ini
     pub fn read<P: AsRef<Path>>(
         ini: &Ini,
         section: Option<&str>,
