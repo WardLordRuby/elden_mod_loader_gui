@@ -16,7 +16,7 @@ use elden_mod_loader_gui::{
     *,
 };
 use i_slint_backend_winit::WinitWindowAccessor;
-use slint::{ComponentHandle, Model, ModelRc, SharedString, StandardListViewItem, Timer, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, StandardListViewItem, VecModel};
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsStr,
@@ -124,14 +124,11 @@ fn main() -> Result<(), slint::PlatformError> {
                         errors.push(err);
                         ModLoaderCfg::default(mod_loader.path())
                     });
-                    order_data = match mod_loader_cfg.parse_section() {
-                        Ok(data) => Some(data),
-                        Err(err) => {
-                            error!(err_code = 5, "{err}");
-                            errors.push(err);
-                            None
-                        }
-                    };
+                    order_data = mod_loader_cfg.parse_section().map(Some).unwrap_or_else(|err| {
+                        error!(err_code = 5, "{err}");
+                        errors.push(err);
+                        None
+                    });
                 } else {
                     mod_loader_cfg = ModLoaderCfg::default(mod_loader.path());
                 }
@@ -159,7 +156,11 @@ fn main() -> Result<(), slint::PlatformError> {
                             errors.push(err);
                         }
                     }
-                    debug_assert_eq!(collection.mods.len(), ini.mods_registered());
+                    if collection.mods.len() != ini.mods_registered() {
+                        ini.update().unwrap_or_else(|err| {
+                            error!(err_code = 8, "{err}");
+                        });
+                    }
                     if let Some(warning) = collection.warnings.take() {
                         errors.push(warning);
                     }
@@ -254,7 +255,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         let span_clone = span.clone();
         slint::invoke_from_event_loop(move || {
-            Timer::single_shot(std::time::Duration::from_millis(200), move || {
+            slint::Timer::single_shot(std::time::Duration::from_millis(200), move || {
                 slint::spawn_local(async move {
                     let _gaurd = span_clone.enter();
                     let ui = ui_handle.unwrap();
@@ -338,34 +339,33 @@ fn main() -> Result<(), slint::PlatformError> {
                 let files = match shorten_paths(&file_paths, &game_dir) {
                     Ok(files) => files,
                     Err(err) => {
-                        if file_paths.len() == err.err_paths_long.len() {
-                            let ui_handle = ui.as_weak();
-                            match install_new_mod(&mod_name, file_paths, &game_dir, ui_handle).await {
-                                Ok(installed_files) => {
-                                    file_paths = installed_files;
-                                    match shorten_paths(&file_paths, &game_dir) {
-                                        Ok(installed_and_shortend) => installed_and_shortend,
-                                        Err(err) => {
-                                            let err_string = format!("New mod installed but ran into StripPrefixError on {:?}", err.err_paths_long);
-                                            error!("{err_string}");
-                                            ui.display_msg(&err_string);
-                                            return;
-                                        }
-                                    }
-                                },
-                                Err(err) => {
-                                    match err.kind() {
-                                        ErrorKind::ConnectionAborted => info!("{err}"),
-                                        _ => error!("{err}"),
-                                    }
-                                    ui.display_msg(&err.to_string());
-                                    return;
-                                }
-                            }
-                        } else {
+                        if file_paths.len() != err.err_paths_long.len() {
                             error!("Encountered {} StripPrefixError on input files", err.err_paths_long.len());
                             ui.display_msg(&format!("Some selected files are already installed\n\nSelected Files Installed: {}\nSelected Files not installed: {}", err.ok_paths_short.len(), err.err_paths_long.len()));
                             return;
+                        }
+                        let ui_handle = ui.as_weak();
+                        match install_new_mod(&mod_name, file_paths, &game_dir, ui_handle).await {
+                            Ok(installed_files) => {
+                                file_paths = installed_files;
+                                match shorten_paths(&file_paths, &game_dir) {
+                                    Ok(installed_and_shortend) => installed_and_shortend,
+                                    Err(err) => {
+                                        let err_string = format!("New mod installed but ran into StripPrefixError on {}", DisplayPaths(&err.err_paths_long));
+                                        error!("{err_string}");
+                                        ui.display_msg(&err_string);
+                                        return;
+                                    }
+                                }
+                            },
+                            Err(err) => {
+                                match err.kind() {
+                                    ErrorKind::ConnectionAborted => info!("{err}"),
+                                    _ => error!("{err}"),
+                                }
+                                ui.display_msg(&err.to_string());
+                                return;
+                            }
                         }
                     }
                 };
@@ -444,70 +444,70 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
-            let span_clone = span.clone();
-            slint::spawn_local(async move {
-                let _gaurd = span_clone.enter();
-                let game_dir = get_or_update_game_dir(None);
-                let path_result = get_user_folder(&game_dir, ui.as_weak());
-                drop(game_dir);
-                let path = match path_result {
-                    Ok(path) => path,
-                    Err(err) => {
-                        ui.display_msg(&err.to_string());
-                        return;
-                    }
-                };
-                let try_path: PathBuf = match does_dir_contain(&path, Operation::All, &["Game"])
-                {
-                    Ok(OperationResult::Bool(true)) => PathBuf::from(&format!("{}\\Game", path.display())),
-                    Ok(OperationResult::Bool(false)) => path,
-                    Err(err) => {
-                        error!("{err}");
-                        ui.display_msg(&err.to_string());
-                        return;
-                    }
-                    _ => unreachable!(),
-                };
-                match files_not_found(&try_path, &REQUIRED_GAME_FILES) {
-                    Ok(not_found) => if not_found.is_empty() {
-                        let result = save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[2], &try_path);
-                        if result.is_err() && save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[2], &try_path).is_err() {
-                            let err = result.unwrap_err();
-                            error!("Failed to save directory. {err}");
-                            ui.display_msg(&err.to_string());
-                            return;
-                        };
-                        let mod_loader = ModLoader::properties(&try_path).unwrap_or_default();
-                        ui.global::<SettingsLogic>()
-                            .set_game_path(try_path.to_string_lossy().to_string().into());
-                        ui.global::<MainLogic>().set_game_path_valid(true);
-                        ui.global::<MainLogic>().set_current_subpage(0);
-                        ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed());
-                        ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled());
-                        if mod_loader.installed() {
-                            ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
-                            let _ = receive_msg().await;
-                            if ini.mods_is_empty() {
-                                if let Err(err) = confirm_scan_mods(ui.as_weak(), &try_path, Some(&ini), None).await {
-                                    ui.display_msg(&err.to_string());
-                                };
-                            }
-                        } else {
-                            ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
-                        }
-                        let _ = get_or_update_game_dir(Some(try_path));
-                    } else {
-                        error!("Required game files not found in: '{}', files missing: {}", try_path.display(), DisplayStrs(&not_found));
-                        ui.display_msg(&format!("Could not find Elden Ring in:\n\"{}\"", try_path.display()));
-                    }
-                    Err(err) => {
-                        match err.kind() {
-                            ErrorKind::NotFound => warn!("{err}"),
-                            _ => error!("Error: {err}"),
-                        }
-                        ui.display_msg(&err.to_string())
-                    }
+            let game_dir = get_or_update_game_dir(None);
+            let path_result = get_user_folder(&game_dir, ui.as_weak());
+            drop(game_dir);
+
+            let path = match path_result {
+                Ok(path) => path,
+                Err(err) => {
+                    ui.display_msg(&err.to_string());
+                    return;
                 }
+            };
+            let try_path: PathBuf = match does_dir_contain(&path, Operation::All, &["Game"])
+            {
+                Ok(OperationResult::Bool(true)) => PathBuf::from(&format!("{}\\Game", path.display())),
+                Ok(OperationResult::Bool(false)) => path,
+                Err(err) => {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
+                    return;
+                }
+                _ => unreachable!(),
+            };
+            let not_found = match files_not_found(&try_path, &REQUIRED_GAME_FILES) {
+                Ok(files) => files,
+                Err(err) => {
+                    match err.kind() {
+                        ErrorKind::NotFound => warn!("{err}"),
+                        _ => error!("Error: {err}"),
+                    }
+                    ui.display_msg(&err.to_string());
+                    return;
+                }
+            };
+            if !not_found.is_empty() {
+                error!("Required game files not found in: '{}', files missing: {}", try_path.display(), DisplayStrs(&not_found));
+                ui.display_msg(&format!("Could not find Elden Ring in:\n\"{}\"", try_path.display()));
+                return;
+            }
+            if let Err(err) = save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[2], &try_path) {
+                error!("Failed to save directory. {err}");
+                ui.display_msg(&err.to_string());
+                return;
+            };
+
+            slint::spawn_local(async move {
+                let mod_loader = ModLoader::properties(&try_path).unwrap_or_default();
+                ui.global::<SettingsLogic>()
+                    .set_game_path(try_path.to_string_lossy().to_string().into());
+                ui.global::<MainLogic>().set_game_path_valid(true);
+                ui.global::<MainLogic>().set_current_subpage(0);
+                ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed());
+                ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled());
+                if mod_loader.installed() {
+                    ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
+                    let _ = receive_msg().await;
+                    if ini.mods_is_empty() {
+                        if let Err(err) = confirm_scan_mods(ui.as_weak(), &try_path, Some(&ini), None).await {
+                            ui.display_msg(&err.to_string());
+                        };
+                    }
+                } else {
+                    ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
+                }
+                let _ = get_or_update_game_dir(Some(try_path));
             }).unwrap();
         }
     });
@@ -609,34 +609,32 @@ fn main() -> Result<(), slint::PlatformError> {
                 let files = match shorten_paths(&file_paths, &game_dir) {
                     Ok(files) => files,
                     Err(err) => {
-                        if file_paths.len() == err.err_paths_long.len() {
-                            let ui_handle = ui.as_weak();
-                            match install_new_files_to_mod(&found_mod, file_paths, &game_dir, ui_handle).await {
-                                Ok(installed_files) => {
-                                    file_paths = installed_files;
-                                    match shorten_paths(&file_paths, &game_dir) {
-                                        Ok(installed_and_shortend) => installed_and_shortend,
-                                        Err(err) => {
-                                            let err_string = format!("Files installed but ran into StripPrefixError on {:?}", err.err_paths_long);
-                                            error!("{err_string}");
-                                            ui.display_msg(&err_string);
-                                            return;
-                                        }
-                                    }
-                                },
-                                Err(err) => {
-                                    match err.kind() {
-                                        ErrorKind::ConnectionAborted => info!("{err}"),
-                                        _ => error!("{err}"),
-                                    }
-                                    ui.display_msg(&err.to_string());
-                                    return;
-                                }
-                            }
-                        } else {
+                        if file_paths.len() != err.err_paths_long.len() {
                             error!(files = ?err.err_paths_long, "Encountered {} StripPrefixError(s) on input", err.err_paths_long.len());
                             ui.display_msg(&format!("Some selected files are already installed\n\nSelected Files Installed: {}\nSelected Files not installed: {}", err.ok_paths_short.len(), err.err_paths_long.len()));
                             return;
+                        }
+                        match install_new_files_to_mod(&found_mod, file_paths, &game_dir, ui.as_weak()).await {
+                            Ok(installed_files) => {
+                                file_paths = installed_files;
+                                match shorten_paths(&file_paths, &game_dir) {
+                                    Ok(installed_and_shortend) => installed_and_shortend,
+                                    Err(err) => {
+                                        let err_string = format!("Files installed but ran into StripPrefixError on {:?}", err.err_paths_long);
+                                        error!("{err_string}");
+                                        ui.display_msg(&err_string);
+                                        return;
+                                    }
+                                }
+                            },
+                            Err(err) => {
+                                match err.kind() {
+                                    ErrorKind::ConnectionAborted => info!("{err}"),
+                                    _ => error!("{err}"),
+                                }
+                                ui.display_msg(&err.to_string());
+                                return;
+                            }
                         }
                     }
                 };
@@ -723,7 +721,6 @@ fn main() -> Result<(), slint::PlatformError> {
                 let mut reg_mods = {
                     let data = ini.collect_mods(game_dir.as_path(), order_map.as_ref(), false);
                     if let Some(warning) = data.warnings {
-                        warn!("{warning}");
                         ui.display_msg(&warning.to_string());
                     }
                     data.mods
@@ -922,14 +919,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 vec![PathBuf::from(LOADER_FILES[1])]
             };
             let mut main_dll = RegMod::new(LOADER_FILES[1], !loader.disabled(), files);
-            match toggle_files(&game_dir, !state, &mut main_dll, None) {
-                Ok(_) => state,
-                Err(err) => {
+            toggle_files(&game_dir, !state, &mut main_dll, None)
+                .map(|_| state)
+                .unwrap_or_else(|err| {
                     error!("{err}");
                     ui.display_msg(&format!("{err}"));
                     !state
-                }
-            }
+                })
         }
     });
     ui.global::<SettingsLogic>().on_open_game_dir({
@@ -1514,7 +1510,6 @@ fn deserialize_mod(mod_data: &RegMod) -> DisplayMod {
 fn deserialize_collected_mods(data: &CollectedMods, ui_handle: slint::Weak<App>) {
     let ui = ui_handle.unwrap();
     if let Some(ref warning) = data.warnings {
-        warn!("{warning}");
         ui.display_msg(&warning.to_string());
     }
 
@@ -1791,7 +1786,6 @@ async fn confirm_scan_mods(
         }
     };
     if let Some(warning) = new_mods.warnings {
-        warn!(%warning);
         ui.display_msg(&warning.to_string());
     }
     if !old_mods.is_empty() {
@@ -1829,7 +1823,7 @@ async fn confirm_scan_mods(
 
         old_mods
             .iter_mut()
-            .try_for_each(|m| toggle_files(game_dir, true, m, None).map(|_| ()))?;
+            .try_for_each(|m| toggle_files(game_dir, true, m, None))?;
     }
     Ok(())
 }
