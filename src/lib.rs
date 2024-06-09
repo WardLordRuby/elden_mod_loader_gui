@@ -249,7 +249,11 @@ pub enum OperationResult<'a, T: ?Sized> {
 /// `Operation::All` and `Operation::Any` map to `OperationResult::bool(_result_)`  
 /// `Operation::Count` maps to `OperationResult::Count((_num_found_, _HashSet<_&input_list_>))`  
 /// when matching you will always have to `_ => unreachable()` for the return type you will never get
-#[instrument(level = "trace", skip(dir, list), fields(input, input_count))]
+#[instrument(level = "trace", skip(dir, list), fields(input = 
+    %DisplayStrs(
+        &list.iter().map(|&t| t.borrow()).collect::<Vec<&str>>(),
+    )))
+]
 pub fn does_dir_contain<'a, T>(
     dir: &Path,
     operation: Operation,
@@ -268,29 +272,11 @@ where
     match operation {
         Operation::All => Ok(OperationResult::Bool({
             let result = list.iter().all(|&check_file| str_names.contains(check_file));
-
-            #[cfg(debug_assertions)]
-            tracing::Span::current().record(
-                "input",
-                &tracing::field::display(DisplayStrs(
-                    &list.iter().map(|&t| t.borrow()).collect::<Vec<&str>>(),
-                )),
-            );
-
             trace!(operation_result = result);
             result
         })),
         Operation::Any => Ok(OperationResult::Bool({
             let result = list.iter().any(|&check_file| str_names.contains(check_file));
-
-            #[cfg(debug_assertions)]
-            tracing::Span::current().record(
-                "input",
-                &tracing::field::display(DisplayStrs(
-                    &list.iter().map(|&t| t.borrow()).collect::<Vec<&str>>(),
-                )),
-            );
-
             trace!(operation_result = result);
             result
         })),
@@ -301,10 +287,6 @@ where
                 .copied()
                 .collect::<HashSet<_>>();
             let num_found = collection.len();
-
-            #[cfg(debug_assertions)]
-            tracing::Span::current().record("input_count", list.len());
-
             trace!(files_found = num_found);
             Ok(OperationResult::Count((num_found, collection)))
         }
