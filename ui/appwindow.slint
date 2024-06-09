@@ -30,6 +30,17 @@ export component App inherits Window {
             (window-height - popup-window-height) / 2
         }
     };
+    property <length> max-text-width: mp.width - 26px;
+    property <length> max-popup-width: mp.width - 14px;
+    property <length> popup-border-width: 1px;
+    property <length> popup-height: msg-size.height + 20px;
+    property <length> popup-width: {
+        if msg-size.width + 20px < max-popup-width {
+            msg-size.width + 20px
+        } else {
+            max-popup-width
+        }
+    };
     // property <length> debug-mp-height: mp.height;
     // property <length> debug-msg-height: popup-window-height;
     // property <string> debug-msg: "height calc: " + popup-window-y-pos / 1px + "\nPage Height: " + debug-mp-height / 1px + "\nDialog Height: " + popup-window-height / 1px;
@@ -63,21 +74,21 @@ export component App inherits Window {
     msg-size := Text {
         visible: false;
         text: display-message;
-        max-width: mp.width - 30px;
+        max-width: max-text-width;
     }
 
     // Make popupWindow look nice 
     err-popup := PopupWindow {
         x: popup-window-x-pos;
         y: popup-window-y-pos;
-        height: msg-size.height + 20px;
-        width: msg-size.width + 20px;
+        height: popup-height;
+        width: popup-width;
         close-on-click: false;
         
         Rectangle {
             background: ColorPalette.popup-background-color;
             border-color: ColorPalette.popup-border-color;
-            border-width: 1px;
+            border-width: popup-border-width;
         }
         
         Dialog {
@@ -86,7 +97,7 @@ export component App inherits Window {
             
             Text {
                 text: display-message;
-                max-width: mp.width - 30px;
+                max-width: max-text-width;
                 wrap: word-wrap;
             }
 
@@ -104,14 +115,14 @@ export component App inherits Window {
     confirm-popup := PopupWindow {
         x: popup-window-x-pos;
         y: popup-window-y-pos;
-        height: msg-size.height + 20px;
-        width: msg-size.width + 20px;
+        height: popup-height;
+        width: popup-width;
         close-on-click: false;
 
         Rectangle {
             background: ColorPalette.popup-background-color;
             border-color: ColorPalette.popup-border-color;
-            border-width: 1px;
+            border-width: popup-border-width;
         }
 
         Dialog {
@@ -120,7 +131,7 @@ export component App inherits Window {
             
             Text {
                 text: display-message;
-                max-width: mp.width - 30px;
+                max-width: max-text-width;
                 wrap: word-wrap;
             }
             StandardButton {
@@ -142,14 +153,14 @@ export component App inherits Window {
     confirm-popup-2 := PopupWindow {
         x: popup-window-x-pos;
         y: popup-window-y-pos;
-        height: msg-size.height + 20px;
-        width: msg-size.width + 20px;
+        height: popup-height;
+        width: popup-width;
         close-on-click: false;
 
         Rectangle {
             background: ColorPalette.popup-background-color;
             border-color: ColorPalette.popup-border-color;
-            border-width: 1px;
+            border-width: popup-border-width;
         }
 
         Dialog {
@@ -158,7 +169,7 @@ export component App inherits Window {
             
             Text {
                 text: display-message;
-                max-width: mp.width - 30px;
+                max-width: max-text-width;
                 wrap: word-wrap;
             }
             StandardButton {
