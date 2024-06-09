@@ -1301,6 +1301,16 @@ async fn receive_msg() -> Message {
     message
 }
 
+/// workaround for whatever bug in rfd that doesn't interact well with the app when a user  
+/// performs a secondary action within the file dialog
+fn rfd_hang_workaround(window: &slint::Window) {
+    let mut size = window.size();
+    size.height += 1;
+    window.set_size(size);
+    size.height -= 1;
+    window.set_size(size);
+}
+
 fn get_user_folder(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<PathBuf> {
     let ui = ui_handle.unwrap();
     let f_result = match rfd::FileDialog::new()
@@ -1314,13 +1324,7 @@ fn get_user_folder(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<
         }
         None => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
     };
-    // workaround for whatever bug in rfd that doesn't interact well with the app when a user
-    // performs a secondary action within the file dialog
-    let mut size = ui.window().size();
-    size.height += 1;
-    ui.window().set_size(size);
-    size.height -= 1;
-    ui.window().set_size(size);
+    rfd_hang_workaround(ui.window());
     f_result
 }
 
@@ -1352,13 +1356,7 @@ fn get_user_files(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<V
             new_io_error!(ErrorKind::InvalidInput, "No Files Selected")
         }
     };
-    // workaround for whatever bug in rfd that doesn't interact well with the app when a user
-    // performs a secondary action within the file dialog
-    let mut size = ui.window().size();
-    size.height += 1;
-    ui.window().set_size(size);
-    size.height -= 1;
-    ui.window().set_size(size);
+    rfd_hang_workaround(ui.window());
     f_result
 }
 
