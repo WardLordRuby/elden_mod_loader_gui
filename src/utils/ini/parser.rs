@@ -328,12 +328,12 @@ impl IniProperty<PathBuf> {
     ) -> std::io::Result<IniProperty<PathBuf>> {
         if section == INI_SECTIONS[1] && path_prefix.is_some() {
             panic!(
-                "path_prefix is invalid when reading a path from \"{}\"",
+                "path_prefix is invalid when reading a path from: {}",
                 INI_SECTIONS[1].unwrap()
             );
         } else if section == INI_SECTIONS[3] && path_prefix.is_none() {
             panic!(
-                "path_prefix is required when reading a path from \"{}\"",
+                "path_prefix is required when reading a path from: {}",
                 INI_SECTIONS[3].unwrap()
             );
         }

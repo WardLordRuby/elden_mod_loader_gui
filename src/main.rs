@@ -40,6 +40,13 @@ static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
 static RESTRICTED_FILES: OnceLock<HashSet<&OsStr>> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
 
+const TECHIE_W_MSG: &str = "Could not find Elden Mod Loader Script!\n\
+    This tool requires 'Elden Mod Loader' by TechieW to be installed!";
+const TUTORIAL_MSG: &str =
+    "Add mods to the app by entering a name and selecting mod files with \"Select Files\"\n\n\
+    You can always add more files to a mod or de-register a mod at any time from within the app\n\n\
+    Do not forget to disable easy anti-cheat before playing with mods installed!";
+
 fn main() -> Result<(), slint::PlatformError> {
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -267,14 +274,25 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }
                     if first_startup {
+                        let welcome_msg: &str = "Welcome to Elden Mod Loader GUI!\n\
+                            Thanks for downloading, please report any bugs";
                         if !game_verified {
-                            ui.display_msg(
-                                "Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nPlease select the game directory containing \"eldenring.exe\"",
-                            );
+                            ui.display_msg(&format!(
+                                "{welcome_msg}\n\n\
+                                Please select the game directory containing: eldenring.exe"
+                            ));
                         } else if game_verified && !mod_loader.installed() {
-                            ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!\n\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app");
+                            ui.display_msg(&format!(
+                                "{welcome_msg}\n\n\
+                                Game Files Found!\n\n\
+                                {TECHIE_W_MSG}"
+                            ));
                         } else if game_verified {
-                            ui.display_msg("Welcome to Elden Mod Loader GUI!\nThanks for downloading, please report any bugs\n\nGame Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
+                            ui.display_msg(&format!(
+                                "{welcome_msg}\n\n\
+                                Game Files Found!\n\n\
+                                {TUTORIAL_MSG}"
+                            ));
                             let _ = receive_msg().await;
                             if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(&ini), order_data.as_ref()).await {
                                 ui.display_msg(&err.to_string());
@@ -282,7 +300,10 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     } else if game_verified {
                         if !mod_loader.installed() {
-                            ui.display_msg(&format!("This tool requires Elden Mod Loader by TechieW to be installed!\n\nPlease install files to \"{}\", and relaunch Elden Mod Loader GUI", get_or_update_game_dir(None).display()));
+                            ui.display_msg(&format!(
+                                "{TECHIE_W_MSG}\n\n\
+                                Please install files to: '{}', and relaunch Elden Mod Loader GUI", get_or_update_game_dir(None).display()
+                            ));
                         } else if ini.mods_is_empty() {
                             if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(&ini), order_data.as_ref()).await {
                                 ui.display_msg(&err.to_string());
@@ -456,9 +477,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 }
             };
-            let try_path: PathBuf = match does_dir_contain(&path, Operation::All, &["Game"])
-            {
-                Ok(OperationResult::Bool(true)) => PathBuf::from(&format!("{}\\Game", path.display())),
+            let try_path: PathBuf = match does_dir_contain(&path, Operation::All, &["Game"]) {
+                Ok(OperationResult::Bool(true)) => {
+                    PathBuf::from(&format!("{}\\Game", path.display()))
+                }
                 Ok(OperationResult::Bool(false)) => path,
                 Err(err) => {
                     error!("{err}");
@@ -479,8 +501,15 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             if !not_found.is_empty() {
-                error!("Required game files not found in: '{}', files missing: {}", try_path.display(), DisplayStrs(&not_found));
-                ui.display_msg(&format!("Could not find Elden Ring in:\n\"{}\"", try_path.display()));
+                error!(
+                    "Required game files not found in: '{}', files missing: {}",
+                    try_path.display(),
+                    DisplayStrs(&not_found)
+                );
+                ui.display_msg(&format!(
+                    "Could not find Elden Ring in:\n\"{}\"",
+                    try_path.display()
+                ));
                 return;
             }
             if let Err(err) = save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[2], &try_path) {
@@ -489,27 +518,40 @@ fn main() -> Result<(), slint::PlatformError> {
                 return;
             };
 
+            let span_clone = span.clone();
             slint::spawn_local(async move {
+                let _gaurd = span_clone.enter();
                 let mod_loader = ModLoader::properties(&try_path).unwrap_or_default();
                 ui.global::<SettingsLogic>()
                     .set_game_path(try_path.to_string_lossy().to_string().into());
                 ui.global::<MainLogic>().set_game_path_valid(true);
                 ui.global::<MainLogic>().set_current_subpage(0);
-                ui.global::<SettingsLogic>().set_loader_installed(mod_loader.installed());
-                ui.global::<SettingsLogic>().set_loader_disabled(mod_loader.disabled());
+                ui.global::<SettingsLogic>()
+                    .set_loader_installed(mod_loader.installed());
+                ui.global::<SettingsLogic>()
+                    .set_loader_disabled(mod_loader.disabled());
                 if mod_loader.installed() {
-                    ui.display_msg("Game Files Found!\nAdd mods to the app by entering a name and selecting mod files with \"Select Files\"\n\nYou can always add more files to a mod or de-register a mod at any time from within the app\n\nDo not forget to disable easy anti-cheat before playing with mods installed!");
+                    ui.display_msg(&format!(
+                        "Game Files Found!\n\
+                        {TUTORIAL_MSG}"
+                    ));
                     let _ = receive_msg().await;
                     if ini.mods_is_empty() {
-                        if let Err(err) = confirm_scan_mods(ui.as_weak(), &try_path, Some(&ini), None).await {
+                        if let Err(err) =
+                            confirm_scan_mods(ui.as_weak(), &try_path, Some(&ini), None).await
+                        {
                             ui.display_msg(&err.to_string());
                         };
                     }
                 } else {
-                    ui.display_msg("Game Files Found!\n\nCould not find Elden Mod Loader Script!\nThis tool requires Elden Mod Loader by TechieW to be installed!")
+                    ui.display_msg(&format!(
+                        "Game Files Found!\n\n\
+                        {TECHIE_W_MSG}"
+                    ))
                 }
                 let _ = get_or_update_game_dir(Some(try_path));
-            }).unwrap();
+            })
+            .unwrap();
         }
     });
     ui.global::<MainLogic>().on_toggle_mod({
