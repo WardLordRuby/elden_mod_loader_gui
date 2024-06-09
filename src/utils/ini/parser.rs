@@ -255,37 +255,35 @@ impl<T: AsRef<Path>> Setup for T {
     fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<ini::Ini> {
         let file_data = self.as_ref().to_string_lossy();
         let file_data = FileData::from(&file_data);
-        if file_data.extension == ".ini" {
-            validate_existance(self.as_ref())?;
-            let ini = get_cfg(self.as_ref())?;
-            let not_found = sections
-                .iter()
-                .filter(|&&s| ini.section(s).is_none())
-                .map(|s| s.expect("sections are always some"))
-                .collect::<Vec<_>>();
-            if not_found.is_empty() {
-                trace!("ini found with all sections");
-                Ok(ini)
-            } else {
-                new_io_error!(
-                    ErrorKind::InvalidData,
-                    format!(
-                        "Could not find section(s): {}, in: {}",
-                        DisplayStrs(&not_found),
-                        self.as_ref()
-                            .file_name()
-                            .expect("valid file")
-                            .to_str()
-                            .unwrap_or_default()
-                    )
-                )
-            }
-        } else {
-            new_io_error!(
+        if file_data.extension != ".ini" {
+            return new_io_error!(
                 ErrorKind::InvalidInput,
                 format!("expected .ini found {}", file_data.extension)
-            )
+            );
         }
+        validate_existance(self.as_ref())?;
+        let ini = get_cfg(self.as_ref())?;
+        let not_found = sections
+            .iter()
+            .filter(|&&s| ini.section(s).is_none())
+            .map(|s| s.expect("sections are always some"))
+            .collect::<Vec<_>>();
+        if !not_found.is_empty() {
+            return new_io_error!(
+                ErrorKind::InvalidData,
+                format!(
+                    "Could not find section(s): {}, in: {}",
+                    DisplayStrs(&not_found),
+                    self.as_ref()
+                        .file_name()
+                        .expect("valid file")
+                        .to_str()
+                        .unwrap_or_default()
+                )
+            );
+        }
+        trace!("ini found with all sections");
+        Ok(ini)
     }
 }
 
