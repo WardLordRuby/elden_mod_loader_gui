@@ -54,27 +54,28 @@ pub fn init_subscriber() -> std::io::Result<Option<tracing_appender::non_blockin
     let env_dir = std::env::current_dir()?;
     let log_dir = env_dir.join(LOG_NAME);
 
-    if Cfg::read(&env_dir.join(INI_NAME))
+    if !Cfg::read(&env_dir.join(INI_NAME))
         .map(|cfg| cfg.get_save_log().unwrap_or(true))
         .unwrap_or(true)
     {
-        let file = std::fs::File::create(log_dir)?;
-        let (non_blocking, guard) = tracing_appender::non_blocking(file);
-        tracing_subscriber::registry()
-            .with(
-                fmt::layer()
-                    .event_format(CustomFormatter::new(
-                        fmt::format().with_target(false).with_ansi(false).without_time(),
-                    ))
-                    .fmt_fields(PrettyFields::new())
-                    .with_writer(non_blocking),
-            )
-            .init();
-        return Ok(Some(guard));
-    } else if matches!(log_dir.try_exists(), Ok(true)) {
-        std::fs::remove_file(log_dir)?;
+        if matches!(log_dir.try_exists(), Ok(true)) {
+            std::fs::remove_file(log_dir)?;
+        }
+        return Ok(None);
     }
-    Ok(None)
+    let file = std::fs::File::create(log_dir)?;
+    let (non_blocking, guard) = tracing_appender::non_blocking(file);
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .event_format(CustomFormatter::new(
+                    fmt::format().with_target(false).with_ansi(false).without_time(),
+                ))
+                .fmt_fields(PrettyFields::new())
+                .with_writer(non_blocking),
+        )
+        .init();
+    Ok(Some(guard))
 }
 
 #[cfg(debug_assertions)]

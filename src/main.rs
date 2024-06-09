@@ -1427,7 +1427,7 @@ fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) 
     let path = from_path.unwrap_or_else(|| get_loader_ini_dir());
 
     #[cfg(debug_assertions)]
-    tracing::Span::current().record("path", path.display().to_string());
+    tracing::Span::current().record("path", tracing::field::display(path.display()));
 
     match ModLoaderCfg::read(path) {
         Ok(mut data) => data.parse_section().unwrap_or_else(|err| {
