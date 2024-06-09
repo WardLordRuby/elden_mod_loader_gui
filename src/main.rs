@@ -1425,7 +1425,10 @@ fn open_text_files(ui_handle: slint::Weak<App>, files: Vec<PathBuf>) {
 fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) -> OrderMap {
     let ui = ui_handle.unwrap();
     let path = from_path.unwrap_or_else(|| get_loader_ini_dir());
+
+    #[cfg(debug_assertions)]
     tracing::Span::current().record("path", path.display().to_string());
+
     match ModLoaderCfg::read(path) {
         Ok(mut data) => data.parse_section().unwrap_or_else(|err| {
             error!("{err}");

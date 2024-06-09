@@ -1,4 +1,4 @@
 [target.'cfg(all())']
 rustflags = [
-  "-C", "inline-threshold=225",
+  "-C", "inline-threshold=250",
 ]
