@@ -85,9 +85,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::InvalidData
                 );
                 if err.kind() == ErrorKind::InvalidInput {
-                    error!(err_code = 1, "{err}")
+                    panic!("{err}")
                 }
                 if !first_startup || err.kind() == ErrorKind::InvalidData {
+                    error!(err_code = 1, "{err}");
                     errors.push(err)
                 }
                 None
@@ -182,7 +183,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             Err(err) => {
                 // io::Write error
-                error!(err_code = 8, "{err}");
+                error!(err_code = 9, "{err}");
                 errors.push(err);
                 mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
@@ -194,7 +195,7 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.global::<SettingsLogic>()
             .set_dark_mode(ini.get_dark_mode().unwrap_or_else(|err| {
                 // parse error ErrorKind::InvalidData
-                error!(err_code = 9, "{err}");
+                error!(err_code = 10, "{err}");
                 errors.push(err);
                 DEFAULT_INI_VALUES[0]
             }));
@@ -234,13 +235,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.global::<SettingsLogic>().set_loader_installed(true);
                 let delay = mod_loader_cfg.get_load_delay().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
-                    error!(err_code = 10, "{err}");
+                    error!(err_code = 11, "{err}");
                     errors.push(err);
                     DEFAULT_LOADER_VALUES[0].parse().unwrap()
                 });
                 let show_terminal = mod_loader_cfg.get_show_terminal().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
-                    error!(err_code = 11, "{err}");
+                    error!(err_code = 12, "{err}");
                     errors.push(err);
                     false
                 });
