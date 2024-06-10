@@ -63,8 +63,8 @@ pub fn init_subscriber() -> std::io::Result<Option<tracing_appender::non_blockin
         }
         return Ok(None);
     }
-    let file = std::fs::File::create(log_dir)?;
-    let (non_blocking, guard) = tracing_appender::non_blocking(file);
+    let log_file = std::fs::File::create(log_dir)?;
+    let (non_blocking, guard) = tracing_appender::non_blocking(log_file);
     tracing_subscriber::registry()
         .with(
             fmt::layer()

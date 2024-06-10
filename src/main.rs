@@ -348,7 +348,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let span_clone = span.clone();
             slint::spawn_local(async move {
                 let _gaurd = span_clone.enter();
-                let mut file_paths = match get_user_files(&game_dir, ui.as_weak()) {
+                let mut file_paths = match get_user_files(&game_dir, ui.window()) {
                     Ok(files) => files,
                     Err(err) => {
                         if err.kind() != ErrorKind::InvalidInput {
@@ -467,7 +467,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             let game_dir = get_or_update_game_dir(None);
-            let path_result = get_user_folder(&game_dir, ui.as_weak());
+            let path_result = get_user_folder(&game_dir, ui.window());
             drop(game_dir);
 
             let path = match path_result {
@@ -627,7 +627,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let span_clone = span.clone();
             slint::spawn_local(async move {
                 let _gaurd = span_clone.enter();
-                let mut file_paths = match get_user_files(&game_dir, ui.as_weak()) {
+                let mut file_paths = match get_user_files(&game_dir, ui.window()) {
                     Ok(paths) => paths,
                     Err(err) => {
                         if err.kind() != ErrorKind::InvalidInput {
@@ -1002,7 +1002,11 @@ fn main() -> Result<(), slint::PlatformError> {
             let key = GLOBAL_NUM_KEY.load(Ordering::Acquire);
             message_sender
                 .send(MessageData { message, key })
-                .unwrap_or_else(|err| error!("{err}"));
+                .unwrap_or_else(|err| {
+                    let span = info_span!("send_message");
+                    let _gaurd = span.enter();
+                    error!("Failed to send message: {:?}, over channel", err.0.message);
+                });
         }
     });
     ui.global::<SettingsLogic>().on_scan_for_mods({
@@ -1271,12 +1275,12 @@ impl Sortable for ModelRc<DisplayMod> {
 }
 
 impl App {
-    pub fn display_msg(&self, msg: &str) {
+    fn display_msg(&self, msg: &str) {
         self.set_display_message(SharedString::from(msg));
         self.invoke_show_error_popup();
     }
 
-    pub fn display_confirm(&self, msg: &str, alt_buttons: bool) {
+    fn display_confirm(&self, msg: &str, alt_buttons: bool) {
         self.set_alt_std_buttons(alt_buttons);
         self.set_display_message(SharedString::from(msg));
         self.invoke_show_confirm_popup();
@@ -1290,15 +1294,13 @@ struct MessageData {
 
 async fn receive_msg() -> Message {
     let key = GLOBAL_NUM_KEY.fetch_add(1, Ordering::SeqCst) + 1;
-    let mut message = Message::Esc;
     let mut receiver = RECEIVER.get().unwrap().write().await;
     while let Some(msg) = receiver.recv().await {
         if msg.key == key {
-            message = msg.message;
-            break;
+            return msg.message;
         }
     }
-    message
+    Message::Esc
 }
 
 /// workaround for whatever bug in rfd that doesn't interact well with the app when a user  
@@ -1311,11 +1313,10 @@ fn rfd_hang_workaround(window: &slint::Window) {
     window.set_size(size);
 }
 
-fn get_user_folder(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<PathBuf> {
-    let ui = ui_handle.unwrap();
+fn get_user_folder(path: &Path, ui_window: &slint::Window) -> std::io::Result<PathBuf> {
     let f_result = match rfd::FileDialog::new()
         .set_directory(path)
-        .set_parent(&ui.window().window_handle())
+        .set_parent(&ui_window.window_handle())
         .pick_folder()
     {
         Some(file) => {
@@ -1324,39 +1325,34 @@ fn get_user_folder(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<
         }
         None => new_io_error!(ErrorKind::InvalidInput, "No Path Selected"),
     };
-    rfd_hang_workaround(ui.window());
+    rfd_hang_workaround(ui_window);
     f_result
 }
 
-fn get_user_files(path: &Path, ui_handle: slint::Weak<App>) -> std::io::Result<Vec<PathBuf>> {
-    let ui = ui_handle.unwrap();
+fn get_user_files(path: &Path, ui_window: &slint::Window) -> std::io::Result<Vec<PathBuf>> {
     let f_result = match rfd::FileDialog::new()
         .set_directory(path)
-        .set_parent(&ui.window().window_handle())
+        .set_parent(&ui_window.window_handle())
         .pick_files()
     {
-        Some(files) => match files.len() {
-            0 => new_io_error!(ErrorKind::InvalidInput, "No Files Selected"),
-            _ => {
-                let restricted_files = RESTRICTED_FILES.get().unwrap();
-                if files.iter().any(|file| {
-                    restricted_files.contains(file.file_name().expect("has valid name"))
-                }) {
-                    new_io_error!(
-                        ErrorKind::InvalidData,
-                        "Error: Tried to add a restricted file"
-                    )
-                } else {
-                    trace!("User Selected Files: {files:?}");
-                    Ok(files)
-                }
+        Some(files) => {
+            let restricted_files = RESTRICTED_FILES.get().unwrap();
+            if files
+                .iter()
+                .any(|file| restricted_files.contains(file.file_name().expect("has valid name")))
+            {
+                new_io_error!(
+                    ErrorKind::InvalidData,
+                    "Error: Tried to add a restricted file"
+                )
+            } else {
+                trace!("User Selected Files: {files:?}");
+                Ok(files)
             }
-        },
-        None => {
-            new_io_error!(ErrorKind::InvalidInput, "No Files Selected")
         }
+        None => new_io_error!(ErrorKind::InvalidInput, "No Files Selected"),
     };
-    rfd_hang_workaround(ui.window());
+    rfd_hang_workaround(ui_window);
     f_result
 }
 
@@ -1623,7 +1619,7 @@ async fn add_dir_to_install_data(
         install_files.display_paths), true);
     let mut result = Vec::with_capacity(1);
     match receive_msg().await {
-        Message::Confirm => match get_user_folder(&install_files.parent_dir, ui.as_weak()) {
+        Message::Confirm => match get_user_folder(&install_files.parent_dir, ui.window()) {
             Ok(path) => {
                 install_files
                     .update_fields_with_new_dir(&path, utils::installer::DisplayItems::Limit(9))
