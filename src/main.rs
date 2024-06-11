@@ -76,7 +76,7 @@ fn main() -> Result<(), slint::PlatformError> {
     RESTRICTED_FILES.set(populate_restricted_files()).unwrap();
     {
         let span = info_span!("startup");
-        let _gaurd = span.enter();
+        let _guard = span.enter();
 
         let current_ini = get_ini_dir();
         let first_startup: bool;
@@ -267,7 +267,7 @@ fn main() -> Result<(), slint::PlatformError> {
         slint::invoke_from_event_loop(move || {
             slint::Timer::single_shot(std::time::Duration::from_millis(200), move || {
                 slint::spawn_local(async move {
-                    let _gaurd = span_clone.enter();
+                    let _guard = span_clone.enter();
                     let ui = ui_handle.unwrap();
                     if !errors.is_empty() {
                         for err in errors {
@@ -324,7 +324,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |mod_name| {
             let span = info_span!("add_mod");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
@@ -348,7 +348,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             let span_clone = span.clone();
             slint::spawn_local(async move {
-                let _gaurd = span_clone.enter();
+                let _guard = span_clone.enter();
                 let mut file_paths = match get_user_files(&game_dir, ui.window()) {
                     Ok(files) => files,
                     Err(err) => {
@@ -456,7 +456,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move || {
             let span = info_span!("select_game_path");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             let ini = match Cfg::read(get_ini_dir()) {
@@ -521,7 +521,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
             let span_clone = span.clone();
             slint::spawn_local(async move {
-                let _gaurd = span_clone.enter();
+                let _guard = span_clone.enter();
                 let mod_loader = ModLoader::properties(&try_path).unwrap_or_default();
                 ui.global::<SettingsLogic>()
                     .set_game_path(try_path.to_string_lossy().to_string().into());
@@ -559,7 +559,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |key, state| -> bool {
             let span = info_span!("toggle_mod");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
@@ -612,7 +612,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |row| {
             let span = info_span!("add_to_mod");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
@@ -627,7 +627,7 @@ fn main() -> Result<(), slint::PlatformError> {
             };
             let span_clone = span.clone();
             slint::spawn_local(async move {
-                let _gaurd = span_clone.enter();
+                let _guard = span_clone.enter();
                 let mut file_paths = match get_user_files(&game_dir, ui.window()) {
                     Ok(paths) => paths,
                     Err(err) => {
@@ -664,7 +664,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                 match shorten_paths(&file_paths, &game_dir) {
                                     Ok(installed_and_shortend) => installed_and_shortend,
                                     Err(err) => {
-                                        let err_string = format!("Files installed but ran into StripPrefixError on {:?}", err.err_paths_long);
+                                        let err_string = format!("Files installed but ran into StripPrefixError on {}", DisplayPaths(&err.err_paths_long));
                                         error!("{err_string}");
                                         ui.display_msg(&err_string);
                                         return;
@@ -732,7 +732,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let handle_clone = ui_handle.clone();
             slint::spawn_local(async move {
                 let span = info_span!("remove_mod");
-                let _gaurd = span.enter();
+                let _guard = span.enter();
                 let ui = handle_clone.unwrap();
                 ui.display_confirm(&format!("Are you sure you want to de-register: {key}?"), false);
                 if receive_msg().await != Message::Confirm {
@@ -855,7 +855,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |state| {
             let span = info_span!("toggle_theme");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
             let ui = ui_handle.unwrap();
             let current_ini = get_ini_dir();
             if let Err(err) = save_bool(current_ini, INI_SECTIONS[0], INI_KEYS[0], state) {
@@ -871,7 +871,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |config_item| {
             let span = info_span!("edit_config");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             let game_dir = get_or_update_game_dir(None);
@@ -887,7 +887,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |config_file| {
             let span = info_span!("edit_config");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             let game_dir = get_or_update_game_dir(None);
@@ -906,7 +906,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |state| -> bool {
             let span = info_span!("toggle_terminal");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             let value = if state { "1" } else { "0" };
@@ -924,7 +924,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |time| {
             let span = info_span!("set_load_delay");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             ui.global::<MainLogic>().invoke_force_app_focus();
@@ -948,7 +948,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |state| -> bool {
             let span = info_span!("toggle_all");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             let game_dir = get_or_update_game_dir(None);
@@ -976,7 +976,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move || {
             let span = info_span!("open_game_dir");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             let jh = std::thread::spawn(move || {
@@ -1005,7 +1005,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 .send(MessageData { message, key })
                 .unwrap_or_else(|err| {
                     let span = info_span!("send_message");
-                    let _gaurd = span.enter();
+                    let _guard = span.enter();
                     error!("Failed to send message: {:?}, over channel", err.0.message);
                 });
         }
@@ -1016,7 +1016,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = ui_handle.unwrap();
             slint::spawn_local(async move {
                 let span = info_span!("scan_for_mods");
-                let _gaurd = span.enter();
+                let _guard = span.enter();
                 let game_dir = get_or_update_game_dir(None);
                 if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir, None, None).await {
                     ui.display_msg(&err.to_string());
@@ -1029,7 +1029,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |state, key, row, value| -> i32 {
             let span = info_span!("add_remove_order");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             let error = 42069_i32;
@@ -1095,7 +1095,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move |to_k, from_k, value, row, dll_i| -> i32 {
             let span = info_span!("modify_order");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
             let mut result = 0_i32;
@@ -1170,7 +1170,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui_handle = ui.as_weak();
         move || {
             let span = info_span!("force_deserialize");
-            let _gaurd = span.enter();
+            let _guard = span.enter();
 
             reset_app_state(
                 Cfg::default(get_ini_dir()),
@@ -1372,7 +1372,7 @@ fn get_loader_ini_dir() -> &'static PathBuf {
 
 fn get_or_update_game_dir(
     update: Option<PathBuf>,
-) -> tokio::sync::RwLockReadGuard<'static, std::path::PathBuf> {
+) -> tokio::sync::RwLockReadGuard<'static, PathBuf> {
     static GAME_DIR: OnceLock<RwLock<PathBuf>> = OnceLock::new();
 
     if let Some(path) = update {
@@ -1406,7 +1406,8 @@ fn open_text_files(ui_handle: slint::Weak<App>, files: Vec<PathBuf>) {
                 Err(err) => {
                     error!("{err}");
                     ui.display_msg(&format!(
-                        "Failed to open config file {file_clone:?}\n\nError: {err}"
+                        "Failed to open config file: '{}'\n\nError: {err}",
+                        file_clone.display()
                     ));
                 }
             },

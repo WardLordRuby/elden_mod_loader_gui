@@ -224,7 +224,7 @@ fn validate_existance(path: &Path) -> std::io::Result<()> {
             new_io_error!(
                 ErrorKind::NotFound,
                 format!(
-                    "{:?} can not be found on machine",
+                    "'{}' can not be found on machine",
                     file_name_from_str(path.to_str().unwrap_or_default())
                 )
             )
@@ -459,7 +459,10 @@ impl LoadOrder {
                 }
             }
         } else {
-            error!("Failed to retrieve file_name for Path in: {dll_files:?} Returning LoadOrder::default")
+            error!(
+                "Failed to retrieve file_name for Path in: {} Returning LoadOrder::default",
+                DisplayPaths(dll_files)
+            )
         };
         LoadOrder::default()
     }
@@ -812,7 +815,8 @@ impl Cfg {
                             for i in (0..err.errors.len()).rev() {
                                 if let Some(file) = curr.files.remove(&err.error_paths[i]) {
                                     err.errors[i].add_msg(&format!(
-                                        "File: {file:?} was removed, and is no longer associated with: {}",
+                                        "File: '{}' was removed, and is no longer associated with: {}",
+                                        file.display(),
                                         DisplayName(&curr.name)
                                     ), true);
                                     warn!("{}", err.errors[i]);

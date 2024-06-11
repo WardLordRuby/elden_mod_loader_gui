@@ -487,7 +487,7 @@ fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> std::io::Result<Pat
         } else if !path.exists() {
             return new_io_error!(
                 ErrorKind::NotFound,
-                format!("Could not locate {target_path:?}")
+                format!("Could not locate: {}", DisplayStrs(target_path))
             );
         }
     }
