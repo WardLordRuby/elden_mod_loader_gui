@@ -60,6 +60,7 @@ pub const LOADER_FILES: [&str; 3] = [
     "dinput8.dll",
     "mod_loader_config.ini",
 ];
+pub const LOADER_EXAMPLE: &str = "Example.dll";
 pub const LOADER_SECTIONS: [Option<&str>; 2] = [Some("modloader"), Some("loadorder")];
 pub const LOADER_KEYS: [&str; 2] = ["load_delay", "show_terminal"];
 pub const DEFAULT_LOADER_VALUES: [&str; 2] = ["5000", "0"];

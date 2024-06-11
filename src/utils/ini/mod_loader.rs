@@ -12,7 +12,7 @@ use crate::{
         parser::RegMod,
         writer::new_cfg,
     },
-    DisplayState, DisplayStrs, Operation, OperationResult, OrderMap, LOADER_FILES,
+    DisplayState, DisplayStrs, Operation, OperationResult, OrderMap, LOADER_EXAMPLE, LOADER_FILES,
 };
 
 #[derive(Debug, Default)]
@@ -95,7 +95,24 @@ impl ModLoaderCfg {
     /// a `DllSet` is obtained by calling `dll_name_set()` on a `[RegMod]`  
     #[instrument(level = "trace", skip_all)]
     pub fn verify_keys(&mut self, dlls: &DllSet, order_count: usize) -> std::io::Result<()> {
-        let keys = self.iter().map(|(k, _)| k.to_string()).collect::<Vec<_>>();
+        if self.mods_is_empty() {
+            trace!("No mods have load order");
+            return Ok(());
+        }
+        let keys = self
+            .iter()
+            .filter_map(|(k, _)| {
+                if k != LOADER_EXAMPLE {
+                    Some(k.to_string())
+                } else {
+                    trace!("{LOADER_EXAMPLE} ignored");
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        if keys.is_empty() {
+            return Ok(());
+        }
         let mut unknown_keys = Vec::new();
         let mut update_order = false;
         keys.iter().enumerate().for_each(|(i, k)| {
@@ -132,6 +149,11 @@ impl ModLoaderCfg {
     /// this function also fixes usize.parse() errors and if values are out of order
     #[instrument(level = "trace", skip_all)]
     pub fn parse_section(&mut self) -> std::io::Result<OrderMap> {
+        if self.section().contains_key(LOADER_EXAMPLE) {
+            self.mut_section().remove(LOADER_EXAMPLE);
+            self.write_to_file()?;
+            info!("Removed: '{LOADER_EXAMPLE}' from: '{}'", LOADER_FILES[2]);
+        }
         let map = self.parse_into_map();
         if self.section().len() != map.len() {
             trace!("fixing usize parse error in: {}", LOADER_FILES[2]);
