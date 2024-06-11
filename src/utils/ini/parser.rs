@@ -246,7 +246,7 @@ pub trait Setup {
 impl<T: AsRef<Path>> Setup for T {
     /// returns `Ok(ini)` if self is a path that:  
     /// - **exists** - if not returns `Err(NotFound)` or `Err(PermissionDenied)`  
-    /// - **is .ini** - if not returns `Err(InvalidInput)`  
+    /// - **is .ini** - if not will panic!  
     /// - **contains all sections** - if not returns `Err(InvalidData)`  
     /// - **File::open** does not return an error  
     ///  
@@ -256,10 +256,7 @@ impl<T: AsRef<Path>> Setup for T {
         let file_data = self.as_ref().to_string_lossy();
         let file_data = FileData::from(&file_data);
         if file_data.extension != ".ini" {
-            return new_io_error!(
-                ErrorKind::InvalidInput,
-                format!("expected .ini found {}", file_data.extension)
-            );
+            panic!("expected .ini found {}", file_data.extension);
         }
         validate_existance(self.as_ref())?;
         let ini = get_cfg(self.as_ref())?;

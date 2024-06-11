@@ -49,15 +49,20 @@ where
 
 #[cfg(not(debug_assertions))]
 pub fn init_subscriber() -> std::io::Result<Option<tracing_appender::non_blocking::WorkerGuard>> {
-    use crate::{Cfg, Config, INI_NAME, LOG_NAME};
+    use crate::{utils::ini::parser::Setup, Cfg, Config, INI_NAME, INI_SECTIONS, LOG_NAME};
 
     let env_dir = std::env::current_dir()?;
     let log_dir = env_dir.join(LOG_NAME);
+    let ini_dir = env_dir.join(INI_NAME);
 
-    if !Cfg::read(&env_dir.join(INI_NAME))
-        .map(|cfg| cfg.get_save_log().unwrap_or(true))
-        .unwrap_or(true)
-    {
+    let save_logs = if let Ok(ini) = ini_dir.is_setup(&INI_SECTIONS) {
+        let cfg: Cfg = Config::from(ini, &ini_dir);
+        cfg.get_save_log().unwrap_or(true)
+    } else {
+        true
+    };
+
+    if !save_logs {
         if matches!(log_dir.try_exists(), Ok(true)) {
             std::fs::remove_file(log_dir)?;
         }

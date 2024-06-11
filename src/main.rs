@@ -64,6 +64,7 @@ fn main() -> Result<(), slint::PlatformError> {
         i_slint_backend_winit::Backend::new().expect("This app is being run on windows"),
     ))
     .expect("This app uses the winit backend");
+
     let ui = App::new()?;
     ui.window().with_winit_window(|window: &winit::window::Window| {
         window.set_enabled_buttons(
@@ -89,12 +90,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 // create paths for these different error cases
                 first_startup = matches!(
                     err.kind(),
-                    ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::InvalidData
+                    ErrorKind::NotFound | ErrorKind::PermissionDenied
                 );
-                if err.kind() == ErrorKind::InvalidInput {
-                    panic!("{err}")
-                }
-                if !first_startup || err.kind() == ErrorKind::InvalidData {
+                if err.kind() == ErrorKind::NotFound {
+                    info!("{err}");
+                } else {
                     error!(err_code = 1, "{err}");
                     errors.push(err)
                 }
@@ -104,12 +104,14 @@ fn main() -> Result<(), slint::PlatformError> {
         let mut ini = match ini {
             Some(ini_data) => Config::from(ini_data, current_ini),
             None => {
-                Cfg::read(current_ini).unwrap_or_else(|err| {
-                    // io::write error
-                    error!(err_code = 2, "{err}");
-                    errors.push(err);
-                    Cfg::default(current_ini)
-                })
+                new_cfg(current_ini)
+                    .map(|ini| Config::from(ini, current_ini))
+                    .unwrap_or_else(|err| {
+                        // io::write error
+                        error!(err_code = 2, "{err}");
+                        errors.push(err);
+                        Cfg::default(current_ini)
+                    })
             }
         };
 
@@ -273,15 +275,11 @@ fn main() -> Result<(), slint::PlatformError> {
                             let _ = receive_msg().await;
                         }
                     }
+                    let select_game_dir_msg = "Could not locate Elden Ring\nPlease Select the install directory for Elden Ring";
                     if first_startup {
                         let welcome_msg: &str = "Welcome to Elden Mod Loader GUI!\n\
                             Thanks for downloading, please report any bugs";
-                        if !game_verified {
-                            ui.display_msg(&format!(
-                                "{welcome_msg}\n\n\
-                                Please select the game directory containing: eldenring.exe"
-                            ));
-                        } else if game_verified && !mod_loader.installed() {
+                        if game_verified && !mod_loader.installed() {
                             ui.display_msg(&format!(
                                 "{welcome_msg}\n\n\
                                 Game Files Found!\n\n\
@@ -297,12 +295,17 @@ fn main() -> Result<(), slint::PlatformError> {
                             if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(&ini), order_data.as_ref()).await {
                                 ui.display_msg(&err.to_string());
                             };
+                        } else {
+                            ui.display_msg(&format!(
+                                "{welcome_msg}\n\n\
+                                {select_game_dir_msg}"
+                            ));
                         }
                     } else if game_verified {
                         if !mod_loader.installed() {
                             ui.display_msg(&format!(
                                 "{TECHIE_W_MSG}\n\n\
-                                Please install files to: '{}', and relaunch Elden Mod Loader GUI", get_or_update_game_dir(None).display()
+                                Please install files to: '{}', and relaunch Elden Mod Loader GUI", &game_dir.expect("game_verified").display()
                             ));
                         } else if ini.mods_is_empty() {
                             if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(&ini), order_data.as_ref()).await {
@@ -310,9 +313,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             }
                         }
                     } else {
-                        ui.display_msg(
-                            "Failed to locate Elden Ring\nPlease Select the install directory for Elden Ring",
-                        );
+                        ui.display_msg(select_game_dir_msg);
                     }
                 }).unwrap();
             });
