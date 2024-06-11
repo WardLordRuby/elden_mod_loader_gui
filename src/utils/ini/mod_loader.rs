@@ -152,7 +152,7 @@ impl ModLoaderCfg {
         if self.section().contains_key(LOADER_EXAMPLE) {
             self.mut_section().remove(LOADER_EXAMPLE);
             self.write_to_file()?;
-            info!("Removed: '{LOADER_EXAMPLE}' from: '{}'", LOADER_FILES[2]);
+            info!("Removed: '{LOADER_EXAMPLE}' from: {}", LOADER_FILES[2]);
         }
         let map = self.parse_into_map();
         if self.section().len() != map.len() {

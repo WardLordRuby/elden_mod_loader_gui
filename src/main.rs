@@ -116,6 +116,7 @@ fn main() -> Result<(), slint::PlatformError> {
         };
 
         let game_verified: bool;
+        let anti_cheat_toggle_found: bool;
         let mod_loader: ModLoader;
         let mut mod_loader_cfg: ModLoaderCfg;
         let mut reg_mods = None;
@@ -142,6 +143,23 @@ fn main() -> Result<(), slint::PlatformError> {
                 } else {
                     mod_loader_cfg = ModLoaderCfg::default(mod_loader.path());
                 }
+
+                anti_cheat_toggle_found =
+                    match does_dir_contain(&path, Operation::All, &[ANTI_CHEAT_EXE]) {
+                        Ok(OperationResult::Bool(result)) => {
+                            info!(
+                                "'{ANTI_CHEAT_EXE}' {}found",
+                                if !result { "not " } else { "" }
+                            );
+                            result
+                        }
+                        Err(err) => {
+                            error!(err_code = 6, "{err}");
+                            errors.push(err);
+                            false
+                        }
+                        _ => unreachable!(),
+                    };
 
                 reg_mods = {
                     let mut collection = ini.collect_mods(&path, order_data.as_ref(), false);
@@ -187,7 +205,7 @@ fn main() -> Result<(), slint::PlatformError> {
             Ok(PathResult::Partial(path) | PathResult::None(path)) => {
                 mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
-                game_verified = false;
+                (game_verified, anti_cheat_toggle_found) = (false, false);
                 Some(path)
             }
             Err(err) => {
@@ -196,7 +214,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 errors.push(err);
                 mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
-                game_verified = false;
+                (game_verified, anti_cheat_toggle_found) = (false, false);
                 None
             }
         };
@@ -311,6 +329,10 @@ fn main() -> Result<(), slint::PlatformError> {
                             if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(&ini), order_data.as_ref()).await {
                                 ui.display_msg(&err.to_string());
                             }
+                        } else if !anti_cheat_toggle_found {
+                            ui.display_msg(&format!(
+                                "'{ANTI_CHEAT_EXE}' not found, do not forget to disable Easy-AntiCheat before running Elden Ring with mods installed"
+                            ));
                         }
                     } else {
                         ui.display_msg(select_game_dir_msg);

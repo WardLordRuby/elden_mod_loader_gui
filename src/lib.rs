@@ -65,6 +65,8 @@ pub const LOADER_SECTIONS: [Option<&str>; 2] = [Some("modloader"), Some("loadord
 pub const LOADER_KEYS: [&str; 2] = ["load_delay", "show_terminal"];
 pub const DEFAULT_LOADER_VALUES: [&str; 2] = ["5000", "0"];
 
+pub const ANTI_CHEAT_EXE: &str = "toggle_anti_cheat.exe";
+
 pub type OrderMap = HashMap<String, usize>;
 
 #[macro_export]
