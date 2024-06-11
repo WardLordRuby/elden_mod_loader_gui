@@ -14,11 +14,12 @@ export component App inherits Window {
     property <length> popup-window-width: msg-size.width + 13px;
     // window-height = main-page-height -? page-title-height
     property <length> window-height: mp.height - Formatting.header-height;
+    property <length> popup-border-width: 1px;
     property <length> popup-window-x-pos: {
-        if ((mp.width - popup-window-width) / 2) < Formatting.side-padding - 1px {
-            Formatting.side-padding - 1px
+        if ((mp.width - popup-window-width) / 2) < Formatting.side-padding - (popup-border-width * 2) {
+            Formatting.side-padding - (popup-border-width * 2)
         } else {
-            (mp.width - popup-window-width) / 2
+            ((mp.width - popup-window-width) / 2) - (popup-border-width * 2)
         }
     };
     // Still possible to run into the - px range
@@ -32,7 +33,6 @@ export component App inherits Window {
     };
     property <length> max-text-width: mp.width - 28px;
     property <length> max-popup-width: mp.width - 14px;
-    property <length> popup-border-width: 1px;
     property <length> popup-height: msg-size.height + 20px;
     property <length> popup-width: {
         if msg-size.width + 20px < max-popup-width {
