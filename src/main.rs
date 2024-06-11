@@ -293,49 +293,54 @@ fn main() -> Result<(), slint::PlatformError> {
                             let _ = receive_msg().await;
                         }
                     }
-                    let select_game_dir_msg = "Could not locate Elden Ring\nPlease Select the install directory for Elden Ring";
-                    if first_startup {
-                        let welcome_msg: &str = "Welcome to Elden Mod Loader GUI!\n\
-                            Thanks for downloading, please report any bugs";
-                        if game_verified && !mod_loader.installed() {
-                            ui.display_msg(&format!(
-                                "{welcome_msg}\n\n\
-                                Game Files Found!\n\n\
-                                {TECHIE_W_MSG}"
-                            ));
-                        } else if game_verified {
-                            ui.display_msg(&format!(
-                                "{welcome_msg}\n\n\
-                                Game Files Found!\n\n\
-                                {TUTORIAL_MSG}"
-                            ));
-                            let _ = receive_msg().await;
-                            if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(&ini), order_data.as_ref()).await {
-                                ui.display_msg(&err.to_string());
-                            };
-                        } else {
-                            ui.display_msg(&format!(
-                                "{welcome_msg}\n\n\
-                                {select_game_dir_msg}"
-                            ));
-                        }
-                    } else if game_verified {
-                        if !mod_loader.installed() {
-                            ui.display_msg(&format!(
-                                "{TECHIE_W_MSG}\n\n\
-                                Please install files to: '{}', and relaunch Elden Mod Loader GUI", &game_dir.expect("game_verified").display()
-                            ));
-                        } else if ini.mods_is_empty() {
-                            if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir.expect("game_verified"), Some(&ini), order_data.as_ref()).await {
-                                ui.display_msg(&err.to_string());
-                            }
-                        } else if !anti_cheat_toggle_found {
-                            ui.display_msg(&format!(
-                                "'{ANTI_CHEAT_EXE}' not found, do not forget to disable Easy-AntiCheat before running Elden Ring with mods installed"
-                            ));
-                        }
+                    let mut disp_msg = if first_startup {
+                        String::from(
+                            "Welcome to Elden Mod Loader GUI!\n\
+                            Thanks for downloading, please report any bugs"
+                        )
                     } else {
-                        ui.display_msg(select_game_dir_msg);
+                        String::new()
+                    };
+                    if first_startup && game_verified {
+                        disp_msg.push_str("\n\nGame Files Found!")
+                    }
+                    // display info level to user
+                    if !disp_msg.is_empty() {
+                        ui.display_msg(&std::mem::take(&mut disp_msg));
+                        let _ = receive_msg().await;
+                    }
+                    if !game_verified {
+                        disp_msg = String::from("Could not locate Elden Ring\nPlease Select the install directory for Elden Ring")
+                    }
+                    if game_verified && !mod_loader.installed() {
+                        disp_msg = format!(
+                            "{TECHIE_W_MSG}\n\n\
+                            Please install files to: '{}', and relaunch Elden Mod Loader GUI", game_dir.as_ref().expect("game_verified").display()
+                        )
+                    }
+                    if game_verified && !anti_cheat_toggle_found {
+                        let anti_cheat_msg = format!(
+                            "'{ANTI_CHEAT_EXE}' not found, do not forget to disable Easy-AntiCheat before running Elden Ring with mods installed"
+                        );
+                        if disp_msg.is_empty() {
+                            disp_msg = anti_cheat_msg
+                        } else {
+                            disp_msg.push_str(&format!("\n\n{anti_cheat_msg}"))
+                        }
+                    }
+                    // display warn level to user
+                    if !disp_msg.is_empty() {
+                        ui.display_msg(&std::mem::take(&mut disp_msg));
+                        let _ = receive_msg().await;
+                    }
+                    if first_startup && (game_verified && mod_loader.installed()) {
+                        ui.display_msg(TUTORIAL_MSG);
+                        let _ = receive_msg().await;
+                    }
+                    if (game_verified && mod_loader.installed()) && (first_startup || ini.mods_is_empty()) {
+                        if let Err(err) = confirm_scan_mods(ui.as_weak(), game_dir.as_ref().expect("game_verified"), Some(&ini), order_data.as_ref()).await {
+                            ui.display_msg(&err.to_string());
+                        };
                     }
                 }).unwrap();
             });
