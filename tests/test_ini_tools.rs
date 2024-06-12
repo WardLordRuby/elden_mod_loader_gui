@@ -338,9 +338,9 @@ mod tests {
         .value;
 
         // Tests if PathBuf and Vec<PathBuf>'s from Section("mod-files") parse correctly | these are partial paths
-        assert_eq!(test_mod_1.files.dll[0], reg_mods[mod_1].files.dll[0]);
-        assert_eq!(test_mod_1.files.config[0], reg_mods[mod_1].files.config[0]);
-        assert_eq!(test_mod_2.files.dll[0], reg_mods[mod_2].files.dll[0]);
+        assert_eq!(test_mod_1.files.dll, reg_mods[mod_1].files.dll);
+        assert_eq!(test_mod_1.files.config, reg_mods[mod_1].files.config);
+        assert_eq!(test_mod_2.files.dll, reg_mods[mod_2].files.dll);
 
         // Tests if bool was parsed correctly
         assert_eq!(test_mod_1.state, reg_mods[mod_1].state);

@@ -140,7 +140,7 @@ mod tests {
         ));
 
         assert!(matches!(
-            does_dir_contain(&mods_dir, Operation::Any, &[&entries[1]]),
+            does_dir_contain(&mods_dir, Operation::All, &entries),
             Ok(OperationResult::Bool(true))
         ));
 

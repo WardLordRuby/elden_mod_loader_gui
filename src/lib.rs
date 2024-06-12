@@ -244,9 +244,9 @@ pub enum Operation {
     Count,
 }
 
-pub enum OperationResult<'a, T: ?Sized> {
+pub enum OperationResult<'a> {
     Bool(bool),
-    Count((usize, HashSet<&'a T>)),
+    Count((usize, HashSet<&'a str>)),
 }
 
 /// `Operation::All` and `Operation::Any` map to `OperationResult::bool(_result_)`  
@@ -254,17 +254,16 @@ pub enum OperationResult<'a, T: ?Sized> {
 /// when matching you will always have to `_ => unreachable()` for the return type you will never get
 #[instrument(level = "trace", skip(dir, list), fields(input = 
     %DisplayStrs(
-        &list.iter().map(|&t| t.borrow()).collect::<Vec<&str>>(),
+        &list.iter().map(|t| t.borrow()).collect::<Vec<&str>>(),
     )))
 ]
 pub fn does_dir_contain<'a, T>(
     dir: &Path,
     operation: Operation,
-    list: &'a [&T],
-) -> std::io::Result<OperationResult<'a, T>>
+    list: &'a [T],
+) -> std::io::Result<OperationResult<'a>>
 where
-    T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash + ?Sized,
-    for<'b> &'b str: std::borrow::Borrow<T>,
+    T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash,
 {
     let entries = std::fs::read_dir(dir)?;
     let file_names = entries
@@ -274,20 +273,20 @@ where
 
     match operation {
         Operation::All => Ok(OperationResult::Bool({
-            let result = list.iter().all(|&check_file| str_names.contains(check_file));
+            let result = list.iter().all(|check_file| str_names.contains(check_file.borrow()));
             trace!(operation_result = result);
             result
         })),
         Operation::Any => Ok(OperationResult::Bool({
-            let result = list.iter().any(|&check_file| str_names.contains(check_file));
+            let result = list.iter().any(|check_file| str_names.contains(check_file.borrow()));
             trace!(operation_result = result);
             result
         })),
         Operation::Count => {
             let collection = list
                 .iter()
-                .filter(|&check_file| str_names.contains(check_file))
-                .copied()
+                .filter(|&check_file| str_names.contains(check_file.borrow()))
+                .map(|t| t.borrow())
                 .collect::<HashSet<_>>();
             let num_found = collection.len();
             trace!(files_found = num_found);
@@ -298,16 +297,17 @@ where
 
 /// returns a collection of references to entries in list that are not found in the supplied directory  
 /// returns an empty Vec if all files were found
-pub fn files_not_found<'a, T>(dir: &Path, list: &'a [&T]) -> std::io::Result<Vec<&'a T>>
+pub fn files_not_found<'a, T>(dir: &Path, list: &'a [T]) -> std::io::Result<Vec<&'a str>>
 where
-    T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash + ?Sized,
-    for<'b> &'b str: std::borrow::Borrow<T>,
+    T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash,
 {
     match does_dir_contain(dir, Operation::Count, list) {
         Ok(OperationResult::Count((c, _))) if c == list.len() => Ok(Vec::new()),
-        Ok(OperationResult::Count((_, found_files))) => {
-            Ok(list.iter().filter(|&&e| !found_files.contains(e)).copied().collect())
-        }
+        Ok(OperationResult::Count((_, found_files))) => Ok(list
+            .iter()
+            .filter(|e| !found_files.contains(e.borrow()))
+            .map(|t| t.borrow())
+            .collect()),
         Err(err) => Err(err),
         _ => unreachable!(),
     }
@@ -456,7 +456,7 @@ impl Cfg {
             info!("Partial game directory found");
             return Ok(PathResult::Partial(try_locate));
         }
-        warn!("Could not locate game directory");
+        info!("Could not locate game directory");
         Ok(PathResult::None(try_locate))
     }
 }
