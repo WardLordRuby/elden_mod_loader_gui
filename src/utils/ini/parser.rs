@@ -256,7 +256,7 @@ impl<T: AsRef<Path>> Setup for T {
         let file_data = self.as_ref().to_string_lossy();
         let file_data = FileData::from(&file_data);
         if file_data.extension != ".ini" {
-            panic!("expected .ini found {}", file_data.extension);
+            panic!("expected .ini found: {}", file_data.extension);
         }
         validate_existance(self.as_ref())?;
         let ini = get_cfg(self.as_ref())?;

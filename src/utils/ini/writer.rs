@@ -154,7 +154,7 @@ pub fn new_cfg(path: &Path) -> Result<Ini> {
             )?;
             info!("Created new ini: {}", LOADER_FILES[2]);
         }
-        _ => panic!("No default data implemented for {file_name:?}"),
+        _ => panic!("No default data implemented for: {file_name:?}"),
     }
     get_cfg(path)
 }

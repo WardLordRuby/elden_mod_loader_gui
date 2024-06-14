@@ -12,8 +12,8 @@ use crate::{
         parser::IniProperty,
         writer::{save_bool, save_value_ext, EXT_OPTIONS, WRITE_OPTIONS},
     },
-    DisplayTheme, ModError, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_SECTIONS,
-    LOADER_KEYS, LOADER_SECTIONS,
+    DisplayTheme, ModError, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_NAME,
+    INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
 };
 
 pub trait Config {
@@ -156,7 +156,7 @@ impl Config for Cfg {
         let default_val = match key {
             k if k == INI_KEYS[0] => DEFAULT_INI_VALUES[0],
             k if k == INI_KEYS[1] => DEFAULT_INI_VALUES[1],
-            _ => panic!("Unknown key was passed in"),
+            _ => panic!("Key: {key}, is unknown to: {INI_NAME}"),
         };
         if let Err(err) = save_bool(&self.dir, section, key, default_val) {
             in_err.add_msg(&err.to_string(), false);
@@ -294,7 +294,7 @@ impl Config for ModLoaderCfg {
         let default_val = match key {
             k if k == LOADER_KEYS[0] => DEFAULT_LOADER_VALUES[0],
             k if k == LOADER_KEYS[1] => DEFAULT_LOADER_VALUES[1],
-            _ => panic!("Unknown key was passed in"),
+            _ => panic!("Key: {key}, is unknown to: {}", LOADER_FILES[2]),
         };
         if let Err(err) = save_value_ext(&self.dir, section, key, default_val) {
             in_err.add_msg(&err.to_string(), false);

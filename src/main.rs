@@ -333,7 +333,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         ui.display_msg(&std::mem::take(&mut disp_msg));
                         let _ = receive_msg().await;
                     }
-                    if first_startup && (game_verified && mod_loader.installed()) {
+                    if first_startup && game_verified && mod_loader.installed() {
                         ui.display_msg(TUTORIAL_MSG);
                         let _ = receive_msg().await;
                     }
