@@ -430,11 +430,12 @@ impl Cfg {
     /// if that fails will return a `PathResult::Partial` that is known to exist if not returns `PathResult::None` that contains just the found drive
     #[instrument(level = "trace", skip_all)]
     pub fn attempt_locate_game(&mut self) -> std::io::Result<PathResult> {
-        if let Ok(path) =
-            IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[2], None, false)
-        {
-            info!("Game directory in: {INI_NAME}, is valid");
-            return Ok(PathResult::Full(path.value));
+        match IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[2], None, false) {
+            Ok(path) => {
+                info!("Game directory in: {INI_NAME}, is valid");
+                return Ok(PathResult::Full(path.value));
+            }
+            Err(err) => info!("{err}"),
         }
         let try_locate = attempt_locate_dir(&DEFAULT_GAME_DIR).unwrap_or("".into());
         if matches!(
