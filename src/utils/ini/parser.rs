@@ -731,12 +731,132 @@ impl RegMod {
     }
 }
 
+#[derive(Default)]
 pub struct CollectedMods {
     pub mods: Vec<RegMod>,
     pub warnings: Option<std::io::Error>,
 }
 
 type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
+
+trait Combine {
+    fn combine_map_data(
+        self,
+        parsed_order_val: Option<&OrderMap>,
+        game_dir: &Path,
+        ini_dir: &Path,
+    ) -> CollectedMods;
+}
+
+impl<'a> Combine for CollectedMaps<'a> {
+    #[instrument(level = "trace", skip_all)]
+    fn combine_map_data(
+        self,
+        parsed_order_val: Option<&OrderMap>,
+        game_dir: &Path,
+        ini_dir: &Path,
+    ) -> CollectedMods {
+        type ModData<'a> = Vec<(&'a str, bool, SplitFiles, LoadOrder)>;
+
+        let mut count = 0_usize;
+        let mut warnings = Vec::new();
+        let mut mod_data = self
+            .0
+            .iter()
+            .filter_map(|(&key, &state_str)| {
+                self.1.get(&key).map(|file_strs| {
+                    let split_files =
+                        SplitFiles::from(file_strs.iter().map(PathBuf::from).collect::<Vec<_>>());
+                    let load_order = match parsed_order_val {
+                        Some(data) => LoadOrder::from(&split_files.dll, data),
+                        None => LoadOrder::default(),
+                    };
+                    if load_order.set {
+                        count += 1
+                    }
+                    (
+                        key,
+                        parse_bool(state_str).unwrap_or(true),
+                        split_files,
+                        load_order,
+                    )
+                })
+            })
+            .collect::<ModData>();
+
+        // if this fails `sync_keys()` did not do its job
+        debug_assert_eq!(self.1.len(), mod_data.len());
+
+        mod_data.sort_by_key(|(_, _, _, l)| if l.set { l.at } else { usize::MAX });
+        mod_data[count..].sort_by_key(|(key, _, _, _)| *key);
+        CollectedMods {
+            mods: mod_data
+                .drain(..)
+                .filter_map(|d| {
+                    let mut curr = RegMod::from_split_files(d.0, d.1, d.2, d.3);
+                    if let Err(err) = curr.verify_state(game_dir, ini_dir) {
+                        error!("{err}");
+                        warnings.push(err);
+                        if let Err(err) = curr.remove_from_file(ini_dir) {
+                            error!("{err}");
+                            warnings.push(err);
+                        };
+                        None
+                    } else if let Err(mut err) =
+                        curr.files.other_file_refs().validate(Some(&game_dir))
+                    {
+                        let mut can_continue = true;
+                        let was_array = curr.is_array();
+                        for i in (0..err.errors.len()).rev() {
+                            if let Some(file) = curr.files.remove(&err.error_paths[i]) {
+                                err.errors[i].add_msg(
+                                    &format!(
+                                    "File: '{}' was removed, and is no longer associated with: {}",
+                                    file.display(),
+                                    DisplayName(&curr.name)
+                                ),
+                                    true,
+                                );
+                                warn!("{}", err.errors[i]);
+                                warnings.push(err.errors.pop().expect("valid range"))
+                            } else {
+                                err.errors.into_iter().for_each(|err| {
+                                    error!("{err}");
+                                    warnings.push(err);
+                                });
+                                if let Err(err) = curr.remove_from_file(ini_dir) {
+                                    error!("{err}");
+                                    warnings.push(err);
+                                };
+                                can_continue = false;
+                                break;
+                            }
+                        }
+                        if can_continue {
+                            if let Err(err) = curr.write_to_file(ini_dir, was_array) {
+                                error!("{err}");
+                                None
+                            } else {
+                                Some(curr)
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        Some(curr)
+                    }
+                })
+                .collect(),
+            warnings: if warnings.is_empty() {
+                None
+            } else if warnings.len() == 1 {
+                Some(warnings.remove(0))
+            } else {
+                Some(warnings.merge(true))
+            },
+        }
+    }
+}
 
 impl Cfg {
     /// returns only valid mod data, if data was found to be invalid a message  
@@ -754,128 +874,32 @@ impl Cfg {
         include_load_order: Option<&OrderMap>,
         skip_validation: bool,
     ) -> CollectedMods {
-        type ModData<'a> = Vec<(&'a str, bool, SplitFiles, LoadOrder)>;
-
-        #[instrument(level = "trace", skip_all)]
-        fn combine_map_data(
-            map_data: CollectedMaps,
-            parsed_order_val: Option<&OrderMap>,
-            game_dir: &Path,
-            ini_dir: &Path,
-        ) -> CollectedMods {
-            let mut count = 0_usize;
-            let mut warnings = Vec::new();
-            let mut mod_data = map_data
-                .0
-                .iter()
-                .filter_map(|(&key, &state_str)| {
-                    map_data.1.get(&key).map(|file_strs| {
-                        let split_files = SplitFiles::from(
-                            file_strs.iter().map(PathBuf::from).collect::<Vec<_>>(),
-                        );
-                        let load_order = match parsed_order_val {
-                            Some(data) => LoadOrder::from(&split_files.dll, data),
-                            None => LoadOrder::default(),
-                        };
-                        if load_order.set {
-                            count += 1
-                        }
-                        (
-                            key,
-                            parse_bool(state_str).unwrap_or(true),
-                            split_files,
-                            load_order,
-                        )
-                    })
-                })
-                .collect::<ModData>();
-
-            // if this fails `sync_keys()` did not do its job
-            debug_assert_eq!(map_data.1.len(), mod_data.len());
-
-            mod_data.sort_by_key(|(_, _, _, l)| if l.set { l.at } else { usize::MAX });
-            mod_data[count..].sort_by_key(|(key, _, _, _)| *key);
-            CollectedMods {
-                mods: mod_data.drain(..)
-                    .filter_map(|d| {
-                        let mut curr = RegMod::from_split_files(d.0, d.1, d.2, d.3);
-                        if let Err(err) = curr.verify_state(game_dir, ini_dir) {
-                            error!("{err}");
-                            warnings.push(err);
-                            if let Err(err) = curr.remove_from_file(ini_dir) {
-                                error!("{err}");
-                                warnings.push(err);
-                            };
-                            None
-                        } else if let Err(mut err) =
-                            curr.files.other_file_refs().validate(Some(&game_dir))
-                        {
-                            let mut can_continue = true;
-                            let was_array = curr.is_array();
-                            for i in (0..err.errors.len()).rev() {
-                                if let Some(file) = curr.files.remove(&err.error_paths[i]) {
-                                    err.errors[i].add_msg(&format!(
-                                        "File: '{}' was removed, and is no longer associated with: {}",
-                                        file.display(),
-                                        DisplayName(&curr.name)
-                                    ), true);
-                                    warn!("{}", err.errors[i]);
-                                    warnings.push(err.errors.pop().expect("valid range"))
-                                } else {
-                                    err.errors.into_iter().for_each(|err| {
-                                        error!("{err}");
-                                        warnings.push(err);
-                                    });
-                                    if let Err(err) = curr.remove_from_file(ini_dir) {
-                                        error!("{err}");
-                                        warnings.push(err);
-                                    };
-                                    can_continue = false;
-                                    break;
-                                }
-                            }
-                            if can_continue {
-                                if let Err(err) = curr.write_to_file(ini_dir, was_array) {
-                                    error!("{err}");
-                                    None
-                                } else { Some(curr) }
-                            } else { None }
-                        } else { Some(curr) }
-                    })
-                    .collect(),
-                warnings: if warnings.is_empty() { None } else if warnings.len() == 1 {
-                        Some(warnings.remove(0))
-                    } else { Some(warnings.merge(true)) }
-                }
-        }
-
-        fn collect_data_unchecked(ini: &Ini) -> Vec<(&str, &str, Vec<&str>)> {
-            let mod_state_data = ini
-                .section(INI_SECTIONS[2])
-                .expect("Validated by Ini::is_setup on startup");
-            let dll_data = ini
-                .section(INI_SECTIONS[3])
-                .expect("Validated by Ini::is_setup on startup");
-            dll_data
-                .iter()
-                .enumerate()
-                .filter(|(_, (k, _))| *k != ARRAY_KEY)
-                .map(|(i, (k, v))| {
-                    let paths = dll_data
-                        .iter()
-                        .skip(i + 1)
-                        .take_while(|(k, _)| *k == ARRAY_KEY)
-                        .map(|(_, v)| v)
-                        .collect::<Vec<_>>();
-                    let s = mod_state_data.get(k).expect("key exists");
-                    (k, s, if v == ARRAY_VALUE { paths } else { vec![v] })
-                })
-                .collect()
-        }
-
         if skip_validation {
+            fn collect_data_unchecked(ini: &Ini) -> Vec<(&str, &str, Vec<&str>)> {
+                let mod_state_data = ini
+                    .section(INI_SECTIONS[2])
+                    .expect("Validated by Ini::is_setup on startup");
+                let dll_data = ini
+                    .section(INI_SECTIONS[3])
+                    .expect("Validated by Ini::is_setup on startup");
+                dll_data
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, (k, _))| *k != ARRAY_KEY)
+                    .map(|(i, (k, v))| {
+                        let paths = dll_data
+                            .iter()
+                            .skip(i + 1)
+                            .take_while(|(k, _)| *k == ARRAY_KEY)
+                            .map(|(_, v)| v)
+                            .collect::<Vec<_>>();
+                        let s = mod_state_data.get(k).expect("key exists");
+                        (k, s, if v == ARRAY_VALUE { paths } else { vec![v] })
+                    })
+                    .collect()
+            }
             let parsed_data = collect_data_unchecked(self.data());
-            CollectedMods {
+            return CollectedMods {
                 mods: parsed_data
                     .iter()
                     .map(|(n, s, f)| {
@@ -887,18 +911,14 @@ impl Cfg {
                     })
                     .collect(),
                 warnings: None,
-            }
-        } else {
-            let parsed_data = sync_keys(self);
-            let collected_mods = combine_map_data(
-                parsed_data,
-                include_load_order,
-                game_dir.as_ref(),
-                self.path(),
-            );
-            trace!("collected {} mods", collected_mods.mods.len());
-            collected_mods
+            };
         }
+
+        let collected_mods =
+            self.sync_keys()
+                .combine_map_data(include_load_order, game_dir.as_ref(), self.path());
+        trace!("collected {} mods", collected_mods.mods.len());
+        collected_mods
     }
 
     /// parses the data associated with a given key into a `RegMod` if found  
@@ -978,7 +998,7 @@ impl Cfg {
             return keys;
         }
         let registered_mods = {
-            let (mods_map, _) = sync_keys(self);
+            let (mods_map, _) = self.sync_keys();
             mods_map.keys().map(|k| k.to_lowercase()).collect::<HashSet<_>>()
         };
         self.update().expect("already exists in an accessable directory");
@@ -995,73 +1015,73 @@ impl Cfg {
             .filter_map(|(_, v)| if v != ARRAY_VALUE { Some(v) } else { None })
             .collect::<HashSet<_>>()
     }
-}
 
-#[instrument(level = "trace", skip_all)]
-fn sync_keys<'a>(cfg: &'a Cfg) -> CollectedMaps<'a> {
-    fn collect_paths(section: &Properties) -> HashMap<&str, Vec<&str>> {
-        section
-            .iter()
-            .enumerate()
-            .filter(|(_, (k, _))| *k != ARRAY_KEY)
-            .map(|(i, (k, v))| {
-                let paths = section
-                    .iter()
-                    .skip(i + 1)
-                    .take_while(|(k, _)| *k == ARRAY_KEY)
-                    .map(|(_, v)| v)
-                    .collect();
-                (k, if v == ARRAY_VALUE { paths } else { vec![v] })
-            })
-            .collect()
-    }
-
-    let mod_state_data = cfg
-        .data()
-        .section(INI_SECTIONS[2])
-        .expect("Validated by Ini::is_setup on startup");
-    let dll_data = cfg
-        .data()
-        .section(INI_SECTIONS[3])
-        .expect("Validated by Ini::is_setup on startup");
-    let mut state_data = mod_state_data.iter().collect::<HashMap<&str, &str>>();
-    let mut file_data = collect_paths(dll_data);
-    let invalid_state = state_data
-        .keys()
-        .filter(|k| !file_data.contains_key(*k))
-        .cloned()
-        .collect::<Vec<_>>();
-
-    for key in invalid_state {
-        state_data.remove(key);
-        remove_entry(cfg.path(), INI_SECTIONS[2], key)
-            .expect("Key is valid & ini has already been read");
-        warn!(
-            "{} has no registered files, mod was removed",
-            DisplayName(key)
-        );
-    }
-
-    let invalid_files = file_data
-        .keys()
-        .filter(|k| !state_data.contains_key(*k))
-        .cloned()
-        .collect::<Vec<_>>();
-
-    for key in invalid_files {
-        if file_data.get(key).expect("key exists").len() > 1 {
-            remove_array(cfg.path(), key).expect("Key is valid & ini has already been read");
-        } else {
-            remove_entry(cfg.path(), INI_SECTIONS[3], key)
-                .expect("Key is valid & ini has already been read");
+    #[instrument(level = "trace", skip_all)]
+    fn sync_keys(&self) -> CollectedMaps {
+        fn collect_paths(section: &Properties) -> HashMap<&str, Vec<&str>> {
+            section
+                .iter()
+                .enumerate()
+                .filter(|(_, (k, _))| *k != ARRAY_KEY)
+                .map(|(i, (k, v))| {
+                    let paths = section
+                        .iter()
+                        .skip(i + 1)
+                        .take_while(|(k, _)| *k == ARRAY_KEY)
+                        .map(|(_, v)| v)
+                        .collect();
+                    (k, if v == ARRAY_VALUE { paths } else { vec![v] })
+                })
+                .collect()
         }
-        file_data.remove(key);
-        warn!(
-            "{} has no saved state data, mod was removed",
-            DisplayName(key)
-        );
-    }
 
-    debug_assert_eq!(state_data.len(), file_data.len());
-    (state_data, file_data)
+        let mod_state_data = self
+            .data()
+            .section(INI_SECTIONS[2])
+            .expect("Validated by Ini::is_setup on startup");
+        let dll_data = self
+            .data()
+            .section(INI_SECTIONS[3])
+            .expect("Validated by Ini::is_setup on startup");
+        let mut state_data = mod_state_data.iter().collect::<HashMap<&str, &str>>();
+        let mut file_data = collect_paths(dll_data);
+        let invalid_state = state_data
+            .keys()
+            .filter(|k| !file_data.contains_key(*k))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        for key in invalid_state {
+            state_data.remove(key);
+            remove_entry(self.path(), INI_SECTIONS[2], key)
+                .expect("Key is valid & ini has already been read");
+            warn!(
+                "{} has no registered files, mod was removed",
+                DisplayName(key)
+            );
+        }
+
+        let invalid_files = file_data
+            .keys()
+            .filter(|k| !state_data.contains_key(*k))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        for key in invalid_files {
+            if file_data.get(key).expect("key exists").len() > 1 {
+                remove_array(self.path(), key).expect("Key is valid & ini has already been read");
+            } else {
+                remove_entry(self.path(), INI_SECTIONS[3], key)
+                    .expect("Key is valid & ini has already been read");
+            }
+            file_data.remove(key);
+            warn!(
+                "{} has no saved state data, mod was removed",
+                DisplayName(key)
+            );
+        }
+
+        debug_assert_eq!(state_data.len(), file_data.len());
+        (state_data, file_data)
+    }
 }

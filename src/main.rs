@@ -1848,10 +1848,7 @@ async fn confirm_scan_mods(
         }
         Err(err) => {
             ui.display_msg(&format!("{err}"));
-            new_mods = CollectedMods {
-                mods: Vec::new(),
-                warnings: None,
-            };
+            new_mods = CollectedMods::default();
         }
     };
     if let Some(warning) = new_mods.warnings {
