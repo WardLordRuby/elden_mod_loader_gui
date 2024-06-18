@@ -977,22 +977,24 @@ impl Cfg {
     /// this also calls sync keys if invalid keys are found
     #[instrument(level = "trace", skip_all)]
     pub fn keys(&mut self) -> HashSet<String> {
-        fn are_keys_ok(data: &ini::Ini) -> Option<HashSet<String>> {
-            let reg_mods = data.section(INI_SECTIONS[2]).expect("Validated by is_setup");
-            let state_keys = reg_mods.iter().map(|(k, _)| k.to_lowercase()).collect::<HashSet<_>>();
-            let mod_file_keys = data
+        let are_keys_ok = || -> Option<HashSet<String>> {
+            let state_keys = self
+                .data()
+                .section(INI_SECTIONS[2])
+                .expect("Validated by is_setup")
+                .iter()
+                .map(|(k, _)| k.to_lowercase())
+                .collect::<HashSet<_>>();
+            self.data()
                 .section(INI_SECTIONS[3])
                 .expect("Validated by is_setup")
                 .iter()
                 .filter_map(|(k, _)| if k != ARRAY_KEY { Some(k) } else { None })
-                .collect::<Vec<_>>();
-            mod_file_keys
-                .iter()
-                .all(|k| state_keys.contains(&k.to_lowercase()))
+                .all(|mod_file_key| state_keys.contains(&mod_file_key.to_lowercase()))
                 .then_some(state_keys)
-        }
+        };
 
-        if let Some(keys) = are_keys_ok(self.data()) {
+        if let Some(keys) = are_keys_ok() {
             trace!("keys collected");
             return keys;
         }
