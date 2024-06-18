@@ -1,4 +1,4 @@
-use ini::{Ini, Properties};
+use ini::Ini;
 use std::{
     collections::{HashMap, HashSet},
     io::ErrorKind,
@@ -117,25 +117,21 @@ impl Parsable for Vec<PathBuf> {
         key: &str,
         skip_validation: bool,
     ) -> std::io::Result<Self> {
-        fn read_array(section: &Properties, key: &str) -> Vec<PathBuf> {
-            section
-                .iter()
-                .skip_while(|(k, _)| *k != key)
-                .skip_while(|(k, _)| *k == key)
-                .take_while(|(k, _)| *k == ARRAY_KEY)
-                .map(|(_, v)| PathBuf::from(v))
-                .collect()
-        }
         if !matches!(ini.get_from(section, key), Some(ARRAY_VALUE)) {
             return new_io_error!(
                 ErrorKind::InvalidData,
                 "Invalid type found. Expected: Vec<Path>, Found: Path"
             );
         }
-        let parsed_value = read_array(
-            ini.section(section).expect("Validated by IniProperty::is_valid"),
-            key,
-        );
+        let parsed_value = ini
+            .section(section)
+            .expect("Validated by IniProperty::is_valid")
+            .iter()
+            .skip_while(|(k, _)| *k != key)
+            .skip_while(|(k, _)| *k == key)
+            .take_while(|(k, _)| *k == ARRAY_KEY)
+            .map(|(_, v)| PathBuf::from(v))
+            .collect();
         if skip_validation {
             return Ok(parsed_value);
         }
@@ -611,16 +607,19 @@ impl RegMod {
     /// if not correct, runs toggle files to put them in the correct state  
     #[instrument(level = "trace", skip_all)]
     pub fn verify_state(&mut self, game_dir: &Path, ini_dir: &Path) -> std::io::Result<()> {
-        fn count_try_verify_ouput(paths: &[PathBuf], game_dir: &Path) -> (usize, usize, usize) {
+        let count_try_verify_ouput = || -> (usize, usize, usize) {
             let (mut exists, mut no_exist, mut errors) = (0_usize, 0_usize, 0_usize);
-            paths.iter().for_each(|p| match game_dir.join(p).try_exists() {
-                Ok(true) => exists += 1,
-                Ok(false) => no_exist += 1,
-                Err(_) => errors += 1,
-            });
+            self.files
+                .dll
+                .iter()
+                .for_each(|p| match game_dir.join(p).try_exists() {
+                    Ok(true) => exists += 1,
+                    Ok(false) => no_exist += 1,
+                    Err(_) => errors += 1,
+                });
             (exists, no_exist, errors)
-        }
-        let (_, no_exist, errors) = count_try_verify_ouput(&self.files.dll, game_dir);
+        };
+        let (_, no_exist, errors) = count_try_verify_ouput();
         if no_exist != 0 && errors == 0 {
             let alt_file_state = !FileData::state_data(&self.files.dll[0].to_string_lossy()).0;
             let test_alt_state = toggle_name_state(&self.files.dll, alt_file_state);
@@ -766,7 +765,7 @@ impl<'a> Combine for CollectedMaps<'a> {
             .filter_map(|(&key, &state_str)| {
                 self.1.get(&key).map(|file_strs| {
                     let split_files =
-                        SplitFiles::from(file_strs.iter().map(PathBuf::from).collect::<Vec<_>>());
+                        SplitFiles::from(file_strs.iter().map(PathBuf::from).collect());
                     let load_order = match parsed_order_val {
                         Some(data) => LoadOrder::from(&split_files.dll, data),
                         None => LoadOrder::default(),
@@ -875,11 +874,13 @@ impl Cfg {
         skip_validation: bool,
     ) -> CollectedMods {
         if skip_validation {
-            fn collect_data_unchecked(ini: &Ini) -> Vec<(&str, &str, Vec<&str>)> {
-                let mod_state_data = ini
+            let collect_data_unchecked = || -> Vec<(&str, &str, Vec<&str>)> {
+                let mod_state_data = self
+                    .data()
                     .section(INI_SECTIONS[2])
                     .expect("Validated by Ini::is_setup on startup");
-                let dll_data = ini
+                let dll_data = self
+                    .data()
                     .section(INI_SECTIONS[3])
                     .expect("Validated by Ini::is_setup on startup");
                 dll_data
@@ -892,14 +893,14 @@ impl Cfg {
                             .skip(i + 1)
                             .take_while(|(k, _)| *k == ARRAY_KEY)
                             .map(|(_, v)| v)
-                            .collect::<Vec<_>>();
+                            .collect();
                         let s = mod_state_data.get(k).expect("key exists");
                         (k, s, if v == ARRAY_VALUE { paths } else { vec![v] })
                     })
                     .collect()
-            }
+            };
             return CollectedMods {
-                mods: collect_data_unchecked(self.data())
+                mods: collect_data_unchecked()
                     .iter()
                     .map(|(n, s, f)| {
                         RegMod::new(
@@ -1017,16 +1018,21 @@ impl Cfg {
             .collect::<HashSet<_>>()
     }
 
-    /// returns CollectedMaps aka `(state_map, mod_file_map)`
+    /// ensures that _all_ keys have matching keys in Sections: "registered-mods" and "mod-files"  
+    /// returns CollectedMaps - `(state_map, mod_file_map)`
     #[instrument(level = "trace", skip_all)]
     fn sync_keys(&self) -> CollectedMaps {
-        fn collect_paths(section: &Properties) -> HashMap<&str, Vec<&str>> {
-            section
+        let collect_paths = || -> HashMap<&str, Vec<&str>> {
+            let file_data = self
+                .data()
+                .section(INI_SECTIONS[3])
+                .expect("Validated by Ini::is_setup on startup");
+            file_data
                 .iter()
                 .enumerate()
                 .filter(|(_, (k, _))| *k != ARRAY_KEY)
                 .map(|(i, (k, v))| {
-                    let paths = section
+                    let paths = file_data
                         .iter()
                         .skip(i + 1)
                         .take_while(|(k, _)| *k == ARRAY_KEY)
@@ -1035,18 +1041,15 @@ impl Cfg {
                     (k, if v == ARRAY_VALUE { paths } else { vec![v] })
                 })
                 .collect()
-        }
+        };
 
-        let mod_state_data = self
+        let mut state_data = self
             .data()
             .section(INI_SECTIONS[2])
-            .expect("Validated by Ini::is_setup on startup");
-        let dll_data = self
-            .data()
-            .section(INI_SECTIONS[3])
-            .expect("Validated by Ini::is_setup on startup");
-        let mut state_data = mod_state_data.iter().collect::<HashMap<&str, &str>>();
-        let mut file_data = collect_paths(dll_data);
+            .expect("Validated by Ini::is_setup on startup")
+            .iter()
+            .collect::<HashMap<_, _>>();
+        let mut file_data = collect_paths();
         let invalid_state = state_data
             .keys()
             .filter(|k| !file_data.contains_key(*k))
