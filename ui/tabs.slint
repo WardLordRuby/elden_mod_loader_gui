@@ -86,35 +86,23 @@ export component ModEdit inherits Tab {
                     enabled: load-order-box.enabled;
                     checked: MainLogic.current-mods[mod-index].order.set;
                     toggled => {
+                        // Front end `order.at` is 1 based and back end is 0 based
                         if self.checked {
                             MainLogic.current-mods[mod-index].order.at = MainLogic.orders-set + 1;
-                            if selected-index != -1 && selected-order > 0 {
-                                // Front end `order.at` is 1 based and back end is 0 based
-                                temp = MainLogic.add-remove-order(self.checked, selected-dll, mod-index, selected-order - 1);
-                                if temp != 42069 {
-                                    MainLogic.orders-set = MainLogic.orders-set + temp;
-                                } else {
-                                    self.checked = !self.checked;
-                                    MainLogic.force-deserialize()
-                                }
-                                temp = 0
-                            }
-                            redraw-elements()
-                        } else {
-                            if selected-index != -1 && selected-order > 0 {
-                                temp = MainLogic.add-remove-order(self.checked, selected-dll, mod-index, selected-order - 1);
-                                if temp != 42069 {
-                                    MainLogic.orders-set = MainLogic.orders-set + temp;
-                                } else {
-                                    self.checked = !self.checked;
-                                    MainLogic.force-deserialize()
-                                }
-                                temp = 0;
-                            } else {
-                                MainLogic.current-mods[mod-index].order.at = 0
-                            }
-                            redraw-elements()
                         }
+                        if selected-index != -1 && selected-order > 0 {
+                            temp = MainLogic.add-remove-order(self.checked, selected-dll, mod-index, selected-order - 1);
+                            if temp != 42069 {
+                                MainLogic.orders-set = MainLogic.orders-set + temp;
+                            } else {
+                                self.checked = !self.checked;
+                                MainLogic.force-deserialize()
+                            }
+                            temp = 0
+                        } else if !self.checked {
+                            MainLogic.current-mods[mod-index].order.at = 0
+                        }
+                        redraw-elements()
                     }
                 }
             }
@@ -138,7 +126,7 @@ export component ModEdit inherits Tab {
                 }
                 function modify-index(v: int) {
                     if selected-index != -1 && v > 0 {
-                        temp =  MainLogic.modify-order(selected-dll, selected-dll, v - 1, mod-index, selected-index);
+                        temp = MainLogic.modify-order(selected-dll, selected-dll, v - 1, mod-index, selected-index);
                         if temp != -1 {
                             MainLogic.orders-set = MainLogic.orders-set + temp;
                             MainLogic.current-mods[mod-index].order.at = v;
