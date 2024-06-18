@@ -365,7 +365,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             let format_key = mod_name.trim().replace(' ', "_");
-            if ini.keys().contains(&format_key) {
+            if ini.keys().contains(&format_key.to_lowercase()) {
                 ui.display_msg(&format!(
                     "There is already a registered mod with the name\n\"{mod_name}\""
                 ));

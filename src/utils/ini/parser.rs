@@ -898,9 +898,8 @@ impl Cfg {
                     })
                     .collect()
             }
-            let parsed_data = collect_data_unchecked(self.data());
             return CollectedMods {
-                mods: parsed_data
+                mods: collect_data_unchecked(self.data())
                     .iter()
                     .map(|(n, s, f)| {
                         RegMod::new(
@@ -974,23 +973,23 @@ impl Cfg {
         })
     }
 
-    /// returns all the keys(as_lowercase) collected into a `Set`
+    /// returns all the keys (as_lowercase) collected into a `Set`
     /// this also calls sync keys if invalid keys are found
     #[instrument(level = "trace", skip_all)]
     pub fn keys(&mut self) -> HashSet<String> {
         fn are_keys_ok(data: &ini::Ini) -> Option<HashSet<String>> {
             let reg_mods = data.section(INI_SECTIONS[2]).expect("Validated by is_setup");
-            let mut keys = reg_mods.iter().map(|(k, _)| k.to_lowercase()).collect::<HashSet<_>>();
-            let filtered_mod_files = data
+            let state_keys = reg_mods.iter().map(|(k, _)| k.to_lowercase()).collect::<HashSet<_>>();
+            let mod_file_keys = data
                 .section(INI_SECTIONS[3])
                 .expect("Validated by is_setup")
                 .iter()
                 .filter_map(|(k, _)| if k != ARRAY_KEY { Some(k) } else { None })
                 .collect::<Vec<_>>();
-            match filtered_mod_files.iter().all(|k| !keys.insert(k.to_lowercase())) {
-                true => Some(keys),
-                false => None,
-            }
+            mod_file_keys
+                .iter()
+                .all(|k| state_keys.contains(&k.to_lowercase()))
+                .then_some(state_keys)
         }
 
         if let Some(keys) = are_keys_ok(self.data()) {
@@ -1016,6 +1015,7 @@ impl Cfg {
             .collect::<HashSet<_>>()
     }
 
+    /// returns CollectedMaps aka `(state_map, mod_file_map)`
     #[instrument(level = "trace", skip_all)]
     fn sync_keys(&self) -> CollectedMaps {
         fn collect_paths(section: &Properties) -> HashMap<&str, Vec<&str>> {
