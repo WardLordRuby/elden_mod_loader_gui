@@ -1646,39 +1646,30 @@ async fn add_dir_to_install_data(
     ui.display_confirm(&format!(
         "Current Files to install:\n{}\n\nWould you like to add a directory eg. Folder containing a config file?", 
         install_files.display_paths), true);
-    let mut result = Vec::with_capacity(1);
-    match receive_msg().await {
+    let result = match receive_msg().await {
         Message::Confirm => match get_user_folder(&install_files.parent_dir, ui.window()) {
             Ok(path) => {
                 install_files
                     .update_fields_with_new_dir(&path, utils::installer::DisplayItems::Limit(9))
                     .await
-                    .unwrap_or_else(|err| {
-                        error!("{err}");
-                        result.push(err);
-                    });
             }
-            Err(err) => result.push(err),
+            Err(err) => Err(err),
         },
-        Message::Deny => (),
-        Message::Esc => return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled"),
-    }
-    match result.is_empty() {
-        false => {
-            let err = &result[0];
-            if err.kind() == ErrorKind::InvalidInput {
-                ui.display_msg(&format!("{err}"));
-                let _ = receive_msg().await;
-                let reselect_dir =
-                    Box::pin(async { add_dir_to_install_data(install_files, ui_handle).await });
-                reselect_dir.await
-            } else {
-                error!("{err}");
-                new_io_error!(ErrorKind::Other, format!("Error: Could not Install, {err}"))
-            }
+        Message::Deny => Ok(()),
+        Message::Esc => new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled"),
+    };
+    if result.is_err() {
+        let err = result.unwrap_err();
+        if err.kind() == ErrorKind::InvalidInput {
+            ui.display_msg(&err.to_string());
+            let _ = receive_msg().await;
+            let reselect_dir =
+                Box::pin(async { add_dir_to_install_data(install_files, ui_handle).await });
+            return reselect_dir.await;
         }
-        true => confirm_install(install_files, ui_handle).await,
+        return Err(err);
     }
+    confirm_install(install_files, ui_handle).await
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -1719,9 +1710,7 @@ async fn confirm_install(
     parents.iter().try_for_each(std::fs::create_dir_all)?;
     zip.iter()
         .try_for_each(|(from_path, to_path)| std::fs::copy(from_path, to_path).map(|_| ()))?;
-    let success = format!("Installed mod: {}", &install_files.name);
-    info!("{success}");
-    ui.display_msg(&success);
+    ui.display_msg(&format!("Installed mod: {}", &install_files.name));
     Ok(zip.iter().map(|(_, to_path)| to_path.to_path_buf()).collect())
 }
 
@@ -1733,23 +1722,6 @@ async fn confirm_remove_mod(
     reg_mod: &RegMod,
     ini_dir: &Path,
 ) -> std::io::Result<()> {
-    async fn match_user_msg(mod_name: &str, install_dir: &Path) -> std::io::Result<()> {
-        match receive_msg().await {
-            Message::Confirm => Ok(()),
-            Message::Deny => {
-                new_io_error!(
-                    ErrorKind::ConnectionAborted,
-                    format!(
-                        "Files registered with: {}, are still installed at '{}'",
-                        DisplayName(mod_name),
-                        install_dir.display()
-                    )
-                )
-            }
-            Message::Esc => new_io_error!(ErrorKind::Interrupted, "De-registration canceled"),
-        }
-    }
-
     let ui = ui_handle.unwrap();
     let install_dir = match reg_mod
         .files
@@ -1760,17 +1732,35 @@ async fn confirm_remove_mod(
         Some(path) => game_dir.join(parent_or_err(path)?),
         None => return new_io_error!(ErrorKind::InvalidData, "Failed to create an install_dir"),
     };
+
+    let match_user_msg = || async {
+        match receive_msg().await {
+            Message::Confirm => Ok(()),
+            Message::Deny => {
+                new_io_error!(
+                    ErrorKind::ConnectionAborted,
+                    format!(
+                        "Files registered with: {}, are still installed at '{}'",
+                        DisplayName(&reg_mod.name),
+                        install_dir.display()
+                    )
+                )
+            }
+            Message::Esc => new_io_error!(ErrorKind::Interrupted, "De-registration canceled"),
+        }
+    };
+
     ui.display_confirm(
         "Do you want to remove mod files from the game directory?",
         true,
     );
-    match_user_msg(&reg_mod.name, &install_dir).await?;
+    match_user_msg().await?;
 
     ui.display_confirm(
         "This is a distructive action. Are you sure you want to continue?",
         false,
     );
-    match_user_msg(&reg_mod.name, &install_dir).await?;
+    match_user_msg().await?;
 
     reg_mod.remove_from_file(ini_dir)?;
     remove_mod_files(game_dir, loader_dir, reg_mod)

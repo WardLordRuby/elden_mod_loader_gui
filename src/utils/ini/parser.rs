@@ -814,7 +814,7 @@ impl<'a> Combine for CollectedMaps<'a> {
                                     file.display(),
                                     DisplayName(&curr.name)
                                 ),
-                                    true,
+                                    false,
                                 );
                                 warn!("{}", err.errors[i]);
                                 warnings.push(err.errors.pop().expect("valid range"))
