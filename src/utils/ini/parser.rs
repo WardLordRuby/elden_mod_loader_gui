@@ -681,38 +681,23 @@ impl RegMod {
     /// making modifications to `self.files` to insure that the .ini file remains valid  
     pub fn write_to_file(&self, ini_dir: &Path, was_array: bool) -> std::io::Result<()> {
         save_bool(ini_dir, INI_SECTIONS[2], &self.name, self.state)?;
-        let is_array = self.is_array();
-        match (was_array, is_array) {
-            (false, false) => save_path(
-                ini_dir,
-                INI_SECTIONS[3],
-                &self.name,
-                self.files.file_refs()[0],
-            )?,
-            (false, true) => save_paths(
+        if was_array {
+            remove_array(ini_dir, &self.name)?;
+        }
+        if self.is_array() {
+            save_paths(
                 ini_dir,
                 INI_SECTIONS[3],
                 &self.name,
                 &self.files.file_refs(),
-            )?,
-            (true, false) => {
-                remove_array(ini_dir, &self.name)?;
-                save_path(
-                    ini_dir,
-                    INI_SECTIONS[3],
-                    &self.name,
-                    self.files.file_refs()[0],
-                )?
-            }
-            (true, true) => {
-                remove_array(ini_dir, &self.name)?;
-                save_paths(
-                    ini_dir,
-                    INI_SECTIONS[3],
-                    &self.name,
-                    &self.files.file_refs(),
-                )?;
-            }
+            )?
+        } else {
+            save_path(
+                ini_dir,
+                INI_SECTIONS[3],
+                &self.name,
+                self.files.file_refs()[0],
+            )?
         }
         Ok(())
     }
