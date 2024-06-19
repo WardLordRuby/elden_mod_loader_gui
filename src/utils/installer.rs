@@ -7,11 +7,8 @@ use tracing::{error, info, instrument, trace};
 
 use crate::{
     does_dir_contain, file_name_or_err, new_io_error, parent_or_err,
-    utils::ini::{
-        parser::RegMod,
-        writer::{remove_order_entry, save_bool, save_path, save_paths},
-    },
-    FileData, INI_SECTIONS,
+    utils::ini::{parser::RegMod, writer::remove_order_entry},
+    FileData,
 };
 
 /// Returns the deepest occurance of a directory that contains at least 1 file  
@@ -603,7 +600,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> 
                 data.from_paths
                     .into_iter()
                     .map(|p| p.strip_prefix(game_dir).expect("file found here").to_path_buf())
-                    .collect::<Vec<_>>(),
+                    .collect(),
             ));
         } else {
             file_sets.push(RegMod::new(
@@ -614,13 +611,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> 
         }
     }
     for mod_data in file_sets.iter_mut() {
-        save_bool(ini_dir, INI_SECTIONS[2], &mod_data.name, mod_data.state)?;
-        let file_refs = mod_data.files.file_refs();
-        if file_refs.len() == 1 {
-            save_path(ini_dir, INI_SECTIONS[3], &mod_data.name, file_refs[0])?;
-        } else {
-            save_paths(ini_dir, INI_SECTIONS[3], &mod_data.name, &file_refs)?;
-        }
+        mod_data.write_to_file(ini_dir, false)?;
         mod_data.verify_state(game_dir, ini_dir)?;
     }
     let mods_found = file_sets.len();
