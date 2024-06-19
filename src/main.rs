@@ -1546,11 +1546,13 @@ fn deserialize_split_files(split_files: &SplitFiles) -> DeserializedFileData {
 }
 
 fn deserialize_mod(mod_data: &RegMod) -> DisplayMod {
+    const ELIDE_LEN: usize = 20;
+
     let (files, dll_files, config_files) = deserialize_split_files(&mod_data.files);
     let name = mod_data.name.replace('_', " ");
     DisplayMod {
-        displayname: SharedString::from(if mod_data.name.chars().count() > 20 {
-            name.chars().take(17).chain("...".chars()).collect()
+        displayname: SharedString::from(if mod_data.name.chars().count() > ELIDE_LEN {
+            name.chars().take(ELIDE_LEN - 3).chain("...".chars()).collect()
         } else {
             name.clone()
         }),
@@ -1658,8 +1660,7 @@ async fn add_dir_to_install_data(
         Message::Deny => Ok(()),
         Message::Esc => new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled"),
     };
-    if result.is_err() {
-        let err = result.unwrap_err();
+    if let Err(err) = result {
         if err.kind() == ErrorKind::InvalidInput {
             ui.display_msg(&err.to_string());
             let _ = receive_msg().await;
@@ -1740,7 +1741,7 @@ async fn confirm_remove_mod(
                 new_io_error!(
                     ErrorKind::ConnectionAborted,
                     format!(
-                        "Files registered with: {}, are still installed at '{}'",
+                        "Files registered with: {}, are still installed at: '{}'",
                         DisplayName(&reg_mod.name),
                         install_dir.display()
                     )

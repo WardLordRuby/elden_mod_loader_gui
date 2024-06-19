@@ -423,8 +423,8 @@ impl InstallData {
         Ok(())
     }
 
-    /// this function is intended to add a directory to a `InstallData::new()`  
-    /// subsequent runs of this funciton is not tested and not expected to work
+    /// adds a directories contents to a `InstallData::new()`  
+    /// **Note:** subsequent runs of this funciton is not tested and not expected to work
     #[instrument(level = "trace", skip_all, fields(in_dir = %new_directory.display()))]
     pub async fn update_fields_with_new_dir(
         &mut self,
