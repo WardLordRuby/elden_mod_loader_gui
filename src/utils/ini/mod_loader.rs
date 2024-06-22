@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     io::ErrorKind,
     path::{Path, PathBuf},
 };
@@ -32,6 +32,8 @@ impl ModLoader {
         let mut cfg_dir = game_dir.join(LOADER_FILES[2]);
         let mut properties = ModLoader::default();
         match does_dir_contain(game_dir, Operation::Count, &LOADER_FILES) {
+            // MARK: TODO
+            // add state for if _dinput8.dll is found (how anti-cheat-toggle will disable mod loader)
             Ok(OperationResult::Count((_, files))) => {
                 if files.contains(LOADER_FILES[1]) && !files.contains(LOADER_FILES[0]) {
                     properties.installed = true;
@@ -46,7 +48,7 @@ impl ModLoader {
             Err(err) => return Err(err),
             _ => unreachable!(),
         };
-        if properties.installed && properties.path == Path::new("") {
+        if properties.installed && properties.path.as_os_str().is_empty() {
             info!("{} not found", LOADER_FILES[2]);
             new_cfg(&cfg_dir)?;
             properties.path = cfg_dir;
@@ -149,6 +151,10 @@ impl ModLoaderCfg {
     /// this function also fixes usize.parse() errors and if values are out of order
     #[instrument(level = "trace", skip_all)]
     pub fn parse_section(&mut self) -> std::io::Result<OrderMap> {
+        if self.mods_is_empty() {
+            trace!("No mods have load order");
+            return Ok(HashMap::new());
+        }
         if self.section().contains_key(LOADER_EXAMPLE) {
             self.mut_section().remove(LOADER_EXAMPLE);
             self.write_to_file()?;
@@ -162,8 +168,13 @@ impl ModLoaderCfg {
         }
         let mut values = self.iter().filter_map(|(k, _)| map.get(k)).collect::<Vec<_>>();
         values.sort();
-        for (i, value) in values.iter().enumerate() {
-            if i != **value {
+        let mut count = if *values[0] == 0 { 0 } else { 1 };
+        for value in values.iter() {
+            if count != **value && {
+                count += 1;
+                count
+            } != **value
+            {
                 self.update_order_entries(None)?;
                 info!(
                     "Found entries out of order, sorted load order entries in: {}",
@@ -192,10 +203,10 @@ impl ModLoaderCfg {
     #[instrument(level = "trace", skip(self))]
     pub fn update_order_entries(&mut self, stable: Option<&str>) -> std::io::Result<()> {
         let mut k_v = Vec::with_capacity(self.section().len());
-        let (mut stable_k, mut stable_v) = ("", 0_usize);
+        let (mut stable_k, mut stable_v) = ("", 69420_usize);
         for (k, v) in self.iter() {
-            if let Some(new_k) = stable {
-                if k == new_k {
+            if let Some(input_k) = stable {
+                if k == input_k {
                     (stable_k, stable_v) = (k, v.parse::<usize>().unwrap_or(usize::MAX));
                     continue;
                 }
@@ -203,25 +214,37 @@ impl ModLoaderCfg {
             k_v.push((k, v.parse::<usize>().unwrap_or(usize::MAX)));
         }
         k_v.sort_by_key(|(_, v)| *v);
+        dbg!(&k_v);
+        dbg!((stable_k, stable_v));
 
         let mut new_section = ini::Properties::new();
 
         if k_v.is_empty() && !stable_k.is_empty() {
-            new_section.append(stable_k, "0");
+            new_section.append(stable_k, stable_v.to_string());
         } else {
-            let mut offset = 0_usize;
-            for (k, _) in k_v {
+            let mut offset: usize = if k_v[0].1 == 0 || stable_v == 0 { 0 } else { 1 };
+            let mut iter = k_v.iter().peekable();
+            while let Some((k, v)) = iter.next() {
                 if !stable_k.is_empty() && stable_v == offset {
                     new_section.append(std::mem::take(&mut stable_k), stable_v.to_string());
-                    offset += 1;
+                    if *v != stable_v && *v > offset {
+                        offset += 1;
+                    }
                 }
-                new_section.append(k, offset.to_string());
-                offset += 1;
+                new_section.append(*k, offset.to_string());
+                if let Some((_, next_v)) = iter.peek() {
+                    if v != next_v && *next_v > offset {
+                        offset += 1
+                    }
+                } else if !stable_k.is_empty() && *v != stable_v && stable_v > offset {
+                    offset += 1
+                }
             }
             if !stable_k.is_empty() {
                 new_section.append(stable_k, offset.to_string())
             }
         }
+        dbg!(&new_section);
         std::mem::swap(self.mut_section(), &mut new_section);
         trace!("re-calculated the order of entries in {}", LOADER_FILES[2]);
         self.write_to_file()
