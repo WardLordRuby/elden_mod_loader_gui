@@ -525,6 +525,8 @@ pub fn format_panic_info(info: &std::panic::PanicInfo) -> String {
     };
     if let Some(msg) = info.payload().downcast_ref::<&str>() {
         format!("{payload_str} {msg}")
+    } else if let Some(msg) = info.payload().downcast_ref::<String>() {
+        format!("{payload_str} {msg}")
     } else {
         format!("{payload_str} no attached message")
     }
