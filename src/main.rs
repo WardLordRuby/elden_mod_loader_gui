@@ -1145,6 +1145,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 load_orders.append(&to_k, value.to_string());
             };
 
+            // MARK: TODO
+            // we need a way to determine if front end state is out of sync and multiple entries `order.at` need to be updated
             ui.global::<MainLogic>()
                 .set_max_order(load_order.update_order_entries(Some(&to_k)) as i32);
             if let Err(err) = load_order.write_to_file() {
@@ -1801,19 +1803,19 @@ async fn confirm_scan_mods(
         _new_map.as_ref().unwrap()
     });
 
-    let mut old_mods: Vec<RegMod>;
-    if !ini.mods_is_empty() {
+    let mut old_mods = if ini.mods_is_empty() {
+        Vec::new()
+    } else {
         ui.display_confirm("Warning: This action will reset current registered mods, are you sure you want to continue?", true);
         if receive_msg().await != Message::Confirm {
             return Ok(());
         };
-        old_mods = {
-            let data = ini.collect_mods(game_dir, Some(order_map), false);
-            if let Some(warning) = data.warnings {
-                ui.display_msg(&warning.to_string());
-            }
-            data.mods
-        };
+
+        let data = ini.collect_mods(game_dir, Some(order_map), false);
+        if let Some(warning) = data.warnings {
+            ui.display_msg(&warning.to_string());
+        }
+
         let dark_mode = ui.global::<SettingsLogic>().get_dark_mode();
         let save_log = ini.get_save_log().unwrap_or(true);
 
@@ -1826,22 +1828,22 @@ async fn confirm_scan_mods(
             save_bool(ini.path(), INI_SECTIONS[0], INI_KEYS[1], save_log)?;
         }
         save_path(ini.path(), INI_SECTIONS[1], INI_KEYS[2], game_dir)?;
-    } else {
-        old_mods = Vec::new();
-    }
-    let new_mods: CollectedMods;
-    match scan_for_mods(game_dir, ini.path()) {
+        data.mods
+    };
+
+    let new_mods = match scan_for_mods(game_dir, ini.path()) {
         Ok(len) => {
             let new_ini = Cfg::read(ini.path())?;
             ui.global::<MainLogic>().set_current_subpage(0);
             let order_data = order_data_or_default(ui.as_weak(), Some(loader_dir));
-            new_mods = new_ini.collect_mods(game_dir, Some(&order_data), false);
+            let new_mods = new_ini.collect_mods(game_dir, Some(&order_data), false);
             deserialize_collected_mods(&new_mods, ui.as_weak());
             ui.display_msg(&format!("Found {len} mod(s)"));
+            new_mods
         }
         Err(err) => {
             ui.display_msg(&format!("{err}"));
-            new_mods = CollectedMods::default();
+            CollectedMods::default()
         }
     };
     if let Some(warning) = new_mods.warnings {
