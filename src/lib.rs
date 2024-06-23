@@ -683,13 +683,14 @@ impl ErrorClone for std::io::Error {
 }
 
 pub trait Merge {
-    /// joins all `io::Error`'s in a collection while leaving the collection intact
+    /// joins all `io::Error`'s in a collection while leaving the collection intact  
+    /// **Note:** will panic if called on an empty array
     fn merge(&self, add_new_line: bool) -> std::io::Error;
 }
 impl Merge for [std::io::Error] {
     fn merge(&self, add_new_line: bool) -> std::io::Error {
         if self.is_empty() {
-            return std::io::Error::new(ErrorKind::InvalidInput, "Tried to merge 0 errors");
+            panic!("Tried to merge 0 errors");
         }
         let mut new_err: std::io::Error = self[0].clone_err();
         if self.len() > 1 {
