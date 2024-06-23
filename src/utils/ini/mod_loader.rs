@@ -129,7 +129,8 @@ impl ModLoaderCfg {
         });
         if !unknown_keys.is_empty() {
             if update_order {
-                self.update_order_entries(None)?;
+                self.update_order_entries(None);
+                self.write_to_file()?;
                 return new_io_error!(ErrorKind::Unsupported,
                     format!("Found load order set for file(s) not registered with the app. The following key(s) order were changed: {}", 
                     DisplayStrs(&unknown_keys))
@@ -163,7 +164,8 @@ impl ModLoaderCfg {
         let map = self.parse_into_map();
         if self.section().len() != map.len() {
             trace!("fixing usize parse error in: {}", LOADER_FILES[2]);
-            self.update_order_entries(None)?;
+            self.update_order_entries(None);
+            self.write_to_file()?;
             return Ok(self.parse_into_map());
         }
         let mut values = self.iter().filter_map(|(k, _)| map.get(k)).collect::<Vec<_>>();
@@ -175,7 +177,8 @@ impl ModLoaderCfg {
                 count
             } != **value
             {
-                self.update_order_entries(None)?;
+                self.update_order_entries(None);
+                self.write_to_file()?;
                 info!(
                     "Found entries out of order, sorted load order entries in: {}",
                     LOADER_FILES[2]
@@ -194,14 +197,15 @@ impl ModLoaderCfg {
             .collect::<OrderMap>()
     }
 
-    /// updates the load order values in `Some("loadorder")` so they are always `0..`  
+    /// updates the load order values in `Some("loadorder")` so they are always no gaps in values  
     /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  
-    /// then writes the updated key values to file
-    ///
-    /// error case:
-    /// - fails to write to file  
+    /// then returns returns the calculation for the correct max_order val (same logic appears in `[RegMod].max_order()`)
     #[instrument(level = "trace", skip(self))]
-    pub fn update_order_entries(&mut self, stable: Option<&str>) -> std::io::Result<()> {
+    pub fn update_order_entries(&mut self, stable: Option<&str>) -> usize {
+        if self.mods_is_empty() && stable.is_none() {
+            trace!("nothing to update");
+            return 1;
+        }
         let mut k_v = Vec::with_capacity(self.section().len());
         let (mut stable_k, mut stable_v) = ("", 69420_usize);
         for (k, v) in self.iter() {
@@ -219,14 +223,19 @@ impl ModLoaderCfg {
 
         let mut new_section = ini::Properties::new();
 
-        if k_v.is_empty() && !stable_k.is_empty() {
-            new_section.append(stable_k, stable_v.to_string());
+        let max_order = if k_v.is_empty() && !stable_k.is_empty() {
+            new_section.append(stable_k, if stable_v == 0 { "0" } else { "1" });
+            1
         } else {
-            let mut offset: usize = if k_v[0].1 == 0 || stable_v == 0 { 0 } else { 1 };
+            let mut offset: usize = if (!k_v.is_empty() && k_v[0].1 == 0) || stable_v == 0 {
+                0
+            } else {
+                1
+            };
             let mut iter = k_v.iter().peekable();
             while let Some((k, v)) = iter.next() {
                 if !stable_k.is_empty() && stable_v == offset {
-                    new_section.append(std::mem::take(&mut stable_k), stable_v.to_string());
+                    new_section.append(std::mem::take(&mut stable_k), offset.to_string());
                     if *v != stable_v && *v > offset {
                         offset += 1;
                     }
@@ -234,41 +243,77 @@ impl ModLoaderCfg {
                 new_section.append(*k, offset.to_string());
                 if let Some((_, next_v)) = iter.peek() {
                     if v != next_v && *next_v > offset {
-                        offset += 1
+                        offset += 1;
                     }
                 } else if !stable_k.is_empty() && *v != stable_v && stable_v > offset {
-                    offset += 1
+                    offset += 1;
                 }
             }
+            let end_offset_str = offset.to_string();
             if !stable_k.is_empty() {
-                new_section.append(stable_k, offset.to_string())
+                new_section.append(stable_k, &end_offset_str);
             }
-        }
+            if new_section.len() == 1 {
+                1
+            } else if new_section.iter().filter(|(_, v)| *v == end_offset_str).count() == 1 {
+                offset
+            } else {
+                offset + 1
+            }
+        };
         dbg!(&new_section);
         std::mem::swap(self.mut_section(), &mut new_section);
         trace!("re-calculated the order of entries in {}", LOADER_FILES[2]);
-        self.write_to_file()
-    }
-}
-
-pub trait Countable {
-    /// returns the number of entries in a colletion that have `mod.order.set`
-    fn order_count(&self) -> usize;
-}
-
-impl Countable for [RegMod] {
-    #[inline]
-    fn order_count(&self) -> usize {
-        self.iter().filter(|m| m.order.set).count()
+        max_order
     }
 }
 
 type DllSet<'a> = HashSet<&'a str>;
-pub trait NameSet {
+
+pub trait RegModsExt {
+    /// returns the number of entries in a colletion that have `mod.order.set`
+    fn order_count(&self) -> usize;
+
+    /// returns the calculation for the correct max_order val
+    fn max_order(&self) -> usize;
+
+    /// returns a `HashSet` of all .dll files with their `OFFSTATE` omitted
     fn dll_name_set(&self) -> DllSet;
 }
 
-impl NameSet for [RegMod] {
+impl RegModsExt for [RegMod] {
+    #[inline]
+    fn order_count(&self) -> usize {
+        self.iter().filter(|m| m.order.set).count()
+    }
+
+    fn max_order(&self) -> usize {
+        let set_indices = self
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.order.set)
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>();
+        if set_indices.is_empty() || set_indices.len() == 1 {
+            return 1;
+        }
+        let high_order = set_indices
+            .iter()
+            .map(|i| self[*i].order.at)
+            .max()
+            .expect("order set to a usize");
+        if set_indices
+            .iter()
+            .filter(|i| self[**i].order.at == high_order)
+            .count()
+            == 1
+        {
+            high_order
+        } else {
+            high_order + 1
+        }
+    }
+
     fn dll_name_set(&self) -> DllSet {
         self.iter()
             .flat_map(|reg_mod| {

@@ -6,7 +6,7 @@ use elden_mod_loader_gui::{
     utils::{
         ini::{
             common::*,
-            mod_loader::{Countable, ModLoader, NameSet},
+            mod_loader::{ModLoader, RegModsExt},
             parser::{CollectedMods, RegMod, Setup, SplitFiles},
             writer::*,
         },
@@ -850,11 +850,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 }
                 let dlls = reg_mods.dll_name_set();
-                let order_count = reg_mods.order_count();
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
                 mut_model.remove(row as usize);
-                loader.verify_keys(&dlls, order_count).unwrap_or_else(|err| {
+                loader.verify_keys(&dlls, reg_mods.order_count()).unwrap_or_else(|err| {
                     match err.kind() {
                         ErrorKind::Other => info!("{err}"),
                         ErrorKind::Unsupported => warn!("{err}"),
@@ -868,7 +867,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     HashMap::new()
                 });
                 if found_mod.order.set {
-                    ui.global::<MainLogic>().set_orders_set(order_count as i32);
+                    ui.global::<MainLogic>().set_max_order(reg_mods.max_order() as i32);
                     model.update_order(None, &order_data, ui.as_weak());
                 }
                 for message in messages {
@@ -1054,14 +1053,13 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_add_remove_order({
         let ui_handle = ui.as_weak();
-        move |state, key, row, value| -> i32 {
+        move |state, key, row, value| -> bool {
             let span = info_span!("add_remove_order");
             let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
-            let error = 42069_i32;
+            let error = false;
             let cfg_dir = get_loader_ini_dir();
-            let result: i32 = if state { 1 } else { -1 };
             let mut load_order = match ModLoaderCfg::read(cfg_dir) {
                 Ok(data) => data,
                 Err(err) => {
@@ -1078,14 +1076,16 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 false => {
                     if !load_orders.contains_key(&key) {
-                        warn!(?key, "Could not find key in {}", LOADER_FILES[2]);
+                        warn!(?key, "Could not find key in: {}", LOADER_FILES[2]);
                         return error;
                     }
                     load_orders.remove(&key);
                     None
                 }
             };
-            if let Err(err) = load_order.update_order_entries(stable_k) {
+            ui.global::<MainLogic>()
+                .set_max_order(load_order.update_order_entries(stable_k) as i32);
+            if let Err(err) = load_order.write_to_file() {
                 error!("{err}");
                 ui.display_msg(&format!(
                     "Failed to write to \"mod_loader_config.ini\"\n{err}"
@@ -1115,18 +1115,17 @@ fn main() -> Result<(), slint::PlatformError> {
                 true => info!("Load order set to {}, for {}", value + 1, key),
                 false => info!("Load order removed for {}", key),
             }
-            result
+            !error
         }
     });
     ui.global::<MainLogic>().on_modify_order({
         let ui_handle = ui.as_weak();
-        move |to_k, from_k, value, row, dll_i| -> i32 {
+        move |to_k, from_k, value, row, dll_i| -> bool {
             let span = info_span!("modify_order");
             let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
-            let mut result = 0_i32;
-            let error = -1_i32;
+            let error = false;
             let cfg_dir = get_loader_ini_dir();
             let mut load_order = match ModLoaderCfg::read(cfg_dir) {
                 Ok(data) => data,
@@ -1144,10 +1143,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 load_orders.insert(&to_k, value.to_string())
             } else {
                 load_orders.append(&to_k, value.to_string());
-                result = 1
             };
 
-            if let Err(err) = load_order.update_order_entries(Some(&to_k)) {
+            ui.global::<MainLogic>()
+                .set_max_order(load_order.update_order_entries(Some(&to_k)) as i32);
+            if let Err(err) = load_order.write_to_file() {
                 error!("{err}");
                 ui.display_msg(&format!(
                     "Failed to write to \"mod_loader_config.ini\"\n{err}"
@@ -1155,10 +1155,12 @@ fn main() -> Result<(), slint::PlatformError> {
                 return error;
             };
 
+            let model = ui.global::<MainLogic>().get_current_mods();
+            let mut selected_mod =
+                model.row_data(row as usize).expect("front end gives us valid row");
+            // MARK: FIXME
+            // sorting algorithm needs to be update to work with new load_order behavior
             if to_k != from_k {
-                let model = ui.global::<MainLogic>().get_current_mods();
-                let mut selected_mod =
-                    model.row_data(row as usize).expect("front end gives us valid row");
                 selected_mod.order.i = dll_i;
                 if !selected_mod.order.set {
                     selected_mod.order.set = true
@@ -1175,22 +1177,23 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 }
             } else if value != row {
-                let model = ui.global::<MainLogic>().get_current_mods();
-                let mut curr_row =
-                    model.row_data(row as usize).expect("front end gives us valid row");
-                let mut replace_row =
-                    model.row_data(value as usize).expect("front end gives us valid row");
-                std::mem::swap(&mut curr_row.order.at, &mut replace_row.order.at);
-                model.set_row_data(row as usize, replace_row);
-                model.set_row_data(value as usize, curr_row);
-                ui.invoke_update_mod_index(value, 1);
-                ui.invoke_redraw_checkboxes();
+                if value < load_order.mods_registered() as i32 {
+                    let replace_row =
+                        model.row_data(value as usize).expect("front end gives us valid row");
+                    if selected_mod.order.at != replace_row.order.at {
+                        // std::mem::swap(&mut selected_mod.order.at, &mut replace_row.order.at);
+                        model.set_row_data(row as usize, replace_row);
+                        model.set_row_data(value as usize, selected_mod);
+                        ui.invoke_update_mod_index(value, 1);
+                        ui.invoke_redraw_checkboxes();
+                    }
+                }
             }
             if !from_k.is_empty() && to_k != from_k {
                 info!("Load order removed for {}", from_k);
             }
-            info!("Load order set to {}, for {}", value + 1, to_k);
-            result
+            info!("Load order set to {}, for {}", value, to_k);
+            !error
         }
     });
     ui.global::<MainLogic>().on_force_deserialize({
@@ -1256,7 +1259,7 @@ impl Sortable for ModelRc<DisplayMod> {
             .is_some()
             {
                 let new_order = new_order.unwrap();
-                curr_row.order.at = *new_order as i32 + 1;
+                curr_row.order.at = *new_order as i32;
                 if let Some(ref key) = selected_key {
                     if curr_row.name == key {
                         selected_i = *new_order;
@@ -1565,7 +1568,7 @@ fn deserialize_mod(mod_data: &RegMod) -> DisplayMod {
             at: if !mod_data.order.set {
                 0
             } else {
-                mod_data.order.at as i32 + 1
+                mod_data.order.at as i32
             },
             i: if !mod_data.order.set && mod_data.files.dll.len() != 1 {
                 -1
@@ -1590,8 +1593,7 @@ fn deserialize_collected_mods(data: &CollectedMods, ui_handle: slint::Weak<App>)
         .for_each(|mod_data| display_mods.push(deserialize_mod(mod_data)));
 
     ui.global::<MainLogic>().set_current_mods(ModelRc::from(display_mods));
-    ui.global::<MainLogic>()
-        .set_orders_set(data.mods.order_count() as i32);
+    ui.global::<MainLogic>().set_max_order(data.mods.max_order() as i32);
     trace!("deserialized mods");
 }
 

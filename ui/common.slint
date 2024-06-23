@@ -23,14 +23,14 @@ export global MainLogic {
     callback remove-mod(string, int);
     callback edit-config([string]);
     callback edit-config-item(StandardListViewItem);
-    callback add-remove-order(bool, string, int, int) -> int;
-    callback modify-order(string, string, int, int, int) -> int;
+    callback add-remove-order(bool, string, int, int) -> bool;
+    callback modify-order(string, string, int, int, int) -> bool;
     callback force-app-focus();
     callback force-deserialize();
     callback send-message(Message);
     in property <string> line-edit-text;
     in-out property <bool> game-path-valid;
-    in-out property <int> orders-set;
+    in-out property <int> max-order;
     in-out property <int> current-subpage: 0;
     in-out property <[DisplayMod]> current-mods;
     // Placeholder data for easy live editing

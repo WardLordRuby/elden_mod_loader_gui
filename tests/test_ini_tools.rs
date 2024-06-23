@@ -11,7 +11,7 @@ mod tests {
         get_cfg,
         utils::ini::{
             common::*,
-            mod_loader::Countable,
+            mod_loader::RegModsExt,
             parser::{IniProperty, RegMod, Setup},
             writer::*,
         },
@@ -147,7 +147,8 @@ mod tests {
 
         let parsed_cfg = cfg.parse_section().unwrap();
 
-        cfg.update_order_entries(None).unwrap();
+        cfg.update_order_entries(None);
+        cfg.write_to_file().unwrap();
         let order = test_keys
             .iter()
             .enumerate()
