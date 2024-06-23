@@ -152,26 +152,23 @@ impl ModLoaderCfg {
     /// this function also fixes usize.parse() errors and if values are out of order
     #[instrument(level = "trace", skip_all)]
     pub fn parse_section(&mut self) -> std::io::Result<OrderMap> {
-        if self.mods_is_empty() {
-            trace!("No mods have load order");
-            return Ok(HashMap::new());
-        }
         if self.section().contains_key(LOADER_EXAMPLE) {
             self.mut_section().remove(LOADER_EXAMPLE);
             self.write_to_file()?;
             info!("Removed: '{LOADER_EXAMPLE}' from: {}", LOADER_FILES[2]);
         }
+        if self.mods_is_empty() {
+            trace!("No mods have load order");
+            return Ok(HashMap::new());
+        }
         let map = self.parse_into_map();
-        if self.section().len() != map.len() {
+        if self.mods_registered() != map.len() {
             trace!("fixing usize parse error in: {}", LOADER_FILES[2]);
             self.update_order_entries(None);
             self.write_to_file()?;
             return Ok(self.parse_into_map());
         }
         let mut values = self.iter().filter_map(|(k, _)| map.get(k)).collect::<Vec<_>>();
-        if values.is_empty() {
-            return Ok(self.parse_into_map());
-        }
         values.sort();
         let mut count = if *values[0] == 0 { 0 } else { 1 };
         for value in values {
