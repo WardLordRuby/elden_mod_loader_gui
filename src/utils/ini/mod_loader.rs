@@ -169,13 +169,16 @@ impl ModLoaderCfg {
             return Ok(self.parse_into_map());
         }
         let mut values = self.iter().filter_map(|(k, _)| map.get(k)).collect::<Vec<_>>();
+        if values.is_empty() {
+            return Ok(self.parse_into_map());
+        }
         values.sort();
         let mut count = if *values[0] == 0 { 0 } else { 1 };
-        for value in values.iter() {
-            if count != **value && {
+        for value in values {
+            if count != *value && {
                 count += 1;
                 count
-            } != **value
+            } != *value
             {
                 self.update_order_entries(None);
                 self.write_to_file()?;
