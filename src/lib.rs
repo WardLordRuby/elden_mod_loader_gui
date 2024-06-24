@@ -253,7 +253,7 @@ pub enum OperationResult<'a> {
 /// `Operation::Count` maps to `OperationResult::Count((_num_found_, _HashSet<_&input_list_>))`  
 /// when matching you will always have to `_ => unreachable()` for the return type you will never get
 #[instrument(level = "trace", skip(dir, list), fields(input = 
-    %DisplayStrs(
+    %DisplayVec(
         &list.iter().map(|t| t.borrow()).collect::<Vec<&str>>(),
     )))
 ]
@@ -491,7 +491,7 @@ fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> std::io::Result<Pat
         } else if !path.exists() {
             return new_io_error!(
                 ErrorKind::NotFound,
-                format!("Could not locate: {}", DisplayStrs(target_path))
+                format!("Could not locate: {}", DisplayVec(target_path))
             );
         }
     }
@@ -532,45 +532,62 @@ pub fn format_panic_info(info: &std::panic::PanicInfo) -> String {
     }
 }
 
-pub struct DisplayStrs<'a, S: AsRef<str>>(pub &'a [S]);
+pub trait DisplayItem {
+    fn display_item(&self, f: &mut std::fmt::Formatter, add: &str) -> std::fmt::Result;
+}
 
-impl<'a, S: AsRef<str>> std::fmt::Display for DisplayStrs<'a, S> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        if self.0.is_empty() {
-            panic!("Tried to format an empty Vec");
-        }
-        if self.0.len() == 1 {
-            return write!(f, "{}", self.0[0].as_ref());
-        }
-        write!(f, "[")?;
-        let last_e = self.0.len() - 1;
-        self.0.iter().enumerate().try_for_each(|(i, e)| {
-            if i != last_e {
-                write!(f, "{}, ", e.as_ref())
-            } else {
-                write!(f, "{}]", e.as_ref())
-            }
-        })
+impl DisplayItem for &str {
+    #[inline]
+    fn display_item(&self, f: &mut std::fmt::Formatter, add: &str) -> std::fmt::Result {
+        write!(f, "{}{}", self, add)
     }
 }
 
-pub struct DisplayPaths<'a, P: AsRef<Path>>(pub &'a [P]);
+impl DisplayItem for String {
+    #[inline]
+    fn display_item(&self, f: &mut std::fmt::Formatter, add: &str) -> std::fmt::Result {
+        write!(f, "{}{}", self, add)
+    }
+}
 
-impl<'a, P: AsRef<Path>> std::fmt::Display for DisplayPaths<'a, P> {
+impl DisplayItem for &Path {
+    #[inline]
+    fn display_item(&self, f: &mut std::fmt::Formatter, add: &str) -> std::fmt::Result {
+        write!(f, "{}{}", self.display(), add)
+    }
+}
+
+impl DisplayItem for PathBuf {
+    #[inline]
+    fn display_item(&self, f: &mut std::fmt::Formatter, add: &str) -> std::fmt::Result {
+        write!(f, "{}{}", self.display(), add)
+    }
+}
+
+impl DisplayItem for usize {
+    #[inline]
+    fn display_item(&self, f: &mut std::fmt::Formatter, add: &str) -> std::fmt::Result {
+        write!(f, "{}{}", self, add)
+    }
+}
+
+pub struct DisplayVec<'a, T: DisplayItem>(pub &'a [T]);
+
+impl<'a, T: DisplayItem> std::fmt::Display for DisplayVec<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if self.0.is_empty() {
             panic!("Tried to format an empty Vec");
         }
         if self.0.len() == 1 {
-            return write!(f, "{}", self.0[0].as_ref().display());
+            return self.0[0].display_item(f, "");
         }
         write!(f, "[")?;
         let last_e = self.0.len() - 1;
         self.0.iter().enumerate().try_for_each(|(i, e)| {
             if i != last_e {
-                write!(f, "{}, ", e.as_ref().display())
+                e.display_item(f, ", ")
             } else {
-                write!(f, "{}]", e.as_ref().display())
+                e.display_item(f, "]")
             }
         })
     }

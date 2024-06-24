@@ -14,8 +14,8 @@ use crate::{
         common::Config,
         writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
     },
-    Cfg, DisplayName, DisplayPaths, DisplayState, DisplayStrs, FileData, IntoIoError, Merge,
-    ModError, OrderMap, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
+    Cfg, DisplayName, DisplayState, DisplayVec, FileData, IntoIoError, Merge, ModError, OrderMap,
+    ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
 };
 
 pub trait Parsable: Sized {
@@ -97,7 +97,7 @@ impl Parsable for PathBuf {
                             ErrorKind::NotFound,
                             format!(
                                 "Could not verify the install directory of Elden Ring, the following files were not found: {}",
-                                DisplayStrs(&not_found),
+                                DisplayVec(&not_found),
                             )
                         );
                     }
@@ -266,7 +266,7 @@ impl<T: AsRef<Path>> Setup for T {
                 ErrorKind::InvalidData,
                 format!(
                     "Could not find section(s): {}, in: {}",
-                    DisplayStrs(&not_found),
+                    DisplayVec(&not_found),
                     self.as_ref()
                         .file_name()
                         .expect("valid file")
@@ -457,7 +457,7 @@ impl LoadOrder {
         } else {
             error!(
                 "Failed to retrieve file_name for Path in: {} Returning LoadOrder::default",
-                DisplayPaths(dll_files)
+                DisplayVec(dll_files)
             )
         };
         LoadOrder::default()
@@ -650,7 +650,7 @@ impl RegMod {
                     ErrorKind::NotFound,
                     format!(
                         "File(s): {}, can not be found on machine",
-                        DisplayPaths(&not_found)
+                        DisplayVec(&not_found)
                     )
                 );
             }
@@ -659,7 +659,7 @@ impl RegMod {
                 ErrorKind::PermissionDenied,
                 format!(
                     "One or more of: {}, existance can neither be confirmed nor denied",
-                    DisplayPaths(&self.files.dll)
+                    DisplayVec(&self.files.dll)
                 )
             );
         }

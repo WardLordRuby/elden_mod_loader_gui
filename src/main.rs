@@ -401,7 +401,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                 match shorten_paths(&file_paths, &game_dir) {
                                     Ok(installed_and_shortend) => installed_and_shortend,
                                     Err(err) => {
-                                        let err_string = format!("New mod installed but ran into StripPrefixError on {}", DisplayPaths(&err.err_paths_long));
+                                        let err_string = format!("New mod installed but ran into StripPrefixError on {}", DisplayVec(&err.err_paths_long));
                                         error!("{err_string}");
                                         ui.display_msg(&err_string);
                                         return;
@@ -532,7 +532,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 error!(
                     "Required game files not found in: '{}', files missing: {}",
                     try_path.display(),
-                    DisplayStrs(&not_found)
+                    DisplayVec(&not_found)
                 );
                 ui.display_msg(&format!(
                     "Could not find Elden Ring in:\n\"{}\"",
@@ -691,7 +691,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                 match shorten_paths(&file_paths, &game_dir) {
                                     Ok(installed_and_shortend) => installed_and_shortend,
                                     Err(err) => {
-                                        let err_string = format!("Files installed but ran into StripPrefixError on {}", DisplayPaths(&err.err_paths_long));
+                                        let err_string = format!("Files installed but ran into StripPrefixError on {}", DisplayVec(&err.err_paths_long));
                                         error!("{err_string}");
                                         ui.display_msg(&err_string);
                                         return;
