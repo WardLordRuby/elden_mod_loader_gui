@@ -1,4 +1,4 @@
-import { GroupBox, Button, StandardListView, Switch, ComboBox, SpinBox, CheckBox } from "std-widgets.slint";
+import { GroupBox, Button, StandardListView, Switch, ComboBox, SpinBox } from "std-widgets.slint";
 import { Tab, SettingsLogic, MainLogic, Formatting } from "common.slint";
 
 export component ModDetails inherits Tab {
@@ -85,9 +85,8 @@ export component ModEdit inherits Tab {
                     enabled: load-order-box.enabled;
                     checked: MainLogic.current-mods[mod-index].order.set;
                     toggled => {
-                        // Front end `order.at` is 1 based and back end is 0 based
                         if self.checked {
-                            MainLogic.current-mods[mod-index].order.at = MainLogic.max-order + 1;
+                            MainLogic.current-mods[mod-index].order.at = MainLogic.max-order.duplicate-high-order ? MainLogic.max-order.val : MainLogic.max-order.val + 1;
                         }
                         if selected-index != -1 {
                             if !MainLogic.add-remove-order(self.checked, selected-dll, mod-index, selected-order) {
@@ -140,7 +139,7 @@ export component ModEdit inherits Tab {
                     width: 106px;
                     enabled: load-order.checked && load-order-box.enabled;
                     minimum: 0;
-                    maximum: MainLogic.max-order;
+                    maximum: MainLogic.max-order.val;
                     value: selected-order;
                     edited(int) => { modify-index(int) }
                 }

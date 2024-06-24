@@ -428,7 +428,6 @@ pub struct LoadOrder {
     pub i: usize,
 
     /// current set value of `load_order`  
-    /// `self.at` is stored as 0 index | front end uses 1 index
     pub at: usize,
 }
 

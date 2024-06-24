@@ -867,7 +867,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     HashMap::new()
                 });
                 if found_mod.order.set {
-                    ui.global::<MainLogic>().set_max_order(reg_mods.max_order() as i32);
+                    ui.global::<MainLogic>().set_max_order(MaxOrder::from(reg_mods.max_order()));
                     model.update_order(None, &order_data, ui.as_weak());
                 }
                 for message in messages {
@@ -1083,8 +1083,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     None
                 }
             };
-            ui.global::<MainLogic>()
-                .set_max_order(load_order.update_order_entries(stable_k) as i32);
+            let (max_order, missing_val) = load_order.update_order_entries(stable_k);
             if let Err(err) = load_order.write_to_file() {
                 error!("{err}");
                 ui.display_msg(&format!(
@@ -1092,6 +1091,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 ));
                 return error;
             };
+            ui.global::<MainLogic>().set_max_order(MaxOrder::from(max_order));
+            if let Some(vals) = missing_val {
+                ui.display_msg(&format!(
+                    "Load order values above: {}, shifted down",
+                    DisplayVec(&vals)
+                ));
+            }
             let model = ui.global::<MainLogic>().get_current_mods();
             let mut selected_mod =
                 model.row_data(row as usize).expect("front end gives us valid row");
@@ -1112,7 +1118,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
             match state {
-                true => info!("Load order set to {}, for {}", value + 1, key),
+                true => info!("Load order set to {}, for {}", value, key),
                 false => info!("Load order removed for {}", key),
             }
             !error
@@ -1138,17 +1144,14 @@ fn main() -> Result<(), slint::PlatformError> {
             let load_orders = load_order.mut_section();
             if to_k != from_k && load_orders.contains_key(&from_k) {
                 load_orders.remove(&from_k);
-                load_orders.append(&to_k, value.to_string())
+                load_orders.append(&to_k, value.to_string());
             } else if load_orders.contains_key(&to_k) {
-                load_orders.insert(&to_k, value.to_string())
+                load_orders.insert(&to_k, value.to_string());
             } else {
                 load_orders.append(&to_k, value.to_string());
             };
 
-            // MARK: TODO
-            // we need a way to determine if front end state is out of sync and multiple entries `order.at` need to be updated
-            ui.global::<MainLogic>()
-                .set_max_order(load_order.update_order_entries(Some(&to_k)) as i32);
+            let (max_order, missing_val) = load_order.update_order_entries(Some(&to_k));
             if let Err(err) = load_order.write_to_file() {
                 error!("{err}");
                 ui.display_msg(&format!(
@@ -1156,6 +1159,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 ));
                 return error;
             };
+            ui.global::<MainLogic>().set_max_order(MaxOrder::from(max_order));
+            if let Some(vals) = missing_val {
+                ui.display_msg(&format!(
+                    "Load order values above: {}, shifted down",
+                    DisplayVec(&vals)
+                ));
+            }
 
             let model = ui.global::<MainLogic>().get_current_mods();
             let mut selected_mod =
@@ -1317,6 +1327,15 @@ impl App {
         self.set_alt_std_buttons(alt_buttons);
         self.set_display_message(SharedString::from(msg));
         self.invoke_show_confirm_popup();
+    }
+}
+
+impl MaxOrder {
+    fn from(data: (usize, bool)) -> Self {
+        MaxOrder {
+            val: data.0 as i32,
+            duplicate_high_order: data.1,
+        }
     }
 }
 
@@ -1595,7 +1614,8 @@ fn deserialize_collected_mods(data: &CollectedMods, ui_handle: slint::Weak<App>)
         .for_each(|mod_data| display_mods.push(deserialize_mod(mod_data)));
 
     ui.global::<MainLogic>().set_current_mods(ModelRc::from(display_mods));
-    ui.global::<MainLogic>().set_max_order(data.mods.max_order() as i32);
+    ui.global::<MainLogic>()
+        .set_max_order(MaxOrder::from(data.mods.max_order()));
     trace!("deserialized mods");
 }
 

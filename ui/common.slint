@@ -14,6 +14,11 @@ export struct DisplayMod  {
     order: LoadOrder,
 }
 
+export struct MaxOrder {
+    val: int,
+    duplicate-high-order: bool,
+}
+
 export enum Message { confirm, deny, esc }
 
 export global MainLogic {
@@ -30,7 +35,7 @@ export global MainLogic {
     callback send-message(Message);
     in property <string> line-edit-text;
     in-out property <bool> game-path-valid;
-    in-out property <int> max-order;
+    in-out property <MaxOrder> max-order;
     in-out property <int> current-subpage: 0;
     in-out property <[DisplayMod]> current-mods;
     // Placeholder data for easy live editing

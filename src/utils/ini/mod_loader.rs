@@ -199,46 +199,69 @@ impl ModLoaderCfg {
 
     /// updates the load order values in `Some("loadorder")` so they are always no gaps in values  
     /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  
-    /// then returns returns the calculation for the correct max_order val (same logic appears in `[RegMod].max_order()`)
+    /// this also calculates the correct max_order val (same logic appears in `[RegMod].max_order()`) &&  
+    /// stores any missing values in range `1..high_order` **returns:** `(MaxOrder, missing_vals)`
     #[instrument(level = "trace", skip(self))]
-    pub fn update_order_entries(&mut self, stable: Option<&str>) -> usize {
-        if self.mods_is_empty() && stable.is_none() {
+    pub fn update_order_entries(
+        &mut self,
+        stable: Option<&str>,
+    ) -> ((usize, bool), Option<Vec<usize>>) {
+        if self.mods_is_empty() {
             trace!("nothing to update");
-            return 1;
+            return ((1, false), None);
         }
         let mut k_v = Vec::with_capacity(self.section().len());
+        let mut input_vals = HashSet::with_capacity(self.section().len());
         let (mut stable_k, mut stable_v) = ("", 69420_usize);
         for (k, v) in self.iter() {
+            let curr_v = v.parse::<usize>().unwrap_or(usize::MAX);
+            input_vals.insert(curr_v);
             if let Some(input_k) = stable {
                 if k == input_k {
-                    (stable_k, stable_v) = (k, v.parse::<usize>().unwrap_or(usize::MAX));
+                    (stable_k, stable_v) = (k, curr_v);
                     continue;
                 }
             }
-            k_v.push((k, v.parse::<usize>().unwrap_or(usize::MAX)));
+            k_v.push((k, curr_v));
         }
         k_v.sort_by_key(|(_, v)| *v);
-        dbg!(&k_v);
-        dbg!((stable_k, stable_v));
 
         let mut new_section = ini::Properties::new();
 
-        let max_order = if k_v.is_empty() && !stable_k.is_empty() {
-            new_section.append(stable_k, if stable_v == 0 { "0" } else { "1" });
-            1
+        let mut missing_vals = Vec::new();
+        let output = if k_v.is_empty() && !stable_k.is_empty() {
+            new_section.append(
+                stable_k,
+                if stable_v == 0 {
+                    "0"
+                } else if stable_v == 1 {
+                    "1"
+                } else {
+                    missing_vals.push(1);
+                    "1"
+                },
+            );
+            ((1, false), Some(missing_vals).filter(|v| !v.is_empty()))
         } else {
             let mut offset: usize = if (!k_v.is_empty() && k_v[0].1 == 0) || stable_v == 0 {
                 0
             } else {
                 1
             };
+            let mut check_for_missing_val = |offset: &usize| {
+                if *offset > 0 && input_vals.insert(*offset) && *offset != stable_v {
+                    missing_vals.push(*offset);
+                }
+            };
             let mut iter = k_v.iter().peekable();
             while let Some((k, v)) = iter.next() {
+                check_for_missing_val(&offset);
                 if !stable_k.is_empty() && stable_v == offset {
                     new_section.append(std::mem::take(&mut stable_k), offset.to_string());
                     if *v != stable_v && *v > offset {
                         offset += 1;
                     }
+                    check_for_missing_val(&offset);
                 }
                 new_section.append(*k, offset.to_string());
                 if let Some((_, next_v)) = iter.peek() {
@@ -253,18 +276,20 @@ impl ModLoaderCfg {
             if !stable_k.is_empty() {
                 new_section.append(stable_k, &end_offset_str);
             }
-            if new_section.len() == 1 {
-                1
-            } else if new_section.iter().filter(|(_, v)| *v == end_offset_str).count() == 1 {
-                offset
-            } else {
-                offset + 1
-            }
+            (
+                if new_section.len() == 1 {
+                    (1, false)
+                } else if new_section.iter().filter(|(_, v)| *v == end_offset_str).count() == 1 {
+                    (offset, false)
+                } else {
+                    (offset + 1, true)
+                },
+                Some(missing_vals).filter(|v| !v.is_empty()),
+            )
         };
-        dbg!(&new_section);
         std::mem::swap(self.mut_section(), &mut new_section);
         trace!("re-calculated the order of entries in {}", LOADER_FILES[2]);
-        max_order
+        output
     }
 }
 
@@ -274,8 +299,8 @@ pub trait RegModsExt {
     /// returns the number of entries in a colletion that have `mod.order.set`
     fn order_count(&self) -> usize;
 
-    /// returns the calculation for the correct max_order val
-    fn max_order(&self) -> usize;
+    /// returns the calculation for the correct max_order val && if high_val.count() > 1
+    fn max_order(&self) -> (usize, bool);
 
     /// returns a `HashSet` of all .dll files with their `OFFSTATE` omitted
     fn dll_name_set(&self) -> DllSet;
@@ -287,7 +312,7 @@ impl RegModsExt for [RegMod] {
         self.iter().filter(|m| m.order.set).count()
     }
 
-    fn max_order(&self) -> usize {
+    fn max_order(&self) -> (usize, bool) {
         let set_indices = self
             .iter()
             .enumerate()
@@ -295,7 +320,7 @@ impl RegModsExt for [RegMod] {
             .map(|(i, _)| i)
             .collect::<Vec<_>>();
         if set_indices.is_empty() || set_indices.len() == 1 {
-            return 1;
+            return (1, false);
         }
         let high_order = set_indices
             .iter()
@@ -308,9 +333,9 @@ impl RegModsExt for [RegMod] {
             .count()
             == 1
         {
-            high_order
+            (high_order, false)
         } else {
-            high_order + 1
+            (high_order + 1, true)
         }
     }
 
