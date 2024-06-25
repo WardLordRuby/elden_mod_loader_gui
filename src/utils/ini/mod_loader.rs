@@ -197,7 +197,7 @@ impl ModLoaderCfg {
             .collect::<OrderMap>()
     }
 
-    /// updates the load order values in `Some("loadorder")` so they are always no gaps in values  
+    /// updates the load order values in `Some("loadorder")` so there are no gaps in values  
     /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  
     /// this also calculates the correct max_order val (same logic appears in `[RegMod].max_order()`) &&  
     /// stores any missing values in range `1..high_order` **returns:** `(MaxOrder, missing_vals)`
@@ -256,7 +256,7 @@ impl ModLoaderCfg {
             let mut iter = k_v.iter().peekable();
             while let Some((k, v)) = iter.next() {
                 check_for_missing_val(&offset);
-                if !stable_k.is_empty() && stable_v == offset {
+                if !stable_k.is_empty() && (stable_v == offset || *v == stable_v) {
                     new_section.append(std::mem::take(&mut stable_k), offset.to_string());
                     if *v != stable_v && *v > offset {
                         offset += 1;
