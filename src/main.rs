@@ -46,6 +46,9 @@ const TUTORIAL_MSG: &str =
     "Add mods to the app by entering a name and selecting mod files with \"Select Files\"\n\n\
     You can always add more files to a mod or de-register a mod at any time from within the app\n\n\
     Do not forget to disable easy anti-cheat before playing with mods installed!";
+const ERROR_VAL: i32 = 42069;
+const UPDATE_ELEMENTS_VAL: i32 = 1;
+const OK_VAL: i32 = 0;
 
 fn main() -> Result<(), slint::PlatformError> {
     let prev = std::panic::take_hook();
@@ -1053,35 +1056,31 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.global::<MainLogic>().on_add_remove_order({
         let ui_handle = ui.as_weak();
-        move |state, key, row, value| -> bool {
+        move |state, key, value, row| -> i32 {
             let span = info_span!("add_remove_order");
             let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
-            let error = false;
             let cfg_dir = get_loader_ini_dir();
             let mut load_order = match ModLoaderCfg::read(cfg_dir) {
                 Ok(data) => data,
                 Err(err) => {
                     error!("{err}");
                     ui.display_msg(&err.to_string());
-                    return error;
+                    return ERROR_VAL;
                 }
             };
             let load_orders = load_order.mut_section();
-            let stable_k = match state {
-                true => {
-                    load_orders.insert(&key, &value.to_string());
-                    Some(key.as_str())
+            let stable_k = if state {
+                load_orders.insert(&key, &value.to_string());
+                Some(key.as_str())
+            } else {
+                if !load_orders.contains_key(&key) {
+                    warn!(?key, "Could not find key in: {}", LOADER_FILES[2]);
+                    return ERROR_VAL;
                 }
-                false => {
-                    if !load_orders.contains_key(&key) {
-                        warn!(?key, "Could not find key in: {}", LOADER_FILES[2]);
-                        return error;
-                    }
-                    load_orders.remove(&key);
-                    None
-                }
+                load_orders.remove(&key);
+                None
             };
             let (max_order, missing_val) = load_order.update_order_entries(stable_k);
             if let Err(err) = load_order.write_to_file() {
@@ -1089,15 +1088,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.display_msg(&format!(
                     "Failed to write to \"mod_loader_config.ini\"\n{err}"
                 ));
-                return error;
+                return ERROR_VAL;
             };
             ui.global::<MainLogic>().set_max_order(MaxOrder::from(max_order));
-            if let Some(vals) = missing_val {
-                ui.display_msg(&format!(
-                    "Load order values above: {}, shifted down",
-                    DisplayVec(&vals)
-                ));
-            }
             let model = ui.global::<MainLogic>().get_current_mods();
             let mut selected_mod =
                 model.row_data(row as usize).expect("front end gives us valid row");
@@ -1107,38 +1100,39 @@ fn main() -> Result<(), slint::PlatformError> {
                 if selected_mod.dll_files.row_count() != 1 {
                     selected_mod.order.i = -1;
                 }
+                info!("Load order removed for {}", key);
             }
             model.set_row_data(row as usize, selected_mod);
-            match load_order.parse_section() {
-                Ok(ref order_map) => model.update_order(Some(row), order_map, ui.as_weak()),
-                Err(err) => {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
-                    return error;
-                }
+            model.update_order(Some(row), &load_order.parse_into_map(), ui.as_weak());
+
+            if let Some(ref vals) = missing_val {
+                let msg = format!(
+                    "Load order values above: {}, shifted down",
+                    DisplayVec(vals)
+                );
+                ui.display_msg(&msg);
+                info!("{msg}");
+                return UPDATE_ELEMENTS_VAL;
+            } else {
+                info!("Load order set to {}, for {}", value, key);
             }
-            match state {
-                true => info!("Load order set to {}, for {}", value, key),
-                false => info!("Load order removed for {}", key),
-            }
-            !error
+            OK_VAL
         }
     });
     ui.global::<MainLogic>().on_modify_order({
         let ui_handle = ui.as_weak();
-        move |to_k, from_k, value, row, dll_i| -> bool {
+        move |to_k, from_k, value, row, dll_i| -> i32 {
             let span = info_span!("modify_order");
             let _guard = span.enter();
 
             let ui = ui_handle.unwrap();
-            let error = false;
             let cfg_dir = get_loader_ini_dir();
             let mut load_order = match ModLoaderCfg::read(cfg_dir) {
                 Ok(data) => data,
                 Err(err) => {
                     error!("{err}");
                     ui.display_msg(&err.to_string());
-                    return error;
+                    return ERROR_VAL;
                 }
             };
             let load_orders = load_order.mut_section();
@@ -1151,61 +1145,55 @@ fn main() -> Result<(), slint::PlatformError> {
                 load_orders.append(&to_k, value.to_string());
             };
 
+            let model = ui.global::<MainLogic>().get_current_mods();
+            if to_k != from_k {
+                let mut selected_mod =
+                    model.row_data(row as usize).expect("front end gives us valid row");
+                selected_mod.order.i = dll_i;
+                if !selected_mod.order.set {
+                    selected_mod.order.set = true
+                }
+                model.set_row_data(row as usize, selected_mod);
+                if !from_k.is_empty() {
+                    if let Err(err) = load_order.write_to_file() {
+                        error!("{err}");
+                        ui.display_msg(&format!(
+                            "Failed to write to \"mod_loader_config.ini\"\n{err}"
+                        ));
+                        return ERROR_VAL;
+                    };
+                    info!("Load order set to {}, for {}", value, to_k);
+                    return OK_VAL;
+                }
+            }
+
             let (max_order, missing_val) = load_order.update_order_entries(Some(&to_k));
             if let Err(err) = load_order.write_to_file() {
                 error!("{err}");
                 ui.display_msg(&format!(
                     "Failed to write to \"mod_loader_config.ini\"\n{err}"
                 ));
-                return error;
+                return ERROR_VAL;
             };
             ui.global::<MainLogic>().set_max_order(MaxOrder::from(max_order));
-            if let Some(vals) = missing_val {
-                ui.display_msg(&format!(
-                    "Load order values above: {}, shifted down",
-                    DisplayVec(&vals)
-                ));
-            }
 
-            let model = ui.global::<MainLogic>().get_current_mods();
-            let mut selected_mod =
-                model.row_data(row as usize).expect("front end gives us valid row");
             // MARK: FIXME
             // sorting algorithm needs to be update to work with new load_order behavior
-            if to_k != from_k {
-                selected_mod.order.i = dll_i;
-                if !selected_mod.order.set {
-                    selected_mod.order.set = true
-                }
-                model.set_row_data(row as usize, selected_mod);
-                if value != row {
-                    match load_order.parse_section() {
-                        Ok(ref order_map) => model.update_order(Some(row), order_map, ui.as_weak()),
-                        Err(err) => {
-                            error!("{err}");
-                            ui.display_msg(&err.to_string());
-                            return error;
-                        }
-                    }
-                }
-            } else if value != row {
-                if value < load_order.mods_registered() as i32 {
-                    let replace_row =
-                        model.row_data(value as usize).expect("front end gives us valid row");
-                    if selected_mod.order.at != replace_row.order.at {
-                        // std::mem::swap(&mut selected_mod.order.at, &mut replace_row.order.at);
-                        model.set_row_data(row as usize, replace_row);
-                        model.set_row_data(value as usize, selected_mod);
-                        ui.invoke_update_mod_index(value, 1);
-                        ui.invoke_redraw_checkboxes();
-                    }
-                }
+            // if missing_val.is_some() then update order vals
+            model.update_order(Some(row), &load_order.parse_into_map(), ui.as_weak());
+
+            if let Some(ref vals) = missing_val {
+                let msg = format!(
+                    "Load order values above: {}, shifted down",
+                    DisplayVec(vals)
+                );
+                ui.display_msg(&msg);
+                info!("{msg}");
+                return UPDATE_ELEMENTS_VAL;
+            } else {
+                info!("Load order set to {}, for {}", value, to_k);
             }
-            if !from_k.is_empty() && to_k != from_k {
-                info!("Load order removed for {}", from_k);
-            }
-            info!("Load order set to {}, for {}", value, to_k);
-            !error
+            OK_VAL
         }
     });
     ui.global::<MainLogic>().on_force_deserialize({
@@ -1272,6 +1260,7 @@ impl Sortable for ModelRc<DisplayMod> {
             {
                 let new_order = new_order.unwrap();
                 curr_row.order.at = *new_order as i32;
+                eprintln!("Mod: {}, Order: {}", curr_row.name, curr_row.order.at);
                 if let Some(ref key) = selected_key {
                     if curr_row.name == key {
                         selected_i = *new_order;

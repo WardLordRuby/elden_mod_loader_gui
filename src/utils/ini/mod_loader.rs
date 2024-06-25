@@ -225,6 +225,8 @@ impl ModLoaderCfg {
             k_v.push((k, curr_v));
         }
         k_v.sort_by_key(|(_, v)| *v);
+        dbg!(&k_v);
+        dbg!((stable_k, stable_v));
 
         let mut new_section = ini::Properties::new();
 
@@ -287,6 +289,8 @@ impl ModLoaderCfg {
                 Some(missing_vals).filter(|v| !v.is_empty()),
             )
         };
+        dbg!(&new_section);
+        eprintln!("Missing val: {:?}", output.1);
         std::mem::swap(self.mut_section(), &mut new_section);
         trace!("re-calculated the order of entries in {}", LOADER_FILES[2]);
         output

@@ -58,6 +58,13 @@ export component ModEdit inherits Tab {
         alignment: space-between;
 
         load-order-box := GroupBox {
+            property <int> fn-result;
+            property <int> OK: 0;
+            property <int> ERR: 42069;
+            property <int> UPDATE: 1;
+
+            property <int> NONE: -1;
+
             init => { init-selected-index() }
             title: @tr("Load Order");
             enabled: MainLogic.current-mods[mod-index].dll-files.length > 0 && SettingsLogic.loader-installed;
@@ -70,15 +77,14 @@ export component ModEdit inherits Tab {
                     }
                 }
             }
+            function redraw-elements() {
+                update-toggle = false;
+                update-toggle = true;
+            }
 
             HorizontalLayout {
                 row: 1;
                 padding-top: Formatting.default-padding;
-
-                function redraw-elements() {
-                    update-toggle = false;
-                    update-toggle = true;
-                }
 
                 load-order := Switch {
                     text: @tr("Set Load Order");
@@ -88,11 +94,13 @@ export component ModEdit inherits Tab {
                         if self.checked {
                             MainLogic.current-mods[mod-index].order.at = MainLogic.max-order.duplicate-high-order ? MainLogic.max-order.val : MainLogic.max-order.val + 1;
                         }
-                        if selected-index != -1 {
-                            if !MainLogic.add-remove-order(self.checked, selected-dll, mod-index, selected-order) {
+                        if selected-index != NONE {
+                            fn-result = MainLogic.add-remove-order(self.checked, selected-dll, selected-order, mod-index);
+                            if fn-result == ERR {
                                 self.checked = !self.checked;
                                 MainLogic.force-deserialize()
                             }
+                            fn-result = OK
                         } else if !self.checked {
                             MainLogic.current-mods[mod-index].order.at = 0
                         }
@@ -107,25 +115,29 @@ export component ModEdit inherits Tab {
                 
                 function modify-file(file: string, i: int) {
                     if file != selected-dll {
-                        if !MainLogic.modify-order(file, selected-dll, selected-order, mod-index, i) {
+                        fn-result = MainLogic.modify-order(file, selected-dll, selected-order, mod-index, i);
+                        if fn-result == ERR {
                             init-selected-index();
                             MainLogic.force-deserialize()
+                        } else if fn-result == UPDATE {
+                            redraw-elements()
                         }
+                        fn-result = OK
                     }
                     MainLogic.force-app-focus()
                 }
                 function modify-index(v: int) {
-                    if selected-index != -1 {
-                        if MainLogic.modify-order(selected-dll, selected-dll, v, mod-index, selected-index) {
-                            // can we have the back end handle this logic? impl after sort is taken care of
-                            MainLogic.current-mods[mod-index].order.at = v;
-                        } else {
+                    if selected-index != NONE {
+                        fn-result = MainLogic.modify-order(selected-dll, selected-dll, v, mod-index, selected-index);
+                        if fn-result == ERR {
                             MainLogic.force-deserialize()
+                        } else if fn-result == UPDATE {
+                            redraw-elements()
                         }
+                        fn-result == OK
                     }
                 }
 
-                // Might be able to remove this hack after properly having sorting data parsed
                 if update-toggle : ComboBox {
                     enabled: load-order.checked && load-order-box.enabled;
                     current-index: selected-index;

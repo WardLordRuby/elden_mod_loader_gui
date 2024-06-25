@@ -28,8 +28,8 @@ export global MainLogic {
     callback remove-mod(string, int);
     callback edit-config([string]);
     callback edit-config-item(StandardListViewItem);
-    callback add-remove-order(bool, string, int, int) -> bool;
-    callback modify-order(string, string, int, int, int) -> bool;
+    callback add-remove-order(bool, string, int, int) -> int;
+    callback modify-order(string, string, int, int, int) -> int;
     callback force-app-focus();
     callback force-deserialize();
     callback send-message(Message);
