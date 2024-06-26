@@ -251,14 +251,14 @@ impl ModLoaderCfg {
                 1
             };
             let mut check_for_missing_val = |offset: &usize| {
-                if *offset > 0 && input_vals.insert(*offset) && *offset != stable_v {
+                if *offset > 0 && input_vals.insert(*offset) {
                     missing_vals.push(*offset);
                 }
             };
             let mut iter = k_v.iter().peekable();
             while let Some((k, v)) = iter.next() {
                 check_for_missing_val(&offset);
-                if !stable_k.is_empty() && (stable_v == offset || *v == stable_v) {
+                if !stable_k.is_empty() && (stable_v == offset || stable_v == *v) {
                     new_section.append(std::mem::take(&mut stable_k), offset.to_string());
                     if *v != stable_v && *v > offset {
                         offset += 1;
@@ -303,7 +303,7 @@ pub trait RegModsExt {
     /// returns the number of entries in a colletion that have `mod.order.set`
     fn order_count(&self) -> usize;
 
-    /// returns the calculation for the correct max_order val && if high_val.count() > 1
+    /// returns the calculation for the correct (`max_order`, `high_val.count() > 1`)
     fn max_order(&self) -> (usize, bool);
 
     /// returns a `HashSet` of all .dll files with their `OFFSTATE` omitted
