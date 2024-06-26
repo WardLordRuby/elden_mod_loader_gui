@@ -208,7 +208,7 @@ impl ModLoaderCfg {
     ) -> ((usize, bool), Option<Vec<usize>>) {
         if self.mods_is_empty() {
             trace!("nothing to update");
-            return ((1, false), None);
+            return ((0, false), None);
         }
         let mut k_v = Vec::with_capacity(self.section().len());
         let mut input_vals = HashSet::with_capacity(self.section().len());
@@ -324,7 +324,7 @@ impl RegModsExt for [RegMod] {
             .map(|(i, _)| i)
             .collect::<Vec<_>>();
         if set_indices.is_empty() || set_indices.len() == 1 {
-            return (1, false);
+            return (0, false);
         }
         let high_order = set_indices
             .iter()
