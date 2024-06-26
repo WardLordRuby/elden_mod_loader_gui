@@ -18,7 +18,7 @@ use elden_mod_loader_gui::{
 use i_slint_backend_winit::WinitWindowAccessor;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, StandardListViewItem, VecModel};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     ffi::OsStr,
     io::ErrorKind,
     path::{Path, PathBuf},
@@ -1090,6 +1090,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 ));
                 return ERROR_VAL;
             };
+            let new_orders = load_order.parse_into_map();
             ui.global::<MainLogic>().set_max_order(MaxOrder::from(max_order));
             let model = ui.global::<MainLogic>().get_current_mods();
             let mut selected_mod =
@@ -1101,9 +1102,14 @@ fn main() -> Result<(), slint::PlatformError> {
                     selected_mod.order.i = -1;
                 }
                 info!("Load order removed for {}", key);
+            } else {
+                let new_val = *new_orders.get(&key.to_string()).expect("key inserted") as i32;
+                selected_mod.order.at = new_val;
+                info!("Load order set to {}, for {}", new_val, key);
             }
+
             model.set_row_data(row as usize, selected_mod);
-            model.update_order(Some(row), &load_order.parse_into_map(), ui.as_weak());
+            model.update_order(Some(row), &new_orders, ui.as_weak());
 
             if let Some(ref vals) = missing_val {
                 let msg = format!(
@@ -1113,8 +1119,6 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.display_msg(&msg);
                 info!("{msg}");
                 return UPDATE_ELEMENTS_VAL;
-            } else {
-                info!("Load order set to {}, for {}", value, key);
             }
             OK_VAL
         }
@@ -1136,25 +1140,27 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             };
             let load_orders = load_order.mut_section();
-            if to_k != from_k && load_orders.contains_key(&from_k) {
+            let from_k_removed = if to_k != from_k && load_orders.contains_key(&from_k) {
                 load_orders.remove(&from_k);
                 load_orders.append(&to_k, value.to_string());
+                true
             } else if load_orders.contains_key(&to_k) {
                 load_orders.insert(&to_k, value.to_string());
+                false
             } else {
                 load_orders.append(&to_k, value.to_string());
+                false
             };
 
             let model = ui.global::<MainLogic>().get_current_mods();
+            let mut selected_mod =
+                model.row_data(row as usize).expect("front end gives us valid row");
             if to_k != from_k {
-                let mut selected_mod =
-                    model.row_data(row as usize).expect("front end gives us valid row");
                 selected_mod.order.i = dll_i;
                 if !selected_mod.order.set {
                     selected_mod.order.set = true
                 }
-                model.set_row_data(row as usize, selected_mod);
-                if !from_k.is_empty() {
+                if from_k_removed {
                     if let Err(err) = load_order.write_to_file() {
                         error!("{err}");
                         ui.display_msg(&format!(
@@ -1162,6 +1168,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         ));
                         return ERROR_VAL;
                     };
+                    model.set_row_data(row as usize, selected_mod);
                     info!("Load order set to {}, for {}", value, to_k);
                     return OK_VAL;
                 }
@@ -1175,12 +1182,12 @@ fn main() -> Result<(), slint::PlatformError> {
                 ));
                 return ERROR_VAL;
             };
+            let new_orders = load_order.parse_into_map();
+            let new_val = *new_orders.get(&to_k.to_string()).expect("key inserted") as i32;
+            selected_mod.order.at = new_val;
             ui.global::<MainLogic>().set_max_order(MaxOrder::from(max_order));
-
-            // MARK: FIXME
-            // sorting algorithm needs to be update to work with new load_order behavior
-            // if missing_val.is_some() then update order vals
-            model.update_order(Some(row), &load_order.parse_into_map(), ui.as_weak());
+            model.set_row_data(row as usize, selected_mod);
+            model.update_order(Some(row), &new_orders, ui.as_weak());
 
             if let Some(ref vals) = missing_val {
                 let msg = format!(
@@ -1190,9 +1197,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.display_msg(&msg);
                 info!("{msg}");
                 return UPDATE_ELEMENTS_VAL;
-            } else {
-                info!("Load order set to {}, for {}", value, to_k);
             }
+            info!("Load order set to {}, for {}", new_val, to_k);
             OK_VAL
         }
     });
@@ -1226,80 +1232,113 @@ trait Sortable {
 }
 
 impl Sortable for ModelRc<DisplayMod> {
-    #[instrument(level = "trace", skip_all)]
     fn update_order(
         &self,
         selected_row: Option<i32>,
         order_map: &OrderMap,
         ui_handle: slint::Weak<App>,
     ) {
+        let order_map_len = order_map.len();
+        if order_map_len == 0 {
+            return;
+        }
         let ui = ui_handle.unwrap();
         let selected_key = selected_row.map(|row| {
             self.row_data(row as usize)
                 .expect("front end gives us a valid row")
                 .name
         });
-        let mut unsorted_idx = (0..self.row_count()).collect::<Vec<_>>();
-        let mut i = 0_usize;
+        let mut unsorted_idx = (0..self.row_count()).collect::<VecDeque<_>>();
+        let mut possible_vals = HashSet::with_capacity(order_map_len);
+        let mut order_counts = vec![0_usize; order_map_len + 1];
+        let low_order = order_map
+            .iter()
+            .map(|(_, v)| {
+                order_counts[*v] += 1;
+                possible_vals.insert(*v);
+                v
+            })
+            .min()
+            .expect("we return if order_map.is_empty()");
+        assert!(*low_order < 2);
+        let mut placement_rows = order_counts
+            .iter()
+            .enumerate()
+            .fold(
+                (vec![Vec::new(); possible_vals.len()], 0_usize),
+                |(mut placement_rows, mut counter), (i, &e)| {
+                    for _ in 0..e {
+                        placement_rows[i - low_order].push(counter);
+                        counter += 1;
+                    }
+                    (placement_rows, counter)
+                },
+            )
+            .0;
         let mut selected_i = 0_usize;
-        let mut no_order_count = 0_usize;
-        let mut seen_names = HashSet::new();
-        while !unsorted_idx.is_empty() {
-            if i >= unsorted_idx.len() {
-                i = 0
-            }
-            let unsorted_i = unsorted_idx[i];
-            let mut curr_row = self.row_data(unsorted_i).expect("unsorted_idx is valid ranges");
+        // MARK: FIXME
+        // how do we break from this loop when order_map contains forign entries (currently hangs)
+        while let Some(unsorted_i) = unsorted_idx.back() {
+            let mut curr_row = self.row_data(*unsorted_i).expect("unsorted_idx is valid ranges");
             let curr_key = curr_row.dll_files.row_data(curr_row.order.i as usize);
             let new_order: Option<&usize>;
+            // how do we get the correct order_map_len when len is not reliable?
+            if !curr_row.order.set && *unsorted_i > (order_map_len - 1) {
+                if let Some(ref key) = selected_key {
+                    if curr_row.name == key {
+                        selected_i = *unsorted_i;
+                    }
+                }
+                unsorted_idx.pop_back();
+                continue;
+            }
             if curr_key.is_some() && {
                 new_order = order_map.get(&curr_key.unwrap().to_string());
                 new_order
             }
             .is_some()
             {
-                let new_order = new_order.unwrap();
-                curr_row.order.at = *new_order as i32;
-                eprintln!("Mod: {}, Order: {}", curr_row.name, curr_row.order.at);
-                if let Some(ref key) = selected_key {
-                    if curr_row.name == key {
-                        selected_i = *new_order;
-                    }
-                }
-                if unsorted_i == *new_order {
-                    self.set_row_data(*new_order, curr_row);
-                    unsorted_idx.swap_remove(i);
-                    continue;
-                }
-                if let Some(index) = unsorted_idx.iter().position(|&x| x == *new_order) {
-                    let swap_row = self.row_data(*new_order).expect("`ModLoaderCfg.parse_section()` makes sure that `new_order` is always valid");
+                let placement_i = *new_order.unwrap() - *low_order;
+                let new_order = *new_order.unwrap() as i32;
+                if let Some(index) =
+                    placement_rows[placement_i].iter().position(|x| x == unsorted_i)
+                {
                     if let Some(ref key) = selected_key {
-                        if swap_row.name == key {
-                            selected_i = unsorted_i;
+                        if curr_row.name == key {
+                            selected_i = *unsorted_i;
                         }
                     }
-                    self.set_row_data(*new_order, curr_row);
-                    self.set_row_data(unsorted_i, swap_row);
-                    unsorted_idx.swap_remove(index);
+                    if curr_row.order.at != new_order {
+                        curr_row.order.at = new_order;
+                        self.set_row_data(*unsorted_i, curr_row);
+                    }
+                    placement_rows[placement_i].swap_remove(index);
+                    unsorted_idx.pop_back();
                     continue;
                 }
-            }
-            if let Some(ref key) = selected_key {
-                if curr_row.name == key {
-                    selected_i = unsorted_i;
+                let swap_i = placement_rows[placement_i].pop().expect(
+                    "unsorted_idx & placement_rows contain the same entries and are kept in sync",
+                );
+                let swap_row = self.row_data(swap_i).expect("placement rows contains valid rows");
+                if let Some(ref key) = selected_key {
+                    if swap_row.name == key {
+                        selected_i = *unsorted_i;
+                    } else if curr_row.name == key {
+                        selected_i = swap_i;
+                    }
                 }
+                if curr_row.order.at != new_order {
+                    curr_row.order.at = new_order;
+                }
+                self.set_row_data(swap_i, curr_row);
+                self.set_row_data(*unsorted_i, swap_row);
+                let found_i = unsorted_idx.iter().position(|x| *x == swap_i).expect(
+                    "unsorted_idx & placement_rows contain the same entries and are kept in sync",
+                );
+                unsorted_idx.swap_remove_front(found_i);
             }
-            if !seen_names.contains(&curr_row.name) {
-                seen_names.insert(curr_row.name.clone());
-                no_order_count += 1;
-            }
-            if no_order_count >= unsorted_idx.len() {
-                // alphabetical sort would go here
-                break;
-            }
-            i += 1;
         }
-        if selected_key.is_some() {
+        if selected_row.is_some() && selected_row.unwrap() != selected_i as i32 {
             ui.invoke_update_mod_index(selected_i as i32, 1);
         }
         ui.invoke_redraw_checkboxes();
