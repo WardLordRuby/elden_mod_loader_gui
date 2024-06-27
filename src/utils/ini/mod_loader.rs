@@ -6,7 +6,7 @@ use std::{
 use tracing::{info, instrument, trace, warn};
 
 use crate::{
-    does_dir_contain, new_io_error, omit_off_state,
+    does_dir_contain, omit_off_state,
     utils::ini::{
         common::{Config, ModLoaderCfg},
         parser::RegMod,
@@ -91,13 +91,18 @@ impl ModLoader {
     }
 }
 
+pub struct UnknownKeyErr {
+    pub err: std::io::Error,
+    pub unknown_keys: HashSet<String>,
+}
+
 impl ModLoaderCfg {
     /// verifies that all keys stored in "elden_mod_loader_config.ini" are registered with the app  
     /// a _unknown_ file is found as a key this will change the order to be greater than _known_ files  
     /// a `DllSet` is obtained by calling `dll_name_set()` on `[RegMod]`  
     /// order_count is obtained by calling 'order.count() on `[RegMod]`  
     #[instrument(level = "trace", skip_all)]
-    pub fn verify_keys(&mut self, dlls: &DllSet, order_count: usize) -> std::io::Result<()> {
+    pub fn verify_keys(&mut self, dlls: &DllSet, order_count: usize) -> Result<(), UnknownKeyErr> {
         if self.mods_is_empty() {
             trace!("No mods have load order");
             return Ok(());
@@ -131,19 +136,25 @@ impl ModLoaderCfg {
         if !unknown_keys.is_empty() {
             if update_order {
                 self.update_order_entries(None);
-                self.write_to_file()?;
-                return new_io_error!(ErrorKind::Unsupported,
-                    format!("Found load order set for file(s) not registered with the app. The following key(s) order were changed: {}", 
-                    DisplayVec(&unknown_keys))
-                );
+                self.write_to_file().map_err(|err| UnknownKeyErr {
+                    err,
+                    unknown_keys: HashSet::new(),
+                })?;
+                return Err(UnknownKeyErr {
+                    err: std::io::Error::new(ErrorKind::Unsupported,
+                        format!("Found load order set for file(s) not registered with the app. The following key(s) order were changed: {}", 
+                        DisplayVec(&unknown_keys))
+                    ),
+                    unknown_keys: unknown_keys.drain(..).collect::<HashSet<_>>(),
+                });
             }
-            return new_io_error!(
-                ErrorKind::Other,
-                format!(
-                    "Found load order set for the following file(s) not registered with the app: {}",
-                    DisplayVec(&unknown_keys)
-                )
-            );
+            return Err(UnknownKeyErr {
+                err: std::io::Error::new(ErrorKind::Other,
+                    format!("Found load order set for the following file(s) not registered with the app: {}",
+                    DisplayVec(&unknown_keys))
+                ),
+                unknown_keys: unknown_keys.drain(..).collect::<HashSet<_>>(),
+            });
         }
         trace!("all load_order entries are files registered with the app");
         Ok(())

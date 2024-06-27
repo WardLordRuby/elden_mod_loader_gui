@@ -168,10 +168,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     let mut collection = ini.collect_mods(&path, order_data.as_ref(), false);
                     let dlls = collection.mods.dll_name_set();
                     if mod_loader.installed() {
-                        if let Err(err) =
+                        if let Err(key_err) =
                             mod_loader_cfg.verify_keys(&dlls, collection.mods.order_count())
                         {
-                            match err.kind() {
+                            match key_err.err.kind() {
                                 ErrorKind::Unsupported => {
                                     order_data = Some(mod_loader_cfg.parse_into_map());
                                     ini.update().unwrap_or_else(|err| {
@@ -179,12 +179,14 @@ fn main() -> Result<(), slint::PlatformError> {
                                     });
                                     collection =
                                         ini.collect_mods(&path, order_data.as_ref(), false);
-                                    warn!("{err}");
+                                    warn!("{}", key_err.err);
                                 }
-                                ErrorKind::Other => info!("{err}"),
-                                _ => error!(err_code = 8, "{err}"),
+                                ErrorKind::Other => info!("{}", key_err.err),
+                                _ => error!(err_code = 8, "{}", key_err.err),
                             }
-                            errors.push(err);
+                            let mut unknown_orders = get_mut_unknown_orders();
+                            *unknown_orders = key_err.unknown_keys;
+                            errors.push(key_err.err);
                         }
                     }
                     if collection.mods.len() != ini.mods_registered() {
@@ -459,7 +461,16 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg(&err.to_string());
                     return;
                 };
-
+                let mut unknown_orders = get_mut_unknown_orders();
+                for f in new_mod.files.dll.iter() {
+                    let Some(f_name) =  f.file_name().and_then(|o| o.to_str()) else {
+                        let err = format!("failed to get file name for {}", f.display());
+                        error!("{err}");
+                        ui.display_msg(&err);
+                        return;
+                    };
+                    unknown_orders.remove(f_name);
+                }
                 ui.global::<MainLogic>().set_line_edit_text(SharedString::new());
                 ini.update().unwrap_or_else(|err| {
                     error!("{err}");
@@ -668,9 +679,23 @@ fn main() -> Result<(), slint::PlatformError> {
                         return;
                     }
                 };
+                let mut loader_cfg = ModLoaderCfg::read(get_loader_ini_dir()).unwrap_or_else(|err| {
+                    warn!("{err}");
+                    ui.display_msg(&err.to_string());
+                    ModLoaderCfg::empty()
+                });
+                let order_map = if !loader_cfg.mods_is_empty() {
+                    loader_cfg.parse_section().map(Some).unwrap_or_else(|err| {
+                        error!("{err}");
+                        ui.display_msg(&err.to_string());
+                        None
+                    })
+                } else {
+                    None
+                };
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut display_mod = model.row_data(row as usize).expect("front end gives us valid row");
-                let mut found_mod = match ini.get_mod(&display_mod.name, &game_dir, None) {
+                let mut found_mod = match ini.get_mod(&display_mod.name, &game_dir, order_map.as_ref()) {
                     Ok(reg_mod) => reg_mod,
                     Err(err) => {
                         error!("{err}");
@@ -737,17 +762,46 @@ fn main() -> Result<(), slint::PlatformError> {
                     reset_app_state(ini, &game_dir, None, ui.as_weak());
                     return;
                 };
+                let mut unknown_orders = get_mut_unknown_orders();
+                let new_dll_with_set_order = files.iter().filter_map(|f| {
+                    let f_str = f.to_string_lossy();
+                    let f_data = FileData::from(&f_str);
+                    if f_data.extension == ".dll" && unknown_orders.contains(f_str.as_ref()) {
+                        Some((file_name_from_str(&f_str).to_owned(), f))
+                    } else {
+                        None
+                    }
+                }).collect::<Vec<_>>();
                 let (files, dll_files, config_files) = deserialize_split_files(&found_mod.files);
                 display_mod.files = files;
                 display_mod.dll_files = dll_files;
                 display_mod.config_files = config_files;
                 if !found_mod.order.set {
-                    match found_mod.files.dll.len() {
-                        0 => (),
-                        1 => display_mod.order.i = 0,
-                        2.. => display_mod.order.i = -1,
+                    if !new_dll_with_set_order.is_empty() {
+                        display_mod.order.set = true;
+                        display_mod.order.at = loader_cfg.section().get(&new_dll_with_set_order[0].0).expect("unknown_key was previously found").parse::<i32>().unwrap_or(69);
+                        if let Some(index) = found_mod.files.dll.iter().position(|f| f == new_dll_with_set_order[0].1) {
+                            display_mod.order.i = index as i32;
+                        }
+                    } else {
+                        match found_mod.files.dll.len() {
+                            0 => (),
+                            1 => display_mod.order.i = 0,
+                            2.. => display_mod.order.i = -1,
+                        }
                     }
+                } else if !new_dll_with_set_order.is_empty() {
+                    new_dll_with_set_order.iter().for_each(|f| {
+                        loader_cfg.mut_section().remove(&f.0);
+                    });
+                    loader_cfg.write_to_file().unwrap_or_else(|err| {
+                        error!("{err}");
+                        ui.display_msg(&err.to_string());
+                    });
                 }
+                new_dll_with_set_order.iter().for_each(|f| {
+                    unknown_orders.remove(&f.0);
+                });
                 model.set_row_data(row as usize, display_mod);
                 let success = format!("Added {} file(s) to: {}", num_files, DisplayName(&found_mod.name));
                 info!("{success}");
@@ -856,13 +910,17 @@ fn main() -> Result<(), slint::PlatformError> {
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
                 mut_model.remove(row as usize);
-                loader.verify_keys(&dlls, reg_mods.order_count()).unwrap_or_else(|err| {
-                    match err.kind() {
-                        ErrorKind::Other => info!("{err}"),
-                        ErrorKind::Unsupported => warn!("{err}"),
-                        _ => error!("{err}"),
+                loader.verify_keys(&dlls, reg_mods.order_count()).unwrap_or_else(|key_err| {
+                    match key_err.err.kind() {
+                        ErrorKind::Other => info!("{}", key_err.err),
+                        ErrorKind::Unsupported => warn!("{}", key_err.err),
+                        _ => error!("{}", key_err.err),
                     }
-                    messages.push(err.to_string());
+                    if !key_err.unknown_keys.is_empty() {
+                        let mut unknown_keys_map = get_mut_unknown_orders();
+                        *unknown_keys_map = key_err.unknown_keys;
+                    }
+                    messages.push(key_err.err.to_string());
                 });
                 let order_data = loader.parse_section().unwrap_or_else(|err| {
                     error!("{err}");
@@ -1461,6 +1519,13 @@ fn get_or_update_game_dir(
     }
 
     GAME_DIR.get().unwrap().blocking_read()
+}
+
+fn get_mut_unknown_orders() -> tokio::sync::RwLockWriteGuard<'static, HashSet<String>> {
+    static UNKNOWN_ORDER_KEYS: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
+    UNKNOWN_ORDER_KEYS
+        .get_or_init(|| RwLock::new(HashSet::new()))
+        .blocking_write()
 }
 
 #[inline]
