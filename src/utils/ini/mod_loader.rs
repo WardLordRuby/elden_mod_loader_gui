@@ -324,8 +324,8 @@ impl RegModsExt for [RegMod] {
             .filter(|(_, m)| m.order.set)
             .map(|(i, _)| i)
             .collect::<Vec<_>>();
-        if set_indices.is_empty() || set_indices.len() == 1 {
-            return (0, false);
+        if set_indices.len() < 2 {
+            return (set_indices.len(), false);
         }
         let high_order = set_indices
             .iter()
