@@ -94,36 +94,37 @@ impl ModLoader {
 impl ModLoaderCfg {
     /// verifies that all keys stored in "elden_mod_loader_config.ini" are registered with the app  
     /// a _unknown_ file is found as a key this will change the order to be greater than _known_ files  
-    /// a `DllSet` is obtained by calling `dll_name_set()` on a `[RegMod]`  
+    /// a `DllSet` is obtained by calling `dll_name_set()` on `[RegMod]`  
+    /// order_count is obtained by calling 'order.count() on `[RegMod]`  
     #[instrument(level = "trace", skip_all)]
     pub fn verify_keys(&mut self, dlls: &DllSet, order_count: usize) -> std::io::Result<()> {
         if self.mods_is_empty() {
             trace!("No mods have load order");
             return Ok(());
         }
-        let keys = self
+        let k_v = self
             .iter()
-            .filter_map(|(k, _)| {
+            .filter_map(|(k, v)| {
                 if k != LOADER_EXAMPLE {
-                    Some(k.to_string())
+                    Some((k.to_owned(), v.parse::<usize>().unwrap_or(usize::MAX)))
                 } else {
                     trace!("{LOADER_EXAMPLE} ignored");
                     None
                 }
             })
             .collect::<Vec<_>>();
-        if keys.is_empty() {
+        if k_v.is_empty() {
             return Ok(());
         }
         let mut unknown_keys = Vec::new();
         let mut update_order = false;
-        keys.iter().enumerate().for_each(|(i, k)| {
+        k_v.iter().for_each(|(k, v)| {
             if !dlls.contains(k.as_str()) {
                 unknown_keys.push(k.to_owned());
-                if i < order_count {
+                if *v < order_count {
                     update_order = true;
                     self.mut_section().remove(k);
-                    self.mut_section().append(k, "69420");
+                    self.mut_section().append(k, (v + 42069).to_string());
                 }
             }
         });
