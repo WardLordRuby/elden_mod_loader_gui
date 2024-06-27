@@ -615,7 +615,7 @@ impl std::fmt::Display for LoadOrder {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.set {
-            write!(f, "{}", self.at + 1)
+            write!(f, "{}", self.at)
         } else {
             write!(f, "not set")
         }
