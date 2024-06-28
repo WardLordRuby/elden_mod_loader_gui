@@ -3,6 +3,7 @@ pub mod common;
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::HashSet,
         fs::{remove_file, File},
         path::{Path, PathBuf},
     };
@@ -114,13 +115,27 @@ mod tests {
 
     #[test]
     fn test_sort_by_order() {
-        let test_keys = ["a_mod", "b_mod", "c_mod", "d_mod", "f_mod", "e_mod"];
+        let test_keys = [
+            "a_mod", "b_mod", "c_mod", "d_mod", "e_mod", "f_mod", "g_mod", "h_mod",
+        ];
         let test_files = test_keys
             .iter()
             .map(|k| PathBuf::from(format!("{k}.dll")))
             .collect::<Vec<_>>();
-        let test_values = ["69420", "2", "1", "0"];
-        let sorted_order = ["d_mod", "c_mod", "b_mod", "a_mod", "e_mod", "f_mod"];
+        let test_values = ["69420", "1", "1", "0", "3", "0", "69420"];
+        let sorted_order = [
+            "d_mod.dll",
+            "f_mod.dll",
+            "b_mod.dll",
+            "c_mod.dll",
+            "e_mod.dll",
+            "a_mod.dll",
+            "g_mod.dll",
+        ];
+
+        // if we re-write `[RegMod].order_count()` and `[RegMod].dll_name_set()` we can test unknown_keys
+        let test_unknown_keys = HashSet::new();
+        let (expected_max_ord, expected_missing_vals) = ((4, true), (Some(vec![2_usize])));
 
         let test_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[2]));
         let required_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[1]));
@@ -145,9 +160,11 @@ mod tests {
 
         let mut cfg = ModLoaderCfg::read(&test_file).unwrap();
 
-        let parsed_cfg = cfg.parse_section().unwrap();
+        let (max_ord, missing_vals) = cfg.update_order_entries(None, &test_unknown_keys);
+        assert_eq!(max_ord, expected_max_ord);
+        assert_eq!(missing_vals, expected_missing_vals);
+        let parsed_cfg = cfg.parse_into_map();
 
-        cfg.update_order_entries(None);
         cfg.write_to_file().unwrap();
         let order = test_keys
             .iter()
@@ -161,10 +178,9 @@ mod tests {
         assert_eq!(order.order_count(), test_values.len());
 
         // this tests that the order is set correclty for the mods that have a order entry
-        order
-            .iter()
-            .filter(|m| m.order.set)
-            .for_each(|m| assert_eq!(m.name, sorted_order[m.order.at]));
+        cfg.iter()
+            .enumerate()
+            .for_each(|(i, (k, _))| assert_eq!(k, sorted_order[i]));
 
         remove_file(test_file).unwrap();
         remove_file(required_file).unwrap();
