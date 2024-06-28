@@ -38,6 +38,7 @@ slint::include_modules!();
 
 static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
 static RESTRICTED_FILES: OnceLock<HashSet<&OsStr>> = OnceLock::new();
+static UNKNOWN_ORDER_KEYS: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
 
 const TECHIE_W_MSG: &str = "Could not find Elden Mod Loader Script!\n\
@@ -138,9 +139,11 @@ fn main() -> Result<(), slint::PlatformError> {
                         errors.push(err);
                         ModLoaderCfg::default(mod_loader.path())
                     });
-                    let mut unknown_orders = get_mut_unknown_orders();
                     order_data = mod_loader_cfg
-                        .parse_section(&mut unknown_orders)
+                        // MARK: TODO
+                        // can we optimize the way we verify keys work to not have to run collect mods twice on starup
+                        // when unknown_keys are found?
+                        .parse_section(&HashSet::new())
                         .map(Some)
                         .unwrap_or_else(|err| {
                             error!(err_code = 5, "{err}");
@@ -188,8 +191,9 @@ fn main() -> Result<(), slint::PlatformError> {
                                 ErrorKind::Other => info!("{}", key_err.err),
                                 _ => error!(err_code = 8, "{}", key_err.err),
                             }
-                            let mut unknown_orders = get_mut_unknown_orders();
-                            *unknown_orders = key_err.unknown_keys;
+                            UNKNOWN_ORDER_KEYS
+                                .set(RwLock::new(key_err.unknown_keys))
+                                .expect("only initial set or get");
                             errors.push(key_err.err);
                         }
                     }
@@ -442,7 +446,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     ModLoaderCfg::default(loader_dir)
                 });
                 let mut unknown_orders = get_mut_unknown_orders();
-                let order_data = loader_cfg.parse_section(&mut unknown_orders).unwrap_or_else(|err| {
+                let order_data = loader_cfg.parse_section(&unknown_orders).unwrap_or_else(|err| {
                     error!("{err}");
                     ui.display_msg(&err.to_string());
                     HashMap::new()
@@ -466,7 +470,6 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg(&err.to_string());
                     return;
                 };
-                let mut unknown_orders = get_mut_unknown_orders();
                 for f in new_mod.files.dll.iter() {
                     let Some(f_name) =  f.file_name().and_then(|o| o.to_str()) else {
                         let err = format!("failed to get file name for {}", f.display());
@@ -487,7 +490,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
                 mut_model.push(deserialize_mod(&new_mod));
                 if new_mod.order.set {
-                    model.update_order(None, &order_data, ui.as_weak());
+                    model.update_order(None, &order_data, &unknown_orders, ui.as_weak());
                 }
                 info!(
                     files = new_mod.files.file_refs().len(),
@@ -689,9 +692,9 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg(&err.to_string());
                     ModLoaderCfg::empty()
                 });
-                let mut unknown_orders = get_mut_unknown_orders();
+                let unknown_orders = get_unknown_orders();
                 let order_map = if !loader_cfg.mods_is_empty() {
-                    loader_cfg.parse_section(&mut unknown_orders).map(Some).unwrap_or_else(|err| {
+                    loader_cfg.parse_section(&unknown_orders).map(Some).unwrap_or_else(|err| {
                         error!("{err}");
                         ui.display_msg(&err.to_string());
                         None
@@ -846,7 +849,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 let mut unknown_orders = get_mut_unknown_orders();
                 let mut loader = match ModLoaderCfg::read(loader_dir) {
                     Ok(mut data) => {
-                        order_map = data.parse_section(&mut unknown_orders).ok();
+                        order_map = data.parse_section(&unknown_orders).ok();
                         data
                     },
                     Err(err) => {
@@ -928,19 +931,18 @@ fn main() -> Result<(), slint::PlatformError> {
                         _ => error!("{}", key_err.err),
                     }
                     if !key_err.unknown_keys.is_empty() {
-                        let mut unknown_keys_map = get_mut_unknown_orders();
-                        *unknown_keys_map = key_err.unknown_keys;
+                        *unknown_orders = key_err.unknown_keys;
                     }
                     messages.push(key_err.err.to_string());
                 });
-                let order_data = loader.parse_section(&mut unknown_orders).unwrap_or_else(|err| {
+                let order_data = loader.parse_section(&unknown_orders).unwrap_or_else(|err| {
                     error!("{err}");
                     messages.push(err.to_string());
                     HashMap::new()
                 });
                 if found_mod.order.set {
                     ui.global::<MainLogic>().set_max_order(MaxOrder::from(reg_mods.max_order()));
-                    model.update_order(None, &order_data, ui.as_weak());
+                    model.update_order(None, &order_data, &unknown_orders, ui.as_weak());
                 }
                 for message in messages {
                     ui.display_msg(&message);
@@ -1151,9 +1153,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 load_orders.remove(&key);
                 None
             };
-            let mut unknown_orders = get_mut_unknown_orders();
+            let unknown_orders = get_unknown_orders();
             let (max_order, missing_val) =
-                load_order.update_order_entries(stable_k, &mut unknown_orders);
+                load_order.update_order_entries(stable_k, &unknown_orders);
             if let Err(err) = load_order.write_to_file() {
                 error!("{err}");
                 ui.display_msg(&format!(
@@ -1180,7 +1182,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
 
             model.set_row_data(row as usize, selected_mod);
-            model.update_order(Some(row), &new_orders, ui.as_weak());
+            model.update_order(Some(row), &new_orders, &unknown_orders, ui.as_weak());
 
             if let Some(ref vals) = missing_val {
                 let msg = format!(
@@ -1245,9 +1247,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
 
-            let mut unknown_orders = get_mut_unknown_orders();
+            let unknown_orders = get_unknown_orders();
             let (max_order, missing_val) =
-                load_order.update_order_entries(Some(&to_k), &mut unknown_orders);
+                load_order.update_order_entries(Some(&to_k), &unknown_orders);
             if let Err(err) = load_order.write_to_file() {
                 error!("{err}");
                 ui.display_msg(&format!(
@@ -1260,7 +1262,7 @@ fn main() -> Result<(), slint::PlatformError> {
             selected_mod.order.at = new_val;
             ui.global::<MainLogic>().set_max_order(MaxOrder::from(max_order));
             model.set_row_data(row as usize, selected_mod);
-            model.update_order(Some(row), &new_orders, ui.as_weak());
+            model.update_order(Some(row), &new_orders, &unknown_orders, ui.as_weak());
 
             if let Some(ref vals) = missing_val {
                 let msg = format!(
@@ -1300,6 +1302,7 @@ trait Sortable {
         &self,
         selected_row: Option<i32>,
         order_map: &OrderMap,
+        unknown_orders: &HashSet<String>,
         ui_handle: slint::Weak<App>,
     );
 }
@@ -1309,6 +1312,7 @@ impl Sortable for ModelRc<DisplayMod> {
         &self,
         selected_row: Option<i32>,
         order_map: &OrderMap,
+        unknown_orders: &HashSet<String>,
         ui_handle: slint::Weak<App>,
     ) {
         let order_map_len = order_map.len();
@@ -1322,7 +1326,6 @@ impl Sortable for ModelRc<DisplayMod> {
                 .name
         });
         let mut unsorted_idx = (0..self.row_count()).collect::<VecDeque<_>>();
-        let mut unknown_orders = get_mut_unknown_orders();
         let mut possible_vals = HashSet::with_capacity(order_map_len);
         let mut order_counts = vec![0_usize; order_map_len + 1];
         let low_order = order_map
@@ -1539,10 +1542,15 @@ fn get_or_update_game_dir(
 }
 
 fn get_mut_unknown_orders() -> tokio::sync::RwLockWriteGuard<'static, HashSet<String>> {
-    static UNKNOWN_ORDER_KEYS: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
     UNKNOWN_ORDER_KEYS
         .get_or_init(|| RwLock::new(HashSet::new()))
         .blocking_write()
+}
+
+fn get_unknown_orders() -> tokio::sync::RwLockReadGuard<'static, HashSet<String>> {
+    UNKNOWN_ORDER_KEYS
+        .get_or_init(|| RwLock::new(HashSet::new()))
+        .blocking_read()
 }
 
 #[inline]
@@ -1590,8 +1598,8 @@ fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) 
 
     match ModLoaderCfg::read(path) {
         Ok(mut data) => {
-            let mut unknown_orders = get_mut_unknown_orders();
-            data.parse_section(&mut unknown_orders).unwrap_or_else(|err| {
+            let unknown_orders = get_unknown_orders();
+            data.parse_section(&unknown_orders).unwrap_or_else(|err| {
                 error!("{err}");
                 ui.display_msg(&err.to_string());
                 HashMap::new()

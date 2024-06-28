@@ -133,9 +133,9 @@ impl ModLoaderCfg {
             }
         });
         if !unknown_keys.is_empty() {
-            let mut unknown_key_set = unknown_keys.iter().cloned().collect::<HashSet<_>>();
+            let unknown_key_set = unknown_keys.iter().cloned().collect::<HashSet<_>>();
             if update_order {
-                self.update_order_entries(None, &mut unknown_key_set);
+                self.update_order_entries(None, &unknown_key_set);
                 self.write_to_file().map_err(|err| UnknownKeyErr {
                     err,
                     unknown_keys: HashSet::new(),
@@ -163,10 +163,7 @@ impl ModLoaderCfg {
     /// returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
     /// this function also fixes usize.parse() errors and if values are out of order
     #[instrument(level = "trace", skip_all)]
-    pub fn parse_section(
-        &mut self,
-        unknown_keys: &mut HashSet<String>,
-    ) -> std::io::Result<OrderMap> {
+    pub fn parse_section(&mut self, unknown_keys: &HashSet<String>) -> std::io::Result<OrderMap> {
         if self.section().contains_key(LOADER_EXAMPLE) {
             self.mut_section().remove(LOADER_EXAMPLE);
             self.write_to_file()?;
@@ -220,7 +217,7 @@ impl ModLoaderCfg {
     pub fn update_order_entries(
         &mut self,
         stable: Option<&str>,
-        unknown_keys: &mut HashSet<String>,
+        unknown_keys: &HashSet<String>,
     ) -> ((usize, bool), Option<Vec<usize>>) {
         if self.mods_is_empty() {
             trace!("nothing to update");
