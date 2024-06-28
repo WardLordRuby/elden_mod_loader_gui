@@ -111,7 +111,7 @@ impl ModLoaderCfg {
             .iter()
             .filter_map(|(k, v)| {
                 if k != LOADER_EXAMPLE {
-                    Some((k.to_owned(), v.parse::<usize>().unwrap_or(usize::MAX)))
+                    Some((k.to_owned(), v.parse::<usize>().unwrap_or(42069)))
                 } else {
                     trace!("{LOADER_EXAMPLE} ignored");
                     None
@@ -128,14 +128,14 @@ impl ModLoaderCfg {
                 unknown_keys.push(k.to_owned());
                 if *v < order_count {
                     update_order = true;
-                    self.mut_section().remove(k);
-                    self.mut_section().append(k, (v + 42069).to_string());
+                    self.mut_section().insert(k, (v + 42069).to_string());
                 }
             }
         });
         if !unknown_keys.is_empty() {
+            let mut unknown_key_set = unknown_keys.iter().cloned().collect::<HashSet<_>>();
             if update_order {
-                self.update_order_entries(None);
+                self.update_order_entries(None, &mut unknown_key_set);
                 self.write_to_file().map_err(|err| UnknownKeyErr {
                     err,
                     unknown_keys: HashSet::new(),
@@ -145,7 +145,7 @@ impl ModLoaderCfg {
                         format!("Found load order set for file(s) not registered with the app. The following key(s) order were changed: {}", 
                         DisplayVec(&unknown_keys))
                     ),
-                    unknown_keys: unknown_keys.drain(..).collect::<HashSet<_>>(),
+                    unknown_keys: unknown_key_set,
                 });
             }
             return Err(UnknownKeyErr {
@@ -153,7 +153,7 @@ impl ModLoaderCfg {
                     format!("Found load order set for the following file(s) not registered with the app: {}",
                     DisplayVec(&unknown_keys))
                 ),
-                unknown_keys: unknown_keys.drain(..).collect::<HashSet<_>>(),
+                unknown_keys: unknown_key_set,
             });
         }
         trace!("all load_order entries are files registered with the app");
@@ -163,7 +163,10 @@ impl ModLoaderCfg {
     /// returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
     /// this function also fixes usize.parse() errors and if values are out of order
     #[instrument(level = "trace", skip_all)]
-    pub fn parse_section(&mut self) -> std::io::Result<OrderMap> {
+    pub fn parse_section(
+        &mut self,
+        unknown_keys: &mut HashSet<String>,
+    ) -> std::io::Result<OrderMap> {
         if self.section().contains_key(LOADER_EXAMPLE) {
             self.mut_section().remove(LOADER_EXAMPLE);
             self.write_to_file()?;
@@ -176,7 +179,7 @@ impl ModLoaderCfg {
         let map = self.parse_into_map();
         if self.mods_registered() != map.len() {
             trace!("fixing usize parse error in: {}", LOADER_FILES[2]);
-            self.update_order_entries(None);
+            self.update_order_entries(None, unknown_keys);
             self.write_to_file()?;
             return Ok(self.parse_into_map());
         }
@@ -189,7 +192,7 @@ impl ModLoaderCfg {
                 count
             } != *value
             {
-                self.update_order_entries(None);
+                self.update_order_entries(None, unknown_keys);
                 self.write_to_file()?;
                 info!(
                     "Found entries out of order, sorted load order entries in: {}",
@@ -217,6 +220,7 @@ impl ModLoaderCfg {
     pub fn update_order_entries(
         &mut self,
         stable: Option<&str>,
+        unknown_keys: &mut HashSet<String>,
     ) -> ((usize, bool), Option<Vec<usize>>) {
         if self.mods_is_empty() {
             trace!("nothing to update");
@@ -262,6 +266,7 @@ impl ModLoaderCfg {
             } else {
                 1
             };
+            let mut last_user_val = 0_usize;
             let mut check_for_missing_val = |offset: &usize| {
                 if *offset > 0 && input_vals.insert(*offset) {
                     missing_vals.push(*offset);
@@ -271,11 +276,17 @@ impl ModLoaderCfg {
             while let Some((k, v)) = iter.next() {
                 check_for_missing_val(&offset);
                 if !stable_k.is_empty() && (stable_v == offset || stable_v == *v) {
+                    last_user_val = offset;
                     new_section.append(std::mem::take(&mut stable_k), offset.to_string());
                     if *v != stable_v && *v > offset {
                         offset += 1;
                     }
                     check_for_missing_val(&offset);
+                }
+                if !unknown_keys.contains(*k) {
+                    last_user_val = offset;
+                } else if offset == last_user_val {
+                    offset += 1;
                 }
                 new_section.append(*k, offset.to_string());
                 if let Some((_, next_v)) = iter.peek() {
@@ -286,22 +297,27 @@ impl ModLoaderCfg {
                     offset += 1;
                 }
             }
-            let end_offset_str = offset.to_string();
             if !stable_k.is_empty() {
-                new_section.append(stable_k, &end_offset_str);
+                last_user_val = offset;
+                new_section.append(stable_k, &offset.to_string());
             }
+            let end_user_offset = last_user_val.to_string();
             (
                 if new_section.len() == 1 {
                     (1, false)
-                } else if new_section.iter().filter(|(_, v)| *v == end_offset_str).count() == 1 {
-                    (offset, false)
+                } else if new_section.iter().filter(|(_, v)| *v == end_user_offset).count() == 1 {
+                    (last_user_val, false)
                 } else {
-                    (offset + 1, true)
+                    (last_user_val + 1, true)
                 },
                 Some(missing_vals).filter(|v| !v.is_empty()),
             )
         };
         dbg!(&new_section);
+        eprintln!(
+            "Max Order: {}, Multiple last_user_val: {}",
+            output.0 .0, output.0 .1
+        );
         eprintln!("Missing val: {:?}", output.1);
         std::mem::swap(self.mut_section(), &mut new_section);
         trace!("re-calculated the order of entries in {}", LOADER_FILES[2]);

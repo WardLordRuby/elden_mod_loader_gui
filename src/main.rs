@@ -138,11 +138,15 @@ fn main() -> Result<(), slint::PlatformError> {
                         errors.push(err);
                         ModLoaderCfg::default(mod_loader.path())
                     });
-                    order_data = mod_loader_cfg.parse_section().map(Some).unwrap_or_else(|err| {
-                        error!(err_code = 5, "{err}");
-                        errors.push(err);
-                        None
-                    });
+                    let mut unknown_orders = get_mut_unknown_orders();
+                    order_data = mod_loader_cfg
+                        .parse_section(&mut unknown_orders)
+                        .map(Some)
+                        .unwrap_or_else(|err| {
+                            error!(err_code = 5, "{err}");
+                            errors.push(err);
+                            None
+                        });
                 } else {
                     mod_loader_cfg = ModLoaderCfg::default(mod_loader.path());
                 }
@@ -437,7 +441,8 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg(&err.to_string());
                     ModLoaderCfg::default(loader_dir)
                 });
-                let order_data = loader_cfg.parse_section().unwrap_or_else(|err| {
+                let mut unknown_orders = get_mut_unknown_orders();
+                let order_data = loader_cfg.parse_section(&mut unknown_orders).unwrap_or_else(|err| {
                     error!("{err}");
                     ui.display_msg(&err.to_string());
                     HashMap::new()
@@ -684,8 +689,9 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg(&err.to_string());
                     ModLoaderCfg::empty()
                 });
+                let mut unknown_orders = get_mut_unknown_orders();
                 let order_map = if !loader_cfg.mods_is_empty() {
-                    loader_cfg.parse_section().map(Some).unwrap_or_else(|err| {
+                    loader_cfg.parse_section(&mut unknown_orders).map(Some).unwrap_or_else(|err| {
                         error!("{err}");
                         ui.display_msg(&err.to_string());
                         None
@@ -752,7 +758,6 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.display_msg(&err.to_string());
                     return;
                 };
-
                 if let Err(err) = found_mod.verify_state(&game_dir, ini.path()) {
                     ui.display_msg(&err.to_string());
                     let _ = found_mod.remove_from_file(ini.path());
@@ -780,9 +785,14 @@ fn main() -> Result<(), slint::PlatformError> {
                     if !new_dll_with_set_order.is_empty() {
                         display_mod.order.set = true;
                         display_mod.order.at = loader_cfg.section().get(&new_dll_with_set_order[0].0).expect("unknown_key was previously found").parse::<i32>().unwrap_or(69);
-                        if let Some(index) = found_mod.files.dll.iter().position(|f| f == new_dll_with_set_order[0].1) {
-                            display_mod.order.i = index as i32;
-                        }
+                        let Some(index) = found_mod.files.dll.iter().position(|f| f == new_dll_with_set_order[0].1) else {
+                            let err = format!("File: {}, not correctly added to: {}", new_dll_with_set_order[0].1.display(), display_mod.name);
+                            error!("{err}");
+                            ui.display_msg(&err);
+                            reset_app_state(ini, &game_dir, Some(loader_cfg.path()), ui.as_weak());
+                            return;
+                        };
+                        display_mod.order.i = index as i32;
                     } else {
                         match found_mod.files.dll.len() {
                             0 => (),
@@ -833,9 +843,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 };
                 let order_map: Option<OrderMap>;
                 let loader_dir = get_loader_ini_dir();
+                let mut unknown_orders = get_mut_unknown_orders();
                 let mut loader = match ModLoaderCfg::read(loader_dir) {
                     Ok(mut data) => {
-                        order_map = data.parse_section().ok();
+                        order_map = data.parse_section(&mut unknown_orders).ok();
                         data
                     },
                     Err(err) => {
@@ -922,7 +933,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                     messages.push(key_err.err.to_string());
                 });
-                let order_data = loader.parse_section().unwrap_or_else(|err| {
+                let order_data = loader.parse_section(&mut unknown_orders).unwrap_or_else(|err| {
                     error!("{err}");
                     messages.push(err.to_string());
                     HashMap::new()
@@ -1140,7 +1151,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 load_orders.remove(&key);
                 None
             };
-            let (max_order, missing_val) = load_order.update_order_entries(stable_k);
+            let mut unknown_orders = get_mut_unknown_orders();
+            let (max_order, missing_val) =
+                load_order.update_order_entries(stable_k, &mut unknown_orders);
             if let Err(err) = load_order.write_to_file() {
                 error!("{err}");
                 ui.display_msg(&format!(
@@ -1232,7 +1245,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
 
-            let (max_order, missing_val) = load_order.update_order_entries(Some(&to_k));
+            let mut unknown_orders = get_mut_unknown_orders();
+            let (max_order, missing_val) =
+                load_order.update_order_entries(Some(&to_k), &mut unknown_orders);
             if let Err(err) = load_order.write_to_file() {
                 error!("{err}");
                 ui.display_msg(&format!(
@@ -1307,10 +1322,12 @@ impl Sortable for ModelRc<DisplayMod> {
                 .name
         });
         let mut unsorted_idx = (0..self.row_count()).collect::<VecDeque<_>>();
+        let mut unknown_orders = get_mut_unknown_orders();
         let mut possible_vals = HashSet::with_capacity(order_map_len);
         let mut order_counts = vec![0_usize; order_map_len + 1];
         let low_order = order_map
             .iter()
+            .filter(|(k, _)| !unknown_orders.contains(*k))
             .map(|(_, v)| {
                 order_counts[*v] += 1;
                 possible_vals.insert(*v);
@@ -1572,11 +1589,14 @@ fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) 
     tracing::Span::current().record("path", tracing::field::display(path.display()));
 
     match ModLoaderCfg::read(path) {
-        Ok(mut data) => data.parse_section().unwrap_or_else(|err| {
-            error!("{err}");
-            ui.display_msg(&err.to_string());
-            HashMap::new()
-        }),
+        Ok(mut data) => {
+            let mut unknown_orders = get_mut_unknown_orders();
+            data.parse_section(&mut unknown_orders).unwrap_or_else(|err| {
+                error!("{err}");
+                ui.display_msg(&err.to_string());
+                HashMap::new()
+            })
+        }
         Err(err) => {
             error!("{err}");
             ui.display_msg(&err.to_string());
