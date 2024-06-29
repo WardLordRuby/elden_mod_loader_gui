@@ -68,6 +68,7 @@ pub const DEFAULT_LOADER_VALUES: [&str; 2] = ["5000", "0"];
 pub const ANTI_CHEAT_EXE: &str = "toggle_anti_cheat.exe";
 
 pub type OrderMap = HashMap<String, usize>;
+pub type DllSet<'a> = HashSet<&'a str>;
 
 #[macro_export]
 macro_rules! new_io_error {

@@ -160,7 +160,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                         UNKNOWN_ORDER_KEYS
                             .set(RwLock::new(key_err.unknown_keys))
-                            .expect("only initial set or get");
+                            .expect("only initial set");
                         errors.push(key_err.err);
                     }
                     order_data = mod_loader_cfg
