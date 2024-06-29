@@ -76,14 +76,16 @@ impl Parsable for PathBuf {
         skip_validation: bool,
     ) -> std::io::Result<Self> {
         let parsed_value = PathBuf::from({
-            let value = ini.get_from(section, key);
-            if matches!(value, Some(ARRAY_VALUE)) {
+            let value = ini
+                .get_from(section, key)
+                .expect("Validated by IniProperty::is_valid");
+            if value == ARRAY_VALUE {
                 return new_io_error!(
                     ErrorKind::InvalidData,
                     "Invalid type found. Expected: Path, Found: Vec<Path>"
                 );
             }
-            value.expect("Validated by IniProperty::is_valid")
+            value
         });
         if skip_validation {
             return Ok(parsed_value);
@@ -123,15 +125,15 @@ impl Parsable for Vec<PathBuf> {
                 "Invalid type found. Expected: Vec<Path>, Found: Path"
             );
         }
-        let parsed_value = ini
-            .section(section)
-            .expect("Validated by IniProperty::is_valid")
-            .iter()
-            .skip_while(|(k, _)| *k != key)
-            .skip_while(|(k, _)| *k == key)
-            .take_while(|(k, _)| *k == ARRAY_KEY)
-            .map(|(_, v)| PathBuf::from(v))
-            .collect();
+        let parsed_value =
+            PropertyArray(ini.section(section).expect("Validated by IniProperty::is_valid"))
+                .into_iter()
+                .find(|(k, _)| *k == key)
+                .expect("Validated by IniProperty::is_valid")
+                .1
+                .iter()
+                .map(PathBuf::from)
+                .collect();
         if skip_validation {
             return Ok(parsed_value);
         }
@@ -863,23 +865,15 @@ impl Cfg {
                     .data()
                     .section(INI_SECTIONS[2])
                     .expect("Validated by Ini::is_setup on startup");
-                let dll_data = self
+                let file_data = self
                     .data()
                     .section(INI_SECTIONS[3])
                     .expect("Validated by Ini::is_setup on startup");
-                dll_data
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, (k, _))| *k != ARRAY_KEY)
-                    .map(|(i, (k, v))| {
-                        let paths = dll_data
-                            .iter()
-                            .skip(i + 1)
-                            .take_while(|(k, _)| *k == ARRAY_KEY)
-                            .map(|(_, v)| v)
-                            .collect();
+                PropertyArray(file_data)
+                    .into_iter()
+                    .map(|(k, v)| {
                         let s = mod_state_data.get(k).expect("key exists");
-                        (k, s, if v == ARRAY_VALUE { paths } else { vec![v] })
+                        (k, s, v)
                     })
                     .collect()
             };
@@ -1006,34 +1000,19 @@ impl Cfg {
     /// returns CollectedMaps - `(state_map, mod_file_map)`
     #[instrument(level = "trace", skip_all)]
     fn sync_keys(&self) -> CollectedMaps {
-        let collect_paths = || -> HashMap<&str, Vec<&str>> {
-            let file_data = self
-                .data()
-                .section(INI_SECTIONS[3])
-                .expect("Validated by Ini::is_setup on startup");
-            file_data
-                .iter()
-                .enumerate()
-                .filter(|(_, (k, _))| *k != ARRAY_KEY)
-                .map(|(i, (k, v))| {
-                    let paths = file_data
-                        .iter()
-                        .skip(i + 1)
-                        .take_while(|(k, _)| *k == ARRAY_KEY)
-                        .map(|(_, v)| v)
-                        .collect();
-                    (k, if v == ARRAY_VALUE { paths } else { vec![v] })
-                })
-                .collect()
-        };
-
         let mut state_data = self
             .data()
             .section(INI_SECTIONS[2])
             .expect("Validated by Ini::is_setup on startup")
             .iter()
             .collect::<HashMap<_, _>>();
-        let mut file_data = collect_paths();
+        let mut file_data = PropertyArray(
+            self.data()
+                .section(INI_SECTIONS[3])
+                .expect("Validated by Ini::is_setup on startup"),
+        )
+        .into_iter()
+        .collect::<HashMap<_, _>>();
         let invalid_state = state_data
             .keys()
             .filter(|k| !file_data.contains_key(*k))
@@ -1072,5 +1051,72 @@ impl Cfg {
 
         debug_assert_eq!(state_data.len(), file_data.len());
         (state_data, file_data)
+    }
+}
+
+pub struct PropertyArray<'a>(pub &'a ini::Properties);
+
+pub struct PropertyArrayIterator<'a> {
+    iter: ini::PropertyIter<'a>,
+    next_up_key: &'a str,
+    next_up_val: &'a str,
+}
+
+impl<'a> PropertyArrayIterator<'a> {
+    #[inline]
+    fn new(section: ini::PropertyIter<'a>) -> Self {
+        PropertyArrayIterator {
+            iter: section,
+            next_up_key: "",
+            next_up_val: "",
+        }
+    }
+}
+
+impl<'a> IntoIterator for PropertyArray<'a> {
+    type Item = (&'a str, Vec<&'a str>);
+    type IntoIter = PropertyArrayIterator<'a>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        PropertyArrayIterator::new(self.0.iter())
+    }
+}
+
+impl<'a> Iterator for PropertyArrayIterator<'a> {
+    type Item = (&'a str, Vec<&'a str>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        use std::mem::take;
+
+        fn collect_array<'a>(outer_self: &mut PropertyArrayIterator<'a>) -> Vec<&'a str> {
+            let mut output = Vec::new();
+            for (k, v) in outer_self.iter.by_ref() {
+                if k != ARRAY_KEY {
+                    outer_self.next_up_key = k;
+                    outer_self.next_up_val = v;
+                    break;
+                }
+                output.push(v);
+            }
+            output
+        }
+        if !self.next_up_key.is_empty() {
+            if self.next_up_val != ARRAY_VALUE {
+                return Some((
+                    take(&mut self.next_up_key),
+                    vec![take(&mut self.next_up_val)],
+                ));
+            } else {
+                return Some((take(&mut self.next_up_key), collect_array(self)));
+            }
+        }
+        if let Some((k, v)) = self.iter.next() {
+            if v != ARRAY_VALUE {
+                return Some((k, vec![v]));
+            }
+            return Some((k, collect_array(self)));
+        }
+        None
     }
 }
