@@ -8,12 +8,15 @@ use tracing::{info, instrument};
 
 use crate::{
     get_or_setup_cfg,
-    utils::ini::{
-        parser::IniProperty,
-        writer::{save_bool, save_value_ext, EXT_OPTIONS, WRITE_OPTIONS},
+    utils::{
+        display::{DisplayTheme, ModError},
+        ini::{
+            parser::IniProperty,
+            writer::{save_bool, save_value_ext, EXT_OPTIONS, WRITE_OPTIONS},
+        },
     },
-    DisplayTheme, ModError, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_NAME,
-    INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
+    DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_NAME, INI_SECTIONS, LOADER_FILES,
+    LOADER_KEYS, LOADER_SECTIONS,
 };
 
 pub trait Config {

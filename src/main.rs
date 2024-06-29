@@ -4,6 +4,7 @@
 
 use elden_mod_loader_gui::{
     utils::{
+        display::*,
         ini::{
             common::*,
             mod_loader::{ModLoader, RegModsExt},

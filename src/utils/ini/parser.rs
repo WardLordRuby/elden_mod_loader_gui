@@ -10,12 +10,15 @@ use tracing::{error, info, instrument, trace, warn};
 use crate::{
     file_name_from_str, files_not_found, get_cfg, new_io_error, omit_off_state, toggle_files,
     toggle_name_state,
-    utils::ini::{
-        common::Config,
-        writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
+    utils::{
+        display::{Merge, ModError},
+        ini::{
+            common::Config,
+            writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
+        },
     },
-    Cfg, DisplayName, DisplayState, DisplayVec, DllSet, FileData, IntoIoError, Merge, ModError,
-    OrderMap, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
+    Cfg, DisplayName, DisplayState, DisplayVec, DllSet, FileData, IntoIoError, OrderMap, ARRAY_KEY,
+    ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
 };
 
 pub trait Parsable: Sized {
