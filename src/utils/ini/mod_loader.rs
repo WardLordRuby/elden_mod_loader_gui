@@ -6,13 +6,14 @@ use std::{
 use tracing::{info, instrument, trace, warn};
 
 use crate::{
-    does_dir_contain, omit_off_state,
+    does_dir_contain,
     utils::ini::{
         common::{Config, ModLoaderCfg},
         parser::RegMod,
         writer::new_cfg,
     },
-    DisplayState, DisplayVec, Operation, OperationResult, OrderMap, LOADER_EXAMPLE, LOADER_FILES,
+    DisplayState, DisplayVec, DllSet, Operation, OperationResult, OrderMap, LOADER_EXAMPLE,
+    LOADER_FILES,
 };
 
 #[derive(Debug, Default)]
@@ -99,8 +100,7 @@ pub struct UnknownKeyErr {
 impl ModLoaderCfg {
     /// verifies that all keys stored in "elden_mod_loader_config.ini" are registered with the app  
     /// a _unknown_ file is found as a key this will change the order to be greater than _known_ files  
-    /// a `DllSet` is obtained by calling `dll_name_set()` on `[RegMod]`  
-    /// order_count is obtained by calling 'order.count() on `[RegMod]`  
+    /// `DllSet` and `order_count` are retrieved by calling `dll_set_order_count` on `Cfg`  
     #[instrument(level = "trace", skip_all)]
     pub fn verify_keys(&mut self, dlls: &DllSet, order_count: usize) -> Result<(), UnknownKeyErr> {
         if self.mods_is_empty() {
@@ -125,15 +125,16 @@ impl ModLoaderCfg {
         let mut update_order = false;
         k_v.iter().for_each(|(k, v)| {
             if !dlls.contains(k.as_str()) {
-                unknown_keys.push(k.to_owned());
+                unknown_keys.push(k.as_str());
                 if *v < order_count {
                     update_order = true;
-                    self.mut_section().insert(k, (v + 42069).to_string());
+                    self.mut_section().insert(k, (usize::MAX - v).to_string());
                 }
             }
         });
         if !unknown_keys.is_empty() {
-            let unknown_key_set = unknown_keys.iter().cloned().collect::<HashSet<_>>();
+            let unknown_key_set =
+                unknown_keys.iter().map(|s| String::from(*s)).collect::<HashSet<_>>();
             if update_order {
                 self.update_order_entries(None, &unknown_key_set);
                 self.write_to_file().map_err(|err| UnknownKeyErr {
@@ -310,6 +311,7 @@ impl ModLoaderCfg {
                 Some(missing_vals).filter(|v| !v.is_empty()),
             )
         };
+        dbg!(&unknown_keys);
         dbg!(&new_section);
         eprintln!(
             "Max Order: {}, Multiple last_user_val: {}",
@@ -322,25 +324,12 @@ impl ModLoaderCfg {
     }
 }
 
-type DllSet<'a> = HashSet<&'a str>;
-
 pub trait RegModsExt {
-    /// returns the number of entries in a colletion that have `mod.order.set`
-    fn order_count(&self) -> usize;
-
     /// returns the calculation for the correct (`max_order`, `high_val.count() > 1`)
     fn max_order(&self) -> (usize, bool);
-
-    /// returns a `HashSet` of all .dll files with their `OFFSTATE` omitted
-    fn dll_name_set(&self) -> DllSet;
 }
 
 impl RegModsExt for [RegMod] {
-    #[inline]
-    fn order_count(&self) -> usize {
-        self.iter().filter(|m| m.order.set).count()
-    }
-
     fn max_order(&self) -> (usize, bool) {
         let set_indices = self
             .iter()
@@ -353,12 +342,12 @@ impl RegModsExt for [RegMod] {
         }
         let high_order = set_indices
             .iter()
-            .map(|i| self[*i].order.at)
+            .map(|&i| self[i].order.at)
             .max()
             .expect("order set to a usize");
         if set_indices
             .iter()
-            .filter(|i| self[**i].order.at == high_order)
+            .filter(|&&i| self[i].order.at == high_order)
             .count()
             == 1
         {
@@ -366,18 +355,5 @@ impl RegModsExt for [RegMod] {
         } else {
             (high_order + 1, true)
         }
-    }
-
-    fn dll_name_set(&self) -> DllSet {
-        self.iter()
-            .flat_map(|reg_mod| {
-                reg_mod
-                    .files
-                    .dll
-                    .iter()
-                    .filter_map(|f| Some(omit_off_state(f.file_name()?.to_str()?)))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<HashSet<_>>()
     }
 }

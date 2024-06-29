@@ -14,8 +14,8 @@ use crate::{
         common::Config,
         writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
     },
-    Cfg, DisplayName, DisplayState, DisplayVec, FileData, IntoIoError, Merge, ModError, OrderMap,
-    ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
+    Cfg, DisplayName, DisplayState, DisplayVec, DllSet, FileData, IntoIoError, Merge, ModError,
+    OrderMap, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
 };
 
 pub trait Parsable: Sized {
@@ -952,50 +952,6 @@ impl Cfg {
         })
     }
 
-    /// returns all the keys (as_lowercase) collected into a `Set`
-    /// this also calls sync keys if invalid keys are found
-    #[instrument(level = "trace", skip_all)]
-    pub fn keys(&mut self) -> HashSet<String> {
-        let are_keys_ok = || -> Option<HashSet<String>> {
-            let state_keys = self
-                .data()
-                .section(INI_SECTIONS[2])
-                .expect("Validated by is_setup")
-                .iter()
-                .map(|(k, _)| k.to_lowercase())
-                .collect::<HashSet<_>>();
-            self.data()
-                .section(INI_SECTIONS[3])
-                .expect("Validated by is_setup")
-                .iter()
-                .filter_map(|(k, _)| if k != ARRAY_KEY { Some(k) } else { None })
-                .all(|mod_file_key| state_keys.contains(&mod_file_key.to_lowercase()))
-                .then_some(state_keys)
-        };
-
-        if let Some(keys) = are_keys_ok() {
-            trace!("keys collected");
-            return keys;
-        }
-        let registered_mods = {
-            let (mods_map, _) = self.sync_keys();
-            mods_map.keys().map(|k| k.to_lowercase()).collect::<HashSet<_>>()
-        };
-        self.update().expect("already exists in an accessable directory");
-        registered_mods
-    }
-
-    /// returns all the registered file (as _short_paths_) in a `HashSet`
-    // we _need_ to compare short_paths for the intened functionality to be correct
-    // this is because mods typically have the same file names but in seprate directories
-    pub fn files(&self) -> HashSet<&str> {
-        let mod_files = self.data().section(INI_SECTIONS[3]).expect("Validated by is_setup");
-        mod_files
-            .iter()
-            .filter_map(|(_, v)| if v != ARRAY_VALUE { Some(v) } else { None })
-            .collect::<HashSet<_>>()
-    }
-
     /// ensures that _all_ keys have matching keys in Sections: "registered-mods" and "mod-files"  
     /// returns CollectedMaps - `(state_map, mod_file_map)`
     #[instrument(level = "trace", skip_all)]
@@ -1052,6 +1008,90 @@ impl Cfg {
         debug_assert_eq!(state_data.len(), file_data.len());
         (state_data, file_data)
     }
+
+    /// returns all the keys (as_lowercase) collected into a `Set`
+    /// this also calls sync keys if invalid keys are found
+    #[instrument(level = "trace", skip_all)]
+    pub fn keys(&mut self) -> HashSet<String> {
+        let are_keys_ok = || -> Option<HashSet<String>> {
+            let state_keys = self
+                .data()
+                .section(INI_SECTIONS[2])
+                .expect("Validated by is_setup")
+                .iter()
+                .map(|(k, _)| k.to_lowercase())
+                .collect::<HashSet<_>>();
+            self.data()
+                .section(INI_SECTIONS[3])
+                .expect("Validated by is_setup")
+                .iter()
+                .filter_map(|(k, _)| if k != ARRAY_KEY { Some(k) } else { None })
+                .all(|mod_file_key| state_keys.contains(&mod_file_key.to_lowercase()))
+                .then_some(state_keys)
+        };
+
+        if let Some(keys) = are_keys_ok() {
+            trace!("keys collected");
+            return keys;
+        }
+        let registered_mods = {
+            let (mods_map, _) = self.sync_keys();
+            mods_map.keys().map(|k| k.to_lowercase()).collect::<HashSet<_>>()
+        };
+        self.update().expect("already exists in an accessable directory");
+        registered_mods
+    }
+
+    /// returns all the registered file (as _short_paths_) in a `HashSet`
+    // we _need_ to compare short_paths for the intened functionality to be correct
+    // this is because mods typically have the same file names but in seprate directories
+    pub fn files(&self) -> HashSet<&str> {
+        let mod_files = self.data().section(INI_SECTIONS[3]).expect("Validated by is_setup");
+        mod_files
+            .iter()
+            .filter_map(|(_, v)| if v != ARRAY_VALUE { Some(v) } else { None })
+            .collect::<HashSet<_>>()
+    }
+
+    /// returns (`DllSet`, `order_count`, `key_value_removed`)  
+    /// where `DllSet` is a HashSet of all registered .dll files  
+    /// and `order_count` is the number of registered mods that have a set order in mod_loader_config.ini  
+    /// and `key_value_removed` is if any key_value pair was removed  
+    ///
+    /// **Note:** this function will ensure each registered mod has _only_ one file with a set order
+    pub fn dll_set_order_count(
+        &self,
+        loader_section: &mut ini::Properties,
+    ) -> (DllSet, usize, bool) {
+        let mut counter = 0_usize;
+        let mut write_to_file = false;
+        (
+            PropertyArray(self.data().section(INI_SECTIONS[3]).expect("valided on startup"))
+                .into_iter()
+                .flat_map(|(_, v)| {
+                    let mut order_found = false;
+                    v.iter()
+                        .filter(|f| FileData::from(f).extension == ".dll")
+                        .map(|f_path| {
+                            let f_name = omit_off_state(file_name_from_str(f_path));
+                            if loader_section.contains_key(f_name) {
+                                if !order_found {
+                                    order_found = true;
+                                    counter += 1;
+                                } else {
+                                    write_to_file = true;
+                                    loader_section.remove(f_name);
+                                }
+                            }
+                            f_name
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<DllSet>(),
+            counter,
+            write_to_file,
+        )
+    }
 }
 
 pub struct PropertyArray<'a>(pub &'a ini::Properties);
@@ -1103,10 +1143,7 @@ impl<'a> Iterator for PropertyArrayIterator<'a> {
         }
         if !self.next_up_key.is_empty() {
             if self.next_up_val != ARRAY_VALUE {
-                return Some((
-                    take(&mut self.next_up_key),
-                    vec![take(&mut self.next_up_val)],
-                ));
+                return Some((take(&mut self.next_up_key), vec![self.next_up_val]));
             } else {
                 return Some((take(&mut self.next_up_key), collect_array(self)));
             }

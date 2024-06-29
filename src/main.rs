@@ -139,14 +139,35 @@ fn main() -> Result<(), slint::PlatformError> {
                         errors.push(err);
                         ModLoaderCfg::default(mod_loader.path())
                     });
+                    let (dlls, order_count, update_loader) =
+                        ini.dll_set_order_count(mod_loader_cfg.mut_section());
+                    if update_loader {
+                        mod_loader_cfg.write_to_file().unwrap_or_else(|err| {
+                            error!(err_code = 5, "{err}");
+                            errors.push(err);
+                        });
+                    }
+                    if let Err(key_err) = mod_loader_cfg.verify_keys(&dlls, order_count) {
+                        match key_err.err.kind() {
+                            ErrorKind::Unsupported => {
+                                ini.update().unwrap_or_else(|err| {
+                                    error!(err_code = 6, "{err}");
+                                });
+                                warn!("{}", key_err.err);
+                            }
+                            ErrorKind::Other => info!("{}", key_err.err),
+                            _ => error!(err_code = 7, "{}", key_err.err),
+                        }
+                        UNKNOWN_ORDER_KEYS
+                            .set(RwLock::new(key_err.unknown_keys))
+                            .expect("only initial set or get");
+                        errors.push(key_err.err);
+                    }
                     order_data = mod_loader_cfg
-                        // MARK: TODO
-                        // can we optimize the way we verify keys work to not have to run collect mods twice on starup
-                        // when unknown_keys are found?
-                        .parse_section(&HashSet::new())
+                        .parse_section(&get_unknown_orders())
                         .map(Some)
                         .unwrap_or_else(|err| {
-                            error!(err_code = 5, "{err}");
+                            error!(err_code = 8, "{err}");
                             errors.push(err);
                             None
                         });
@@ -164,7 +185,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             result
                         }
                         Err(err) => {
-                            error!(err_code = 6, "{err}");
+                            error!(err_code = 9, "{err}");
                             errors.push(err);
                             false
                         }
@@ -173,33 +194,9 @@ fn main() -> Result<(), slint::PlatformError> {
 
                 reg_mods = {
                     let mut collection = ini.collect_mods(&path, order_data.as_ref(), false);
-                    let dlls = collection.mods.dll_name_set();
-                    if mod_loader.installed() {
-                        if let Err(key_err) =
-                            mod_loader_cfg.verify_keys(&dlls, collection.mods.order_count())
-                        {
-                            match key_err.err.kind() {
-                                ErrorKind::Unsupported => {
-                                    order_data = Some(mod_loader_cfg.parse_into_map());
-                                    ini.update().unwrap_or_else(|err| {
-                                        error!(err_code = 7, "{err}");
-                                    });
-                                    collection =
-                                        ini.collect_mods(&path, order_data.as_ref(), false);
-                                    warn!("{}", key_err.err);
-                                }
-                                ErrorKind::Other => info!("{}", key_err.err),
-                                _ => error!(err_code = 8, "{}", key_err.err),
-                            }
-                            UNKNOWN_ORDER_KEYS
-                                .set(RwLock::new(key_err.unknown_keys))
-                                .expect("only initial set or get");
-                            errors.push(key_err.err);
-                        }
-                    }
                     if collection.mods.len() != ini.mods_registered() {
                         ini.update().unwrap_or_else(|err| {
-                            error!(err_code = 9, "{err}");
+                            error!(err_code = 10, "{err}");
                         });
                     }
                     if let Some(warning) = collection.warnings.take() {
@@ -223,7 +220,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             Err(err) => {
                 // io::Write error
-                error!(err_code = 10, "{err}");
+                error!(err_code = 11, "{err}");
                 errors.push(err);
                 mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
@@ -235,7 +232,7 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.global::<SettingsLogic>()
             .set_dark_mode(ini.get_dark_mode().unwrap_or_else(|err| {
                 // parse error ErrorKind::InvalidData
-                error!(err_code = 11, "{err}");
+                error!(err_code = 12, "{err}");
                 errors.push(err);
                 DEFAULT_INI_VALUES[0]
             }));
@@ -275,13 +272,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.global::<SettingsLogic>().set_loader_installed(true);
                 let delay = mod_loader_cfg.get_load_delay().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
-                    error!(err_code = 12, "{err}");
+                    error!(err_code = 13, "{err}");
                     errors.push(err);
                     DEFAULT_LOADER_VALUES[0].parse().unwrap()
                 });
                 let show_terminal = mod_loader_cfg.get_show_terminal().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
-                    error!(err_code = 13, "{err}");
+                    error!(err_code = 14, "{err}");
                     errors.push(err);
                     false
                 });
@@ -920,11 +917,11 @@ fn main() -> Result<(), slint::PlatformError> {
                         messages.push(err.to_string());
                     }
                 }
-                let dlls = reg_mods.dll_name_set();
+                let (dlls, order_count, _) = ini.dll_set_order_count(loader.mut_section());
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
                 mut_model.remove(row as usize);
-                loader.verify_keys(&dlls, reg_mods.order_count()).unwrap_or_else(|key_err| {
+                loader.verify_keys(&dlls, order_count).unwrap_or_else(|key_err| {
                     match key_err.err.kind() {
                         ErrorKind::Other => info!("{}", key_err.err),
                         ErrorKind::Unsupported => warn!("{}", key_err.err),
@@ -1514,6 +1511,7 @@ fn get_user_files(path: &Path, ui_window: &slint::Window) -> std::io::Result<Vec
     f_result
 }
 
+#[inline]
 fn get_ini_dir() -> &'static PathBuf {
     static CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
     CONFIG_PATH.get_or_init(|| {
@@ -1522,6 +1520,7 @@ fn get_ini_dir() -> &'static PathBuf {
     })
 }
 
+#[inline]
 fn get_loader_ini_dir() -> &'static PathBuf {
     static LOADER_CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
     LOADER_CONFIG_PATH.get_or_init(|| get_or_update_game_dir(None).join(LOADER_FILES[2]))
@@ -1541,12 +1540,14 @@ fn get_or_update_game_dir(
     GAME_DIR.get().unwrap().blocking_read()
 }
 
+#[inline]
 fn get_mut_unknown_orders() -> tokio::sync::RwLockWriteGuard<'static, HashSet<String>> {
     UNKNOWN_ORDER_KEYS
         .get_or_init(|| RwLock::new(HashSet::new()))
         .blocking_write()
 }
 
+#[inline]
 fn get_unknown_orders() -> tokio::sync::RwLockReadGuard<'static, HashSet<String>> {
     UNKNOWN_ORDER_KEYS
         .get_or_init(|| RwLock::new(HashSet::new()))
