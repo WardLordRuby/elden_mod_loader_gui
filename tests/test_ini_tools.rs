@@ -12,7 +12,6 @@ mod tests {
         get_cfg,
         utils::ini::{
             common::*,
-            mod_loader::RegModsExt,
             parser::{IniProperty, RegMod, Setup},
             writer::*,
         },
@@ -122,29 +121,34 @@ mod tests {
             .iter()
             .map(|k| PathBuf::from(format!("{k}.dll")))
             .collect::<Vec<_>>();
-        let test_values = ["69420", "1", "1", "0", "3", "0", "69420"];
+        let test_values = ["69420", "1", "1", "0", "3", "0", "69420", "0"];
         let sorted_order = [
-            "d_mod.dll",
-            "f_mod.dll",
-            "b_mod.dll",
-            "c_mod.dll",
-            "e_mod.dll",
-            "a_mod.dll",
-            "g_mod.dll",
+            ("d_mod.dll", "0"),
+            ("f_mod.dll", "0"),
+            ("b_mod.dll", "1"),
+            ("c_mod.dll", "1"),
+            ("e_mod.dll", "2"),
+            ("a_mod.dll", "3"),
+            ("g_mod.dll", "3"),
+            ("h_mod.dll", "4"),
         ];
 
-        // if we re-write `[RegMod].order_count()` and `[RegMod].dll_name_set()` we can test unknown_keys
-        let test_unknown_keys = HashSet::new();
-        let (expected_max_ord, expected_missing_vals) = ((4, true), (Some(vec![2_usize])));
+        let mut test_unknown_keys = HashSet::new();
+        test_unknown_keys.insert(test_files[7].to_string_lossy().to_string());
+        let expected_max_ord = (4, true);
 
         let test_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[2]));
         let required_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[1]));
 
-        let test_sections = [LOADER_SECTIONS[0], LOADER_SECTIONS[1], Some("paths")];
+        let test_sections = LOADER_SECTIONS
+            .iter()
+            .chain(INI_SECTIONS.iter())
+            .copied()
+            .collect::<Vec<_>>();
         {
             new_cfg_with_sections(&test_file, &test_sections).unwrap();
-            for (i, key) in test_keys.iter().enumerate() {
-                save_path(&test_file, test_sections[2], key, &test_files[i]).unwrap();
+            for (i, key) in test_keys.iter().take(7).enumerate() {
+                save_path(&test_file, test_sections[5], key, &test_files[i]).unwrap();
             }
             for (i, value) in test_values.iter().enumerate() {
                 save_value_ext(
@@ -158,29 +162,30 @@ mod tests {
             File::create(&required_file).unwrap();
         }
 
-        let mut cfg = ModLoaderCfg::read(&test_file).unwrap();
+        let mut loader = ModLoaderCfg::read(&test_file).unwrap();
+        let ini = Cfg::read(&test_file).unwrap();
 
-        let (max_ord, missing_vals) = cfg.update_order_entries(None, &test_unknown_keys);
+        let (dlls, order_count, _) = ini.dll_set_order_count(loader.mut_section());
+        let expected_unknown_key_err = loader.verify_keys(&dlls, order_count).unwrap_err();
+        assert_eq!(
+            expected_unknown_key_err.err.kind(),
+            std::io::ErrorKind::Unsupported
+        );
+
+        let (max_ord, _) = loader.update_order_entries(None, &test_unknown_keys);
         assert_eq!(max_ord, expected_max_ord);
-        assert_eq!(missing_vals, expected_missing_vals);
-        let parsed_cfg = cfg.parse_into_map();
+        assert!(loader.section().get("e_mod.dll").unwrap() == "2");
 
-        cfg.write_to_file().unwrap();
-        let order = test_keys
-            .iter()
-            .enumerate()
-            .map(|(i, key)| {
-                RegMod::with_load_order(key, true, vec![test_files[i].clone()], &parsed_cfg)
-            })
-            .collect::<Vec<_>>();
+        loader.write_to_file().unwrap();
 
         // this tests to make sure the two without an order set are marked as order.set = false
-        assert_eq!(order.order_count(), test_values.len());
+        assert_eq!(order_count, (test_values.len() - test_unknown_keys.len()));
 
         // this tests that the order is set correclty for the mods that have a order entry
-        cfg.iter()
-            .enumerate()
-            .for_each(|(i, (k, _))| assert_eq!(k, sorted_order[i]));
+        loader.iter().enumerate().for_each(|(i, (k, v))| {
+            assert_eq!(k, sorted_order[i].0);
+            assert_eq!(v, sorted_order[i].1)
+        });
 
         remove_file(test_file).unwrap();
         remove_file(required_file).unwrap();
