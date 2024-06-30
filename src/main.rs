@@ -773,7 +773,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     let f_str = f.to_string_lossy();
                     let f_data = FileData::from(&f_str);
                     if f_data.extension == ".dll" && unknown_orders.contains(f_str.as_ref()) {
-                        Some((file_name_from_str(&f_str).to_owned(), f))
+                        Some((file_name_from_str(&f_str).to_owned(), *f))
                     } else {
                         None
                     }
@@ -1323,7 +1323,7 @@ impl Sortable for ModelRc<DisplayMod> {
                 .expect("front end gives us a valid row")
                 .name
         });
-        let mut unsorted_idx = (0..self.row_count()).collect::<VecDeque<_>>();
+        let mut unsorted_idx = (0..self.row_count()).collect::<Vec<_>>();
         let mut possible_vals = HashSet::with_capacity(order_map_len);
         let mut order_counts = vec![0_usize; order_map_len + 1];
         let low_order = order_map
@@ -1341,33 +1341,31 @@ impl Sortable for ModelRc<DisplayMod> {
             .iter()
             .enumerate()
             .fold(
-                (vec![Vec::new(); possible_vals.len()], 0_usize),
+                (vec![VecDeque::new(); possible_vals.len()], 0_usize),
                 |(mut placement_rows, mut counter), (i, &e)| {
                     for _ in 0..e {
-                        placement_rows[i - low_order].push(counter);
+                        placement_rows[i - low_order].push_back(counter);
                         counter += 1;
                     }
                     (placement_rows, counter)
                 },
             )
             .0;
+        let mut i = 0_usize;
         let mut selected_i = 0_usize;
-        // MARK: FIXME
-        // how do we break from this loop when order_map contains forign entries (currently hangs)
-        while let Some(unsorted_i) = unsorted_idx.back() {
-            let mut curr_row = self.row_data(*unsorted_i).expect("unsorted_idx is valid ranges");
+        let mut no_order_count = 0_usize;
+        let mut seen_names = HashSet::new();
+        while !unsorted_idx.is_empty() {
+            if no_order_count >= unsorted_idx.len() {
+                break;
+            }
+            if i >= unsorted_idx.len() {
+                i = 0
+            }
+            let unsorted_i = unsorted_idx[i];
+            let mut curr_row = self.row_data(unsorted_i).expect("unsorted_idx is valid ranges");
             let curr_key = curr_row.dll_files.row_data(curr_row.order.i as usize);
             let new_order: Option<&usize>;
-            // how do we get the correct order_map_len when len is not reliable?
-            if !curr_row.order.set && *unsorted_i > (order_map_len - 1) {
-                if let Some(ref key) = selected_key {
-                    if curr_row.name == key {
-                        selected_i = *unsorted_i;
-                    }
-                }
-                unsorted_idx.pop_back();
-                continue;
-            }
             if curr_key.is_some() && {
                 new_order = order_map.get(&curr_key.unwrap().to_string());
                 new_order
@@ -1377,28 +1375,34 @@ impl Sortable for ModelRc<DisplayMod> {
                 let placement_i = *new_order.unwrap() - *low_order;
                 let new_order = *new_order.unwrap() as i32;
                 if let Some(index) =
-                    placement_rows[placement_i].iter().position(|x| x == unsorted_i)
+                    placement_rows[placement_i].iter().position(|&x| x == unsorted_i)
                 {
                     if let Some(ref key) = selected_key {
                         if curr_row.name == key {
-                            selected_i = *unsorted_i;
+                            selected_i = unsorted_i;
                         }
                     }
                     if curr_row.order.at != new_order {
                         curr_row.order.at = new_order;
-                        self.set_row_data(*unsorted_i, curr_row);
+                        self.set_row_data(unsorted_i, curr_row);
                     }
-                    placement_rows[placement_i].swap_remove(index);
-                    unsorted_idx.pop_back();
+                    match index {
+                        0 => placement_rows[placement_i].pop_front(),
+                        i if i == placement_rows[placement_i].len() - 1 => {
+                            placement_rows[placement_i].pop_back()
+                        }
+                        _ => placement_rows[placement_i].remove(index),
+                    };
+                    unsorted_idx.swap_remove(i);
                     continue;
                 }
-                let swap_i = placement_rows[placement_i].pop().expect(
-                    "unsorted_idx & placement_rows contain the same entries and are kept in sync",
-                );
+                let swap_i = placement_rows[placement_i]
+                    .pop_front()
+                    .expect("placement_rows can not be empty if unsorted_idx is not empty");
                 let swap_row = self.row_data(swap_i).expect("placement rows contains valid rows");
                 if let Some(ref key) = selected_key {
                     if swap_row.name == key {
-                        selected_i = *unsorted_i;
+                        selected_i = unsorted_i;
                     } else if curr_row.name == key {
                         selected_i = swap_i;
                     }
@@ -1407,12 +1411,23 @@ impl Sortable for ModelRc<DisplayMod> {
                     curr_row.order.at = new_order;
                 }
                 self.set_row_data(swap_i, curr_row);
-                self.set_row_data(*unsorted_i, swap_row);
+                self.set_row_data(unsorted_i, swap_row);
                 let found_i = unsorted_idx.iter().position(|x| *x == swap_i).expect(
                     "unsorted_idx & placement_rows contain the same entries and are kept in sync",
                 );
-                unsorted_idx.swap_remove_front(found_i);
+                unsorted_idx.swap_remove(found_i);
+                continue;
             }
+            if let Some(ref key) = selected_key {
+                if curr_row.name == key {
+                    selected_i = unsorted_i;
+                }
+            }
+            if !seen_names.contains(&curr_row.name) {
+                seen_names.insert(curr_row.name.clone());
+                no_order_count += 1;
+            }
+            i += 1;
         }
         if selected_row.is_some() && selected_row.unwrap() != selected_i as i32 {
             ui.invoke_update_mod_index(selected_i as i32, 1);
