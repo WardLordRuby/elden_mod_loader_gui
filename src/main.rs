@@ -851,7 +851,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     return
                 }
                 let ini_dir = get_ini_dir();
-                let ini = match Cfg::read(ini_dir) {
+                let mut ini = match Cfg::read(ini_dir) {
                     Ok(ini_data) => ini_data,
                     Err(err) => {
                         error!("{err}");
@@ -875,23 +875,15 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 };
                 let game_dir = get_or_update_game_dir(None);
-                let mut reg_mods = {
-                    let data = ini.collect_mods(game_dir.as_path(), order_map.as_ref(), false);
-                    if let Some(warning) = data.warnings {
-                        ui.display_msg(&warning.to_string());
+                let mut found_mod = match ini.get_mod(&key, &game_dir, order_map.as_ref()) {
+                    Ok(found_data) => found_data,
+                    Err(err) => {
+                        error!("{err}");
+                        ui.display_msg(&format!("{err}\nRemoving invalid entries"));
+                        reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
+                        return;
                     }
-                    data.mods
                 };
-                let format_key = key.replace(' ', "_");
-                let Some(found_i) = reg_mods.iter().position(|reg_mod| format_key == reg_mod.name) else
-                {
-                    let err = &format!("Mod: {key} not found");
-                    error!("{err}");
-                    ui.display_msg(&format!("{err}\nRemoving invalid entries"));
-                    reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
-                    return;
-                };
-                let mut found_mod = reg_mods.swap_remove(found_i);
                 if found_mod.files.dll.iter().any(FileData::is_disabled) {
                     if let Err(err) = toggle_files(&game_dir, true, &mut found_mod, None) {
                         let error = format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}");
@@ -923,11 +915,6 @@ fn main() -> Result<(), slint::PlatformError> {
                                 return;
                             }
                         }
-                        if let Err(err) = found_mod.remove_from_file(ini_dir) {
-                            error!("{err}");
-                            ui.display_msg(&err.to_string());
-                            return;
-                        };
                         ui.global::<MainLogic>().set_current_subpage(0);
                         let deregister = format!("De-registered mod: {key}");
                         info!("{deregister}");
@@ -935,10 +922,18 @@ fn main() -> Result<(), slint::PlatformError> {
                         messages.push(err.to_string());
                     }
                 }
+                if let Err(err) = ini.update() {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
+                    let _ = receive_msg().await;
+                    reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
+                    return;
+                };
                 let (dlls, order_count, _) = ini.dll_set_order_count(loader.mut_section());
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
                 mut_model.remove(row as usize);
+                let mut ord_meta_data = None;
                 loader.verify_keys(&dlls, order_count).unwrap_or_else(|key_err| {
                     match key_err.err.kind() {
                         ErrorKind::Other => info!("{}", key_err.err),
@@ -949,6 +944,9 @@ fn main() -> Result<(), slint::PlatformError> {
                         *unknown_orders = unknown_keys;
                     }
                     messages.push(key_err.err.to_string());
+                    if key_err.update_ord_data.is_some() {
+                        ord_meta_data = key_err.update_ord_data;
+                    }
                 });
                 let order_data = loader.parse_section(&unknown_orders).unwrap_or_else(|err| {
                     error!("{err}");
@@ -956,8 +954,24 @@ fn main() -> Result<(), slint::PlatformError> {
                     HashMap::new()
                 });
                 if found_mod.order.set {
-                    ui.global::<MainLogic>().set_max_order(MaxOrder::from(reg_mods.max_order()));
+                    if ord_meta_data.is_none() {
+                        ord_meta_data = Some(loader.update_order_entries(None, &unknown_orders));
+                        if let Err(err) = loader.write_to_file() {
+                            error!("{err}");
+                            ui.display_msg(&err.to_string());
+                            let _ = receive_msg().await;
+                            reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
+                            return;
+                        }
+                    }
+                    let ord_meta_data = ord_meta_data.expect("is_some");
+                    ui.global::<MainLogic>().set_max_order(MaxOrder::from(ord_meta_data.max_order));
                     model.update_order(None, &order_data, &unknown_orders, ui.as_weak());
+                    if let Some(ref vals) = ord_meta_data.missing_vals {
+                        let msg = DisplayMissingOrd(vals).to_string();
+                        info!("{msg}");
+                        messages.push(msg);
+                    }
                 }
                 for message in messages {
                     ui.display_msg(&message);
@@ -1913,6 +1927,9 @@ async fn confirm_remove_mod(
         match receive_msg().await {
             Message::Confirm => Ok(()),
             Message::Deny => {
+                // MARK: TODO
+                // do we want to ask user to remove order_entry?
+                reg_mod.remove_from_file(ini_dir)?;
                 new_io_error!(
                     ErrorKind::ConnectionAborted,
                     format!(
