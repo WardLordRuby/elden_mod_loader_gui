@@ -86,6 +86,18 @@ impl<'a, T: DisplayItem> std::fmt::Display for DisplayVec<'a, T> {
     }
 }
 
+pub struct DisplayMissingOrd<'a>(pub &'a [usize]);
+
+impl<'a> std::fmt::Display for DisplayMissingOrd<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Load order values above: {}, shifted down",
+            DisplayVec(self.0)
+        )
+    }
+}
+
 pub struct DisplayName<'a>(pub &'a str);
 
 impl<'a> std::fmt::Display for DisplayName<'a> {

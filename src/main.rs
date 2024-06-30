@@ -7,7 +7,7 @@ use elden_mod_loader_gui::{
         display::*,
         ini::{
             common::*,
-            mod_loader::{ModLoader, RegModsExt},
+            mod_loader::{ModLoader, OrdMetaData, RegModsExt},
             parser::{CollectedMods, RegMod, Setup, SplitFiles},
             writer::*,
         },
@@ -59,9 +59,9 @@ fn main() -> Result<(), slint::PlatformError> {
         prev(info);
     }));
 
-    let mut errors = Vec::new();
+    let mut dsp_msgs = Vec::new();
     let _guard = init_subscriber().unwrap_or_else(|err| {
-        errors.push(err);
+        dsp_msgs.push(err.to_string());
         None
     });
 
@@ -101,7 +101,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     info!("{err}");
                 } else {
                     error!(err_code = 1, "{err}");
-                    errors.push(err)
+                    dsp_msgs.push(err.to_string())
                 }
                 None
             }
@@ -114,7 +114,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     .unwrap_or_else(|err| {
                         // io::write error
                         error!(err_code = 2, "{err}");
-                        errors.push(err);
+                        dsp_msgs.push(err.to_string());
                         Cfg::default(current_ini)
                     })
             }
@@ -126,18 +126,19 @@ fn main() -> Result<(), slint::PlatformError> {
         let mut mod_loader_cfg: ModLoaderCfg;
         let mut reg_mods = None;
         let mut order_data = None;
+        let mut ord_meta_data = None;
         let game_dir = match ini.attempt_locate_game() {
             Ok(PathResult::Full(path)) => {
                 mod_loader = ModLoader::properties(&path).unwrap_or_else(|err| {
                     error!(err_code = 3, "{err}");
-                    errors.push(err);
+                    dsp_msgs.push(err.to_string());
                     ModLoader::default()
                 });
                 if mod_loader.installed() {
                     info!(dll_hook = %DisplayState(!mod_loader.disabled()), "elden_mod_loader files found");
                     mod_loader_cfg = ModLoaderCfg::read(mod_loader.path()).unwrap_or_else(|err| {
                         error!(err_code = 4, "{err}");
-                        errors.push(err);
+                        dsp_msgs.push(err.to_string());
                         ModLoaderCfg::default(mod_loader.path())
                     });
                     let (dlls, order_count, update_loader) =
@@ -145,7 +146,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     if update_loader {
                         mod_loader_cfg.write_to_file().unwrap_or_else(|err| {
                             error!(err_code = 5, "{err}");
-                            errors.push(err);
+                            dsp_msgs.push(err.to_string());
                         });
                     }
                     if let Err(key_err) = mod_loader_cfg.verify_keys(&dlls, order_count) {
@@ -154,22 +155,25 @@ fn main() -> Result<(), slint::PlatformError> {
                                 ini.update().unwrap_or_else(|err| {
                                     error!(err_code = 6, "{err}");
                                 });
+                                ord_meta_data = key_err.update_ord_data;
                                 warn!("{}", key_err.err);
                             }
                             ErrorKind::Other => info!("{}", key_err.err),
                             _ => error!(err_code = 7, "{}", key_err.err),
                         }
-                        UNKNOWN_ORDER_KEYS
-                            .set(RwLock::new(key_err.unknown_keys))
-                            .expect("only initial set");
-                        errors.push(key_err.err);
+                        if let Some(unknown_keys) = key_err.unknown_keys {
+                            UNKNOWN_ORDER_KEYS
+                                .set(RwLock::new(unknown_keys))
+                                .expect("only initial set");
+                        }
+                        dsp_msgs.push(key_err.err.to_string());
                     }
                     order_data = mod_loader_cfg
                         .parse_section(&get_unknown_orders())
                         .map(Some)
                         .unwrap_or_else(|err| {
                             error!(err_code = 8, "{err}");
-                            errors.push(err);
+                            dsp_msgs.push(err.to_string());
                             None
                         });
                 } else {
@@ -187,7 +191,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                         Err(err) => {
                             error!(err_code = 9, "{err}");
-                            errors.push(err);
+                            dsp_msgs.push(err.to_string());
                             false
                         }
                         _ => unreachable!(),
@@ -201,13 +205,16 @@ fn main() -> Result<(), slint::PlatformError> {
                         });
                     }
                     if let Some(warning) = collection.warnings.take() {
-                        errors.push(warning);
+                        dsp_msgs.push(warning.to_string());
                     }
                     info!(
                         "Found {} mod(s) registered in: {}",
                         collection.mods.len(),
                         INI_NAME
                     );
+                    if ord_meta_data.is_none() {
+                        ord_meta_data = Some(OrdMetaData::with_ord(collection.mods.max_order()));
+                    }
                     Some(collection)
                 };
                 game_verified = true;
@@ -222,7 +229,7 @@ fn main() -> Result<(), slint::PlatformError> {
             Err(err) => {
                 // io::Write error
                 error!(err_code = 11, "{err}");
-                errors.push(err);
+                dsp_msgs.push(err.to_string());
                 mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
                 (game_verified, anti_cheat_toggle_found) = (false, false);
@@ -234,7 +241,7 @@ fn main() -> Result<(), slint::PlatformError> {
             .set_dark_mode(ini.get_dark_mode().unwrap_or_else(|err| {
                 // parse error ErrorKind::InvalidData
                 error!(err_code = 12, "{err}");
-                errors.push(err);
+                dsp_msgs.push(err.to_string());
                 DEFAULT_INI_VALUES[0]
             }));
 
@@ -247,6 +254,15 @@ fn main() -> Result<(), slint::PlatformError> {
                 .to_string()
                 .into(),
         );
+        if let Some(meta_data) = ord_meta_data {
+            ui.global::<MainLogic>()
+                .set_max_order(MaxOrder::from(meta_data.max_order));
+            if let Some(ref vals) = meta_data.missing_vals {
+                let msg = DisplayMissingOrd(vals).to_string();
+                info!("{msg}");
+                dsp_msgs.push(msg);
+            }
+        }
         let _ = get_or_update_game_dir(Some(
             game_dir.as_ref().unwrap_or(&PathBuf::new()).to_owned(),
         ));
@@ -274,13 +290,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 let delay = mod_loader_cfg.get_load_delay().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
                     error!(err_code = 13, "{err}");
-                    errors.push(err);
+                    dsp_msgs.push(err.to_string());
                     DEFAULT_LOADER_VALUES[0].parse().unwrap()
                 });
                 let show_terminal = mod_loader_cfg.get_show_terminal().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
                     error!(err_code = 14, "{err}");
-                    errors.push(err);
+                    dsp_msgs.push(err.to_string());
                     false
                 });
 
@@ -298,9 +314,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 slint::spawn_local(async move {
                     let _guard = span_clone.enter();
                     let ui = ui_handle.unwrap();
-                    if !errors.is_empty() {
-                        for err in errors {
-                            ui.display_msg(&err.to_string());
+                    if !dsp_msgs.is_empty() {
+                        for msg in dsp_msgs {
+                            ui.display_msg(&msg);
                             let _ = receive_msg().await;
                         }
                     }
@@ -928,8 +944,8 @@ fn main() -> Result<(), slint::PlatformError> {
                         ErrorKind::Unsupported => warn!("{}", key_err.err),
                         _ => error!("{}", key_err.err),
                     }
-                    if !key_err.unknown_keys.is_empty() {
-                        *unknown_orders = key_err.unknown_keys;
+                    if let Some(unknown_keys) = key_err.unknown_keys {
+                        *unknown_orders = unknown_keys;
                     }
                     messages.push(key_err.err.to_string());
                 });
@@ -1152,8 +1168,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 None
             };
             let unknown_orders = get_unknown_orders();
-            let (max_order, missing_val) =
-                load_order.update_order_entries(stable_k, &unknown_orders);
+            let ord_meta_data = load_order.update_order_entries(stable_k, &unknown_orders);
             if let Err(err) = load_order.write_to_file() {
                 error!("{err}");
                 ui.display_msg(&format!(
@@ -1162,7 +1177,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 return ERROR_VAL;
             };
             let new_orders = load_order.parse_into_map();
-            ui.global::<MainLogic>().set_max_order(MaxOrder::from(max_order));
+            ui.global::<MainLogic>()
+                .set_max_order(MaxOrder::from(ord_meta_data.max_order));
             let model = ui.global::<MainLogic>().get_current_mods();
             let mut selected_mod =
                 model.row_data(row as usize).expect("front end gives us valid row");
@@ -1182,11 +1198,8 @@ fn main() -> Result<(), slint::PlatformError> {
             model.set_row_data(row as usize, selected_mod);
             model.update_order(Some(row), &new_orders, &unknown_orders, ui.as_weak());
 
-            if let Some(ref vals) = missing_val {
-                let msg = format!(
-                    "Load order values above: {}, shifted down",
-                    DisplayVec(vals)
-                );
+            if let Some(ref vals) = ord_meta_data.missing_vals {
+                let msg = DisplayMissingOrd(vals).to_string();
                 ui.display_msg(&msg);
                 info!("{msg}");
                 return UPDATE_ELEMENTS_VAL;
@@ -1246,8 +1259,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
 
             let unknown_orders = get_unknown_orders();
-            let (max_order, missing_val) =
-                load_order.update_order_entries(Some(&to_k), &unknown_orders);
+            let ord_meta_data = load_order.update_order_entries(Some(&to_k), &unknown_orders);
             if let Err(err) = load_order.write_to_file() {
                 error!("{err}");
                 ui.display_msg(&format!(
@@ -1258,15 +1270,13 @@ fn main() -> Result<(), slint::PlatformError> {
             let new_orders = load_order.parse_into_map();
             let new_val = *new_orders.get(&to_k.to_string()).expect("key inserted") as i32;
             selected_mod.order.at = new_val;
-            ui.global::<MainLogic>().set_max_order(MaxOrder::from(max_order));
+            ui.global::<MainLogic>()
+                .set_max_order(MaxOrder::from(ord_meta_data.max_order));
             model.set_row_data(row as usize, selected_mod);
             model.update_order(Some(row), &new_orders, &unknown_orders, ui.as_weak());
 
-            if let Some(ref vals) = missing_val {
-                let msg = format!(
-                    "Load order values above: {}, shifted down",
-                    DisplayVec(vals)
-                );
+            if let Some(ref vals) = ord_meta_data.missing_vals {
+                let msg = DisplayMissingOrd(vals).to_string();
                 ui.display_msg(&msg);
                 info!("{msg}");
                 return UPDATE_ELEMENTS_VAL;

@@ -172,8 +172,8 @@ mod tests {
             std::io::ErrorKind::Unsupported
         );
 
-        let (max_ord, _) = loader.update_order_entries(None, &test_unknown_keys);
-        assert_eq!(max_ord, expected_max_ord);
+        let ord_meta_data = loader.update_order_entries(None, &test_unknown_keys);
+        assert_eq!(ord_meta_data.max_order, expected_max_ord);
         assert!(loader.section().get("e_mod.dll").unwrap() == "2");
 
         loader.write_to_file().unwrap();

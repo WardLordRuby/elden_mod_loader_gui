@@ -92,9 +92,37 @@ impl ModLoader {
     }
 }
 
+/// it is save to update the global `UNKNOWN_ORDER_KEYS` with `unknown_keys` if `is_some()`  
+/// this is because of the case a write to file fails `unknown_keys` will be `None`
 pub struct UnknownKeyErr {
     pub err: std::io::Error,
-    pub unknown_keys: HashSet<String>,
+    pub unknown_keys: Option<HashSet<String>>,
+    pub update_ord_data: Option<OrdMetaData>,
+}
+
+impl UnknownKeyErr {
+    fn empty_with_err(err: std::io::Error) -> Self {
+        UnknownKeyErr {
+            err,
+            unknown_keys: None,
+            update_ord_data: None,
+        }
+    }
+}
+
+pub struct OrdMetaData {
+    /// (`max_order`, `high_val.count() > 1`)
+    pub max_order: (usize, bool),
+    pub missing_vals: Option<Vec<usize>>,
+}
+
+impl OrdMetaData {
+    pub fn with_ord(max_order: (usize, bool)) -> Self {
+        OrdMetaData {
+            max_order,
+            missing_vals: None,
+        }
+    }
 }
 
 impl ModLoaderCfg {
@@ -126,7 +154,7 @@ impl ModLoaderCfg {
         k_v.iter().for_each(|(k, v)| {
             if !dlls.contains(k.as_str()) {
                 unknown_keys.push(k.as_str());
-                if *v < order_count {
+                if *v <= order_count {
                     update_order = true;
                     self.mut_section().insert(k, (usize::MAX - v).to_string());
                 }
@@ -136,17 +164,15 @@ impl ModLoaderCfg {
             let unknown_key_set =
                 unknown_keys.iter().map(|s| String::from(*s)).collect::<HashSet<_>>();
             if update_order {
-                self.update_order_entries(None, &unknown_key_set);
-                self.write_to_file().map_err(|err| UnknownKeyErr {
-                    err,
-                    unknown_keys: HashSet::new(),
-                })?;
+                let update_ord_data = self.update_order_entries(None, &unknown_key_set);
+                self.write_to_file().map_err(UnknownKeyErr::empty_with_err)?;
                 return Err(UnknownKeyErr {
                     err: std::io::Error::new(ErrorKind::Unsupported,
                         format!("Found load order set for file(s) not registered with the app. The following key(s) order were changed: {}", 
                         DisplayVec(&unknown_keys))
                     ),
-                    unknown_keys: unknown_key_set,
+                    unknown_keys: Some(unknown_key_set),
+                    update_ord_data: Some(update_ord_data),
                 });
             }
             return Err(UnknownKeyErr {
@@ -154,7 +180,8 @@ impl ModLoaderCfg {
                     format!("Found load order set for the following file(s) not registered with the app: {}",
                     DisplayVec(&unknown_keys))
                 ),
-                unknown_keys: unknown_key_set,
+                unknown_keys: Some(unknown_key_set),
+                update_ord_data: None,
             });
         }
         trace!("all load_order entries are files registered with the app");
@@ -219,10 +246,13 @@ impl ModLoaderCfg {
         &mut self,
         stable: Option<&str>,
         unknown_keys: &HashSet<String>,
-    ) -> ((usize, bool), Option<Vec<usize>>) {
+    ) -> OrdMetaData {
         if self.mods_is_empty() {
             trace!("nothing to update");
-            return ((0, false), None);
+            return OrdMetaData {
+                max_order: (0, false),
+                missing_vals: None,
+            };
         }
         let mut k_v = Vec::with_capacity(self.section().len());
         let mut input_vals = HashSet::with_capacity(self.section().len());
@@ -245,7 +275,7 @@ impl ModLoaderCfg {
         let mut new_section = ini::Properties::new();
 
         let mut missing_vals = Vec::new();
-        let output = if k_v.is_empty() && !stable_k.is_empty() {
+        let (max_order, missing_vals) = if k_v.is_empty() && !stable_k.is_empty() {
             new_section.append(
                 stable_k,
                 if stable_v == 0 {
@@ -315,12 +345,15 @@ impl ModLoaderCfg {
         dbg!(&new_section);
         eprintln!(
             "Max Order: {}, Multiple last_user_val: {}",
-            output.0 .0, output.0 .1
+            max_order.0, max_order.1
         );
-        eprintln!("Missing val: {:?}", output.1);
+        eprintln!("Missing val: {:?}", missing_vals);
         std::mem::swap(self.mut_section(), &mut new_section);
         trace!("re-calculated the order of entries in {}", LOADER_FILES[2]);
-        output
+        OrdMetaData {
+            max_order,
+            missing_vals,
+        }
     }
 }
 
