@@ -1071,7 +1071,7 @@ impl Cfg {
         (
             PropertyArray(self.data().section(INI_SECTIONS[3]).expect("valided on startup"))
                 .into_iter()
-                .flat_map(|(_, v)| {
+                .flat_map(|(name, v)| {
                     let mut order_found = false;
                     v.iter()
                         .filter(|f| FileData::from(f).extension == ".dll")
@@ -1084,6 +1084,10 @@ impl Cfg {
                                 } else {
                                     write_to_file = true;
                                     loader_section.remove(f_name);
+                                    warn!(
+                                        "Load order found set for more than one file associated with mod: {}, removed order for file: {f_name}",
+                                         DisplayName(name)
+                                    );
                                 }
                             }
                             f_name
