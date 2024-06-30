@@ -1326,7 +1326,7 @@ impl Sortable for ModelRc<DisplayMod> {
         let mut unsorted_idx = (0..self.row_count()).collect::<Vec<_>>();
         let mut possible_vals = HashSet::with_capacity(order_map_len);
         let mut order_counts = vec![0_usize; order_map_len + 1];
-        let low_order = order_map
+        let Some(low_order) = order_map
             .iter()
             .filter(|(k, _)| !unknown_orders.contains(*k))
             .map(|(_, v)| {
@@ -1335,7 +1335,9 @@ impl Sortable for ModelRc<DisplayMod> {
                 v
             })
             .min()
-            .expect("we return if order_map.is_empty()");
+        else {
+            return;
+        };
         assert!(*low_order < 2);
         let mut placement_rows = order_counts
             .iter()
