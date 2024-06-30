@@ -485,11 +485,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     return;
                 };
                 for f in new_mod.files.dll.iter() {
-                    let Some(f_name) =  f.file_name().and_then(|o| o.to_str()) else {
+                    let Some(f_name) =  f.file_name().and_then(|o| o.to_str()).map(omit_off_state) else {
                         let err = format!("failed to get file name for {}", f.display());
                         error!("{err}");
-                        ui.display_msg(&err);
-                        return;
+                        continue;
                     };
                     unknown_orders.remove(f_name);
                 }
@@ -504,6 +503,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
                 mut_model.push(deserialize_mod(&new_mod));
                 if new_mod.order.set {
+                    let ord_meta_data = loader_cfg.update_order_entries(None, &unknown_orders);
+                    ui.global::<MainLogic>().set_max_order(MaxOrder::from(ord_meta_data.max_order));
                     model.update_order(None, &order_data, &unknown_orders, ui.as_weak());
                 }
                 info!(
