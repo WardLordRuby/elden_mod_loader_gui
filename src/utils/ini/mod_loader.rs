@@ -241,6 +241,8 @@ impl ModLoaderCfg {
     /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  
     /// this also calculates the correct max_order val (same logic appears in `[RegMod].max_order()`) &&  
     /// stores any missing values in range `1..high_order` **returns:** `(MaxOrder, missing_vals)`
+    ///
+    /// **NOTE:** this fn does not write any updated changes to file
     #[instrument(level = "trace", skip(self))]
     pub fn update_order_entries(
         &mut self,
@@ -289,11 +291,12 @@ impl ModLoaderCfg {
             );
             ((1, false), Some(missing_vals).filter(|v| !v.is_empty()))
         } else {
-            let mut offset: usize = if (!k_v.is_empty() && k_v[0].1 == 0) || stable_v == 0 {
+            let start_val: usize = if (!k_v.is_empty() && k_v[0].1 == 0) || stable_v == 0 {
                 0
             } else {
                 1
             };
+            let mut offset = start_val;
             let mut last_user_val = 0_usize;
             let mut check_for_missing_val = |offset: &usize| {
                 if *offset > 0 && input_vals.insert(*offset) {
@@ -330,15 +333,19 @@ impl ModLoaderCfg {
                 new_section.append(stable_k, &offset.to_string());
             }
             let end_user_offset = last_user_val.to_string();
+            let new_section_len = new_section.len();
             (
-                if new_section.len() == 1 {
+                if new_section_len == 1 {
                     (1, false)
                 } else if new_section.iter().filter(|(_, v)| *v == end_user_offset).count() == 1 {
                     (last_user_val, false)
                 } else {
                     (last_user_val + 1, true)
                 },
-                Some(missing_vals).filter(|v| !v.is_empty()),
+                Some(missing_vals).filter(|v| {
+                    let x: usize = if start_val == 0 { 1 } else { 0 };
+                    !v.is_empty() && *v.last().unwrap() != (new_section_len - x)
+                }),
             )
         };
         dbg!(&unknown_keys);
