@@ -12,14 +12,15 @@ use crate::{
         parser::RegMod,
         writer::new_cfg,
     },
-    DisplayState, DisplayVec, DllSet, Operation, OperationResult, OrderMap, LOADER_EXAMPLE,
-    LOADER_FILES,
+    DisplayState, DisplayVec, DllSet, Operation, OperationResult, OrderMap, ANTI_CHEAT_EXE,
+    LOADER_EXAMPLE, LOADER_FILES,
 };
 
 #[derive(Debug, Default)]
 pub struct ModLoader {
     installed: bool,
     disabled: bool,
+    anti_cheat_toggle_installed: bool,
     anti_cheat_enabled: bool,
     path: PathBuf,
 }
@@ -33,7 +34,12 @@ impl ModLoader {
     pub fn properties(game_dir: &Path) -> std::io::Result<ModLoader> {
         let mut cfg_dir = game_dir.join(LOADER_FILES[3]);
         let mut properties = ModLoader::default();
-        match does_dir_contain(game_dir, Operation::Count, &LOADER_FILES) {
+        let search_for = LOADER_FILES
+            .iter()
+            .copied()
+            .chain(std::iter::once(ANTI_CHEAT_EXE))
+            .collect::<Vec<_>>();
+        match does_dir_contain(game_dir, Operation::Count, &search_for) {
             Ok(OperationResult::Count((_, files))) => {
                 if files.contains(LOADER_FILES[1])
                     && !files.contains(LOADER_FILES[0])
@@ -53,6 +59,17 @@ impl ModLoader {
                     properties.installed = true;
                     properties.disabled = true;
                     properties.anti_cheat_enabled = true;
+                }
+                if files.contains(ANTI_CHEAT_EXE) {
+                    properties.anti_cheat_toggle_installed = true;
+                }
+                if properties.anti_cheat_enabled && !properties.anti_cheat_toggle_installed {
+                    std::fs::rename(
+                        game_dir.join(LOADER_FILES[2]),
+                        game_dir.join(LOADER_FILES[0]),
+                    )?;
+                    info!("Renamed: {}, to: {}", LOADER_FILES[2], LOADER_FILES[0]);
+                    properties.anti_cheat_enabled = false;
                 }
                 if files.contains(LOADER_FILES[3]) {
                     std::mem::swap(&mut cfg_dir, &mut properties.path);
@@ -79,6 +96,7 @@ impl ModLoader {
         ModLoader {
             installed: true,
             disabled,
+            anti_cheat_toggle_installed: false,
             anti_cheat_enabled: false,
             path: PathBuf::new(),
         }
@@ -92,6 +110,11 @@ impl ModLoader {
     #[inline]
     pub fn disabled(&self) -> bool {
         self.disabled
+    }
+
+    #[inline]
+    pub fn anti_cheat_toggle_installed(&self) -> bool {
+        self.anti_cheat_toggle_installed
     }
 
     #[inline]

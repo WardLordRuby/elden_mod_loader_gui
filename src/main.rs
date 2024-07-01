@@ -115,7 +115,6 @@ fn main() -> Result<(), slint::PlatformError> {
         };
 
         let game_verified: bool;
-        let anti_cheat_toggle_found: bool;
         let mod_loader: ModLoader;
         let mut mod_loader_cfg: ModLoaderCfg;
         let mut reg_mods = None;
@@ -173,29 +172,19 @@ fn main() -> Result<(), slint::PlatformError> {
                 } else {
                     mod_loader_cfg = ModLoaderCfg::default(mod_loader.path());
                 }
-
-                anti_cheat_toggle_found =
-                    match does_dir_contain(&path, Operation::All, &[ANTI_CHEAT_EXE]) {
-                        Ok(OperationResult::Bool(result)) => {
-                            info!(
-                                "'{ANTI_CHEAT_EXE}' {}found",
-                                if !result { "not " } else { "" }
-                            );
-                            result
-                        }
-                        Err(err) => {
-                            error!(err_code = 9, "{err}");
-                            dsp_msgs.push(err.to_string());
-                            false
-                        }
-                        _ => unreachable!(),
-                    };
-
+                info!(
+                    "'{ANTI_CHEAT_EXE}' {}found",
+                    if mod_loader.anti_cheat_toggle_installed() {
+                        ""
+                    } else {
+                        "not "
+                    }
+                );
                 reg_mods = {
                     let mut collection = ini.collect_mods(&path, order_data.as_ref(), false);
                     if collection.mods.len() != ini.mods_registered() {
                         ini.update().unwrap_or_else(|err| {
-                            error!(err_code = 10, "{err}");
+                            error!(err_code = 9, "{err}");
                         });
                     }
                     if let Some(warning) = collection.warnings.take() {
@@ -217,16 +206,16 @@ fn main() -> Result<(), slint::PlatformError> {
             Ok(PathResult::Partial(path) | PathResult::None(path)) => {
                 mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
-                (game_verified, anti_cheat_toggle_found) = (false, false);
+                game_verified = false;
                 Some(path)
             }
             Err(err) => {
                 // io::Write error
-                error!(err_code = 11, "{err}");
+                error!(err_code = 10, "{err}");
                 dsp_msgs.push(err.to_string());
                 mod_loader_cfg = ModLoaderCfg::empty();
                 mod_loader = ModLoader::default();
-                (game_verified, anti_cheat_toggle_found) = (false, false);
+                game_verified = false;
                 None
             }
         };
@@ -234,7 +223,7 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.global::<SettingsLogic>()
             .set_dark_mode(ini.get_dark_mode().unwrap_or_else(|err| {
                 // parse error ErrorKind::InvalidData
-                error!(err_code = 12, "{err}");
+                error!(err_code = 11, "{err}");
                 dsp_msgs.push(err.to_string());
                 DEFAULT_INI_VALUES[0]
             }));
@@ -283,13 +272,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.global::<SettingsLogic>().set_loader_installed(true);
                 let delay = mod_loader_cfg.get_load_delay().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
-                    error!(err_code = 13, "{err}");
+                    error!(err_code = 12, "{err}");
                     dsp_msgs.push(err.to_string());
                     DEFAULT_LOADER_VALUES[0].parse().unwrap()
                 });
                 let show_terminal = mod_loader_cfg.get_show_terminal().unwrap_or_else(|err| {
                     // parse error ErrorKind::InvalidData
-                    error!(err_code = 14, "{err}");
+                    error!(err_code = 13, "{err}");
                     dsp_msgs.push(err.to_string());
                     false
                 });
@@ -343,7 +332,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             Please install files to: '{}', and relaunch Elden Mod Loader GUI", game_dir.as_ref().expect("game_verified").display()
                         )
                     }
-                    if game_verified && !anti_cheat_toggle_found {
+                    if game_verified && !mod_loader.anti_cheat_toggle_installed() {
                         let anti_cheat_msg = format!(
                             "'{ANTI_CHEAT_EXE}' not found, do not forget to disable Easy-AntiCheat before running Elden Ring with mods installed"
                         );
