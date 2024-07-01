@@ -875,12 +875,15 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 };
                 let game_dir = get_or_update_game_dir(None);
+                let reset_app_state_hook = |err: std::io::Error, ini: Cfg| {
+                    error!("{err}");
+                    ui.display_msg(&err.to_string());
+                    reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
+                };
                 let mut found_mod = match ini.get_mod(&key, &game_dir, order_map.as_ref()) {
                     Ok(found_data) => found_data,
                     Err(err) => {
-                        error!("{err}");
-                        ui.display_msg(&format!("{err}\nRemoving invalid entries"));
-                        reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
+                        reset_app_state_hook(err, ini);
                         return;
                     }
                 };
@@ -908,10 +911,7 @@ fn main() -> Result<(), slint::PlatformError> {
                             },
                             ErrorKind::ConnectionAborted => info!("{err}"),
                             _ => {
-                                error!("{err}");
-                                ui.display_msg(&err.to_string());
-                                let _ = receive_msg().await;
-                                reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
+                                reset_app_state_hook(err, ini);
                                 return;
                             }
                         }
@@ -923,12 +923,15 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 }
                 if let Err(err) = ini.update() {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
-                    let _ = receive_msg().await;
-                    reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
+                    reset_app_state_hook(err, ini);
                     return;
                 };
+                if found_mod.order.set {
+                    if let Err(err) = loader.update() {
+                        reset_app_state_hook(err, ini);
+                        return;
+                    }
+                }
                 let (dlls, order_count, _) = ini.dll_set_order_count(loader.mut_section());
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
@@ -1924,11 +1927,24 @@ async fn confirm_remove_mod(
     };
 
     let match_user_msg = || async {
+        let esc_result = new_io_error!(ErrorKind::Interrupted, "De-registration canceled");
         match receive_msg().await {
             Message::Confirm => Ok(()),
             Message::Deny => {
-                // MARK: TODO
-                // do we want to ask user to remove order_entry?
+                if reg_mod.order.set {
+                    ui.display_confirm(
+                        &format!(
+                            "Do you want to remove the set load order of: {}",
+                            reg_mod.order.at
+                        ),
+                        true,
+                    );
+                    match receive_msg().await {
+                        Message::Confirm => remove_order_entry(reg_mod, loader_dir)?,
+                        Message::Deny => (),
+                        Message::Esc => return esc_result,
+                    }
+                }
                 reg_mod.remove_from_file(ini_dir)?;
                 new_io_error!(
                     ErrorKind::ConnectionAborted,
@@ -1939,7 +1955,7 @@ async fn confirm_remove_mod(
                     )
                 )
             }
-            Message::Esc => new_io_error!(ErrorKind::Interrupted, "De-registration canceled"),
+            Message::Esc => esc_result,
         }
     };
 
