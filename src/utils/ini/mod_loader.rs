@@ -291,12 +291,11 @@ impl ModLoaderCfg {
             );
             ((1, false), Some(missing_vals).filter(|v| !v.is_empty()))
         } else {
-            let start_val: usize = if (!k_v.is_empty() && k_v[0].1 == 0) || stable_v == 0 {
+            let mut offset: usize = if (!k_v.is_empty() && k_v[0].1 == 0) || stable_v == 0 {
                 0
             } else {
                 1
             };
-            let mut offset = start_val;
             let mut last_user_val = 0_usize;
             let mut check_for_missing_val = |offset: &usize| {
                 if *offset > 0 && input_vals.insert(*offset) {
@@ -342,10 +341,14 @@ impl ModLoaderCfg {
                 } else {
                     (last_user_val + 1, true)
                 },
-                Some(missing_vals).filter(|v| {
-                    let x: usize = if start_val == 0 { 1 } else { 0 };
-                    !v.is_empty() && *v.last().unwrap() != (new_section_len - x)
-                }),
+                if !missing_vals.is_empty() {
+                    if *missing_vals.last().unwrap() == offset {
+                        missing_vals.pop();
+                    }
+                    Some(missing_vals).filter(|v| !v.is_empty())
+                } else {
+                    None
+                },
             )
         };
         dbg!(&unknown_keys);
