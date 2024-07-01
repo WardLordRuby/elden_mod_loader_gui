@@ -144,7 +144,7 @@ pub fn new_cfg(path: &Path) -> Result<Ini> {
             )?;
             info!("Created new ini: {}", INI_NAME);
         }
-        f_name if f_name == LOADER_FILES[2] => {
+        f_name if f_name == LOADER_FILES[3] => {
             init_default_values(
                 &mut new_ini,
                 &LOADER_SECTIONS,
@@ -152,7 +152,7 @@ pub fn new_cfg(path: &Path) -> Result<Ini> {
                 &DEFAULT_LOADER_VALUES,
                 true,
             )?;
-            info!("Created new ini: {}", LOADER_FILES[2]);
+            info!("Created new ini: {}", LOADER_FILES[3]);
         }
         _ => panic!("No default data implemented for: {file_name:?}"),
     }

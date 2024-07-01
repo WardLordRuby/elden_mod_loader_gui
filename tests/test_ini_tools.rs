@@ -137,7 +137,7 @@ mod tests {
         test_unknown_keys.insert(test_files[7].to_string_lossy().to_string());
         let expected_max_ord = (4, true);
 
-        let test_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[2]));
+        let test_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[3]));
         let required_file = PathBuf::from(&format!("temp\\{}", LOADER_FILES[1]));
 
         let test_sections = LOADER_SECTIONS

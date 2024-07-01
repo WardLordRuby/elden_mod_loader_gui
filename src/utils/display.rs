@@ -3,7 +3,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::utils::ini::parser::LoadOrder;
+use crate::{utils::ini::parser::LoadOrder, ANTI_CHEAT_EXE};
+
+pub const TECHIE_W_MSG: &str = "Could not find Elden Mod Loader Script!\n\
+    This tool requires 'Elden Mod Loader' by TechieW to be installed!";
+pub const TUTORIAL_MSG: &str =
+    "Add mods to the app by entering a name and selecting mod files with \"Select Files\"\n\n\
+    You can always add more files to a mod or de-register a mod at any time from within the app\n\n\
+    Do not forget to disable easy anti-cheat before playing with mods installed!";
 
 pub fn format_panic_info(info: &std::panic::PanicInfo) -> String {
     let payload_str = if let Some(location) = info.location() {
@@ -83,6 +90,14 @@ impl<'a, T: DisplayItem> std::fmt::Display for DisplayVec<'a, T> {
                 e.display_item(f, "]")
             }
         })
+    }
+}
+
+pub struct DisplayAntiCheatMsg;
+
+impl std::fmt::Display for DisplayAntiCheatMsg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "'{ANTI_CHEAT_EXE}' has been toggled. EAC is currently enabled.\n\nTo use the app please toggle EAC using the exe")
     }
 }
 

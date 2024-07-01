@@ -20,6 +20,7 @@ use crate::{
 pub struct ModLoader {
     installed: bool,
     disabled: bool,
+    anti_cheat_enabled: bool,
     path: PathBuf,
 }
 
@@ -30,19 +31,30 @@ impl ModLoader {
     /// can only error if it finds loader hook installed && "elden_mod_loader_config.ini" is not found so it fails on writing a new one to disk
     #[instrument(level = "trace", name = "mod_loader_properties", skip_all)]
     pub fn properties(game_dir: &Path) -> std::io::Result<ModLoader> {
-        let mut cfg_dir = game_dir.join(LOADER_FILES[2]);
+        let mut cfg_dir = game_dir.join(LOADER_FILES[3]);
         let mut properties = ModLoader::default();
         match does_dir_contain(game_dir, Operation::Count, &LOADER_FILES) {
-            // MARK: TODO
-            // add state for if _dinput8.dll is found (how anti-cheat-toggle will disable mod loader)
             Ok(OperationResult::Count((_, files))) => {
-                if files.contains(LOADER_FILES[1]) && !files.contains(LOADER_FILES[0]) {
+                if files.contains(LOADER_FILES[1])
+                    && !files.contains(LOADER_FILES[0])
+                    && !files.contains(LOADER_FILES[2])
+                {
                     properties.installed = true;
-                } else if files.contains(LOADER_FILES[0]) && !files.contains(LOADER_FILES[1]) {
+                } else if files.contains(LOADER_FILES[0])
+                    && !files.contains(LOADER_FILES[1])
+                    && !files.contains(LOADER_FILES[2])
+                {
                     properties.installed = true;
                     properties.disabled = true;
+                } else if files.contains(LOADER_FILES[2])
+                    && !files.contains(LOADER_FILES[1])
+                    && !files.contains(LOADER_FILES[0])
+                {
+                    properties.installed = true;
+                    properties.disabled = true;
+                    properties.anti_cheat_enabled = true;
                 }
-                if files.contains(LOADER_FILES[2]) {
+                if files.contains(LOADER_FILES[3]) {
                     std::mem::swap(&mut cfg_dir, &mut properties.path);
                 }
             }
@@ -50,7 +62,7 @@ impl ModLoader {
             _ => unreachable!(),
         };
         if properties.installed && properties.path.as_os_str().is_empty() {
-            info!("{} not found", LOADER_FILES[2]);
+            info!("{} not found", LOADER_FILES[3]);
             new_cfg(&cfg_dir)?;
             properties.path = cfg_dir;
         }
@@ -67,6 +79,7 @@ impl ModLoader {
         ModLoader {
             installed: true,
             disabled,
+            anti_cheat_enabled: false,
             path: PathBuf::new(),
         }
     }
@@ -79,6 +92,11 @@ impl ModLoader {
     #[inline]
     pub fn disabled(&self) -> bool {
         self.disabled
+    }
+
+    #[inline]
+    pub fn anti_cheat_enabled(&self) -> bool {
+        self.anti_cheat_enabled
     }
 
     #[inline]
@@ -195,7 +213,7 @@ impl ModLoaderCfg {
         if self.section().contains_key(LOADER_EXAMPLE) {
             self.mut_section().remove(LOADER_EXAMPLE);
             self.write_to_file()?;
-            info!("Removed: '{LOADER_EXAMPLE}' from: {}", LOADER_FILES[2]);
+            info!("Removed: '{LOADER_EXAMPLE}' from: {}", LOADER_FILES[3]);
         }
         if self.mods_is_empty() {
             trace!("No mods have load order");
@@ -203,7 +221,7 @@ impl ModLoaderCfg {
         }
         let map = self.parse_into_map();
         if self.mods_registered() != map.len() {
-            trace!("fixing usize parse error in: {}", LOADER_FILES[2]);
+            trace!("fixing usize parse error in: {}", LOADER_FILES[3]);
             self.update_order_entries(None, unknown_keys);
             self.write_to_file()?;
             return Ok(self.parse_into_map());
@@ -221,7 +239,7 @@ impl ModLoaderCfg {
                 self.write_to_file()?;
                 info!(
                     "Found entries out of order, sorted load order entries in: {}",
-                    LOADER_FILES[2]
+                    LOADER_FILES[3]
                 );
                 return Ok(self.parse_into_map());
             }
@@ -359,7 +377,7 @@ impl ModLoaderCfg {
         );
         eprintln!("Missing val: {:?}", missing_vals);
         std::mem::swap(self.mut_section(), &mut new_section);
-        trace!("re-calculated the order of entries in {}", LOADER_FILES[2]);
+        trace!("re-calculated the order of entries in {}", LOADER_FILES[3]);
         OrdMetaData {
             max_order,
             missing_vals,

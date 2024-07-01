@@ -59,9 +59,10 @@ pub const DEFAULT_INI_VALUES: [bool; 2] = [true, true];
 pub const ARRAY_KEY: &str = "array[]";
 pub const ARRAY_VALUE: &str = "array";
 
-pub const LOADER_FILES: [&str; 3] = [
+pub const LOADER_FILES: [&str; 4] = [
     "dinput8.dll.disabled",
     "dinput8.dll",
+    "_dinput8.dll",
     "mod_loader_config.ini",
 ];
 pub const LOADER_EXAMPLE: &str = "Example.dll";

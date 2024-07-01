@@ -725,6 +725,7 @@ pub struct CollectedMods {
     pub warnings: Option<std::io::Error>,
 }
 
+/// (`HashMap<key, bool_str`>, `HashMap<key, Vec<short_paths>`)
 type CollectedMaps<'a> = (HashMap<&'a str, &'a str>, HashMap<&'a str, Vec<&'a str>>);
 
 trait Combine {
@@ -1103,16 +1104,16 @@ impl Cfg {
 
 pub struct PropertyArray<'a>(pub &'a ini::Properties);
 
-pub struct PropertyArrayIterator<'a> {
+pub struct PropertyArrayIter<'a> {
     iter: ini::PropertyIter<'a>,
     next_up_key: &'a str,
     next_up_val: &'a str,
 }
 
-impl<'a> PropertyArrayIterator<'a> {
+impl<'a> PropertyArrayIter<'a> {
     #[inline]
     fn new(section: ini::PropertyIter<'a>) -> Self {
-        PropertyArrayIterator {
+        PropertyArrayIter {
             iter: section,
             next_up_key: "",
             next_up_val: "",
@@ -1122,21 +1123,21 @@ impl<'a> PropertyArrayIterator<'a> {
 
 impl<'a> IntoIterator for PropertyArray<'a> {
     type Item = (&'a str, Vec<&'a str>);
-    type IntoIter = PropertyArrayIterator<'a>;
+    type IntoIter = PropertyArrayIter<'a>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        PropertyArrayIterator::new(self.0.iter())
+        PropertyArrayIter::new(self.0.iter())
     }
 }
 
-impl<'a> Iterator for PropertyArrayIterator<'a> {
+impl<'a> Iterator for PropertyArrayIter<'a> {
     type Item = (&'a str, Vec<&'a str>);
 
     fn next(&mut self) -> Option<Self::Item> {
         use std::mem::take;
 
-        fn collect_array<'a>(outer_self: &mut PropertyArrayIterator<'a>) -> Vec<&'a str> {
+        fn collect_array<'a>(outer_self: &mut PropertyArrayIter<'a>) -> Vec<&'a str> {
             let mut output = Vec::new();
             for (k, v) in outer_self.iter.by_ref() {
                 if k != ARRAY_KEY {

@@ -42,12 +42,6 @@ static RESTRICTED_FILES: OnceLock<HashSet<&OsStr>> = OnceLock::new();
 static UNKNOWN_ORDER_KEYS: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
 
-const TECHIE_W_MSG: &str = "Could not find Elden Mod Loader Script!\n\
-    This tool requires 'Elden Mod Loader' by TechieW to be installed!";
-const TUTORIAL_MSG: &str =
-    "Add mods to the app by entering a name and selecting mod files with \"Select Files\"\n\n\
-    You can always add more files to a mod or de-register a mod at any time from within the app\n\n\
-    Do not forget to disable easy anti-cheat before playing with mods installed!";
 const ERROR_VAL: i32 = 42069;
 const UPDATE_ELEMENTS_VAL: i32 = 1;
 const OK_VAL: i32 = 0;
@@ -303,6 +297,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.global::<SettingsLogic>()
                     .set_load_delay(SharedString::from(format!("{delay}ms")));
                 ui.global::<SettingsLogic>().set_show_terminal(show_terminal);
+
+                if mod_loader.anti_cheat_enabled() {
+                    dsp_msgs.push(DisplayAntiCheatMsg.to_string());
+                }
             }
         }
         // we need to wait for slint event loop to start `ui.run()` before making calls to `ui.display_msg()`
@@ -1089,6 +1087,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 error!("{err}");
                 ModLoader::new(!state)
             });
+            if loader.anti_cheat_enabled() {
+                ui.display_msg(&DisplayAntiCheatMsg.to_string());
+                ui.global::<SettingsLogic>().set_loader_disabled(true);
+                return !state;
+            }
             let files = if loader.disabled() {
                 vec![PathBuf::from(LOADER_FILES[0])]
             } else {
@@ -1179,7 +1182,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 Some(key.as_str())
             } else {
                 if !load_orders.contains_key(&key) {
-                    warn!(?key, "Could not find key in: {}", LOADER_FILES[2]);
+                    warn!(?key, "Could not find key in: {}", LOADER_FILES[3]);
                     return ERROR_VAL;
                 }
                 load_orders.remove(&key);
@@ -1569,7 +1572,7 @@ fn get_ini_dir() -> &'static PathBuf {
 #[inline]
 fn get_loader_ini_dir() -> &'static PathBuf {
     static LOADER_CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
-    LOADER_CONFIG_PATH.get_or_init(|| get_or_update_game_dir(None).join(LOADER_FILES[2]))
+    LOADER_CONFIG_PATH.get_or_init(|| get_or_update_game_dir(None).join(LOADER_FILES[3]))
 }
 
 fn get_or_update_game_dir(
@@ -2064,8 +2067,8 @@ async fn confirm_scan_mods(
             return Ok(());
         }
 
-        // unsure if we want to remove order data, currently on mod removal we do not delete order data,
-        // we only delete order data on mod uninstallation
+        // unsure if we want to remove order data, currently on mod removal user decides to remove,
+        // or, is deleted on mod uninstallation
         old_mods.iter().try_for_each(|m| {
             if m.order.set && !all_new_files.contains(m.files.dll[m.order.i].as_path()) {
                 remove_order_entry(m, loader_dir)

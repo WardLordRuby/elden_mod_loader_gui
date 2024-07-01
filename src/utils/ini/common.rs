@@ -297,7 +297,7 @@ impl Config for ModLoaderCfg {
         let default_val = match key {
             k if k == LOADER_KEYS[0] => DEFAULT_LOADER_VALUES[0],
             k if k == LOADER_KEYS[1] => DEFAULT_LOADER_VALUES[1],
-            _ => panic!("Key: {key}, is unknown to: {}", LOADER_FILES[2]),
+            _ => panic!("Key: {key}, is unknown to: {}", LOADER_FILES[3]),
         };
         if let Err(err) = save_value_ext(&self.dir, section, key, default_val) {
             in_err.add_msg(&err.to_string(), false);
