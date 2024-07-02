@@ -1,5 +1,5 @@
 [TechieW-Loader-Link]: https://www.nexusmods.com/eldenring/mods/117  
-[Download-Link]: https://github.com/WardLordRuby/elden_mod_loader_gui/releases/download/v0.9.5-beta/elden_mod_loader_gui.exe  
+[Download-Link]: https://github.com/WardLordRuby/elden_mod_loader_gui/releases/download/v0.9.6-beta/elden_mod_loader_gui.exe  
 <div align="center">
     <img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML-icon.png" width="20%" height="20%">
 </div>
@@ -51,10 +51,6 @@ as well. It is not recommended to edit this apps ini file manually. If you want 
 * On de-registration of a mod app will make sure it is set to enabled  
 * Writes logs to file "EML_gui_log.txt"  
 * Logs panic messages to file
-
-##### Planned changes:
-
-* Update to the load order interface, to better reflect the _offical_ behavior of load order  
 
 ## Screenshots  
 
