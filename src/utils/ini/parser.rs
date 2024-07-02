@@ -11,14 +11,14 @@ use crate::{
     file_name_from_str, files_not_found, get_cfg, new_io_error, omit_off_state, toggle_files,
     toggle_path_state,
     utils::{
-        display::{Merge, ModError},
+        display::{DisplayIndices, DisplayName, DisplayVec, IntoIoError, Merge, ModError},
         ini::{
-            common::Config,
+            common::{Cfg, Config},
             writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
         },
     },
-    Cfg, DisplayName, DisplayVec, DllSet, FileData, IntoIoError, OrderMap, ARRAY_KEY, ARRAY_VALUE,
-    INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
+    DllSet, FileData, OrderMap, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS,
+    REQUIRED_GAME_FILES,
 };
 
 pub trait Parsable: Sized {
@@ -627,13 +627,13 @@ impl RegMod {
         if !not_found_indices.is_empty() && errors == 0 {
             let not_found = not_found_indices
                 .into_iter()
-                .filter_map(|i| {
+                .filter(|&i| {
                     let alt_path_state = toggle_path_state(&self.files.dll[i]);
                     if matches!(game_dir.join(&alt_path_state).try_exists(), Ok(true)) {
                         self.files.dll[i] = alt_path_state;
-                        None
+                        false
                     } else {
-                        Some(alt_path_state)
+                        true
                     }
                 })
                 .collect::<Vec<_>>();
@@ -649,7 +649,7 @@ impl RegMod {
                     ErrorKind::NotFound,
                     format!(
                         "File(s): {}, can not be found on machine",
-                        DisplayVec(&not_found)
+                        DisplayIndices(&not_found, &self.files.dll)
                     )
                 );
             }

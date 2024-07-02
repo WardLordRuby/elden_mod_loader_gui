@@ -71,9 +71,9 @@ impl DisplayItem for usize {
     }
 }
 
-pub struct DisplayVec<'a, T: DisplayItem>(pub &'a [T]);
+pub struct DisplayVec<'a, D: DisplayItem>(pub &'a [D]);
 
-impl<'a, T: DisplayItem> std::fmt::Display for DisplayVec<'a, T> {
+impl<'a, D: DisplayItem> std::fmt::Display for DisplayVec<'a, D> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if self.0.is_empty() {
             panic!("Tried to format an empty Vec");
@@ -88,6 +88,31 @@ impl<'a, T: DisplayItem> std::fmt::Display for DisplayVec<'a, T> {
                 e.display_item(f, ", ")
             } else {
                 e.display_item(f, "]")
+            }
+        })
+    }
+}
+
+pub struct DisplayIndices<'a, D: DisplayItem>(pub &'a [usize], pub &'a [D]);
+
+impl<'a, D: DisplayItem> std::fmt::Display for DisplayIndices<'a, D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0.is_empty() || self.1.is_empty() {
+            panic!("Tried to format an empty Vec");
+        }
+        let last_i = self.0.iter().max().unwrap();
+        if *last_i >= self.1.len() {
+            panic!("index is larger than what is trying to be displayed")
+        }
+        if self.0.len() == 1 {
+            return self.1[self.0[0]].display_item(f, "");
+        }
+        write!(f, "[")?;
+        self.0.iter().try_for_each(|e| {
+            if e != last_i {
+                self.1[*e].display_item(f, ", ")
+            } else {
+                self.1[*e].display_item(f, "]")
             }
         })
     }
