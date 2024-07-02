@@ -152,8 +152,11 @@ pub fn toggle_paths_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBu
             .to_string();
             if let Some(index) = new_name.to_lowercase().find(OFF_STATE) {
                 let off_state_len = OFF_STATE.chars().count();
-                if new_state && index == new_name.chars().count() - off_state_len {
+                let correct_index = new_name.chars().count() - off_state_len;
+                if new_state && index == correct_index {
                     new_name.replace_range(index..index + off_state_len, "");
+                } else if !new_state && index != correct_index {
+                    new_name.push_str(OFF_STATE);
                 }
             } else if !new_state {
                 new_name.push_str(OFF_STATE);
