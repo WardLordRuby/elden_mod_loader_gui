@@ -16,8 +16,8 @@ use crate::{
             writer::{save_bool, save_value_ext, EXT_OPTIONS, WRITE_OPTIONS},
         },
     },
-    ARRAY_VALUE, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_NAME, INI_SECTIONS,
-    LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
+    ARRAY_KEY, ARRAY_VALUE, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_NAME,
+    INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
 };
 
 pub trait Config {
@@ -232,13 +232,17 @@ impl Cfg {
             .section_mut(INI_SECTIONS[3])
             .expect("validated by is_setup")
             .iter_mut()
-            .for_each(|(k, v)| {
+            .fold("", |mut last_key, (k, v)| {
+                if k != ARRAY_KEY {
+                    last_key = k;
+                }
                 if v != ARRAY_VALUE && PathBuf::from(v.clone()).extension().is_none() {
-                    let msg = format!("Found invalid file: {v}, saved with key: {k}");
+                    let msg = format!("Found invalid file: {v}, saved with key: {last_key}");
                     info!("{msg}");
                     messages.push(msg);
                     v.push_str("path_can_not_point_to.directory");
                 }
+                last_key
             });
         if !messages.is_empty() {
             return Err(messages);

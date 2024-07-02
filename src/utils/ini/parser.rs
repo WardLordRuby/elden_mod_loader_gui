@@ -666,7 +666,7 @@ impl RegMod {
             || (self.state && self.files.dll.iter().any(FileData::is_disabled))
         {
             info!(
-                "Wrong file state for mod: '{}', chaning file state",
+                "Wrong file state for mod: '{}', changing file state",
                 DisplayName(&self.name)
             );
             return toggle_files(game_dir, self.state, self, Some(ini_dir));
