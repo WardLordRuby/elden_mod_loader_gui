@@ -47,7 +47,7 @@ impl Parsable for bool {
 }
 
 #[inline]
-fn parse_bool(str: &str) -> Result<bool, ParseBoolError> {
+pub fn parse_bool(str: &str) -> Result<bool, ParseBoolError> {
     match str {
         "0" => Ok(false),
         "1" => Ok(true),

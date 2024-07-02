@@ -335,9 +335,6 @@ where
     }
 }
 
-// MARK: TODO
-// create fn to ensure all saved long_paths are directories and short_paths are files
-
 pub struct FileData<'a> {
     pub name: &'a str,
     pub extension: &'a str,

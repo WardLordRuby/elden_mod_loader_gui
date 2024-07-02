@@ -101,7 +101,15 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         };
         let mut ini = match ini {
-            Some(ini_data) => Config::from(ini_data, current_ini),
+            Some(ini_data) => {
+                let mut ini: Cfg = Config::from(ini_data, current_ini);
+                if let Err(messages) = ini.validate_entries() {
+                    dsp_msgs.extend(messages);
+                    ini.write_to_file()
+                        .unwrap_or_else(|_| panic!("failed to modify contents of {INI_NAME}"));
+                };
+                ini
+            }
             None => {
                 new_cfg(current_ini)
                     .map(|ini| Config::from(ini, current_ini))

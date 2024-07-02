@@ -1,5 +1,6 @@
 use ini::Ini;
 use std::{
+    collections::HashSet,
     io,
     marker::Sized,
     path::{Path, PathBuf},
@@ -9,14 +10,14 @@ use tracing::{info, instrument};
 use crate::{
     get_or_setup_cfg,
     utils::{
-        display::{DisplayTheme, ModError},
+        display::{DisplayTheme, IntoIoError, ModError},
         ini::{
-            parser::IniProperty,
+            parser::{parse_bool, IniProperty},
             writer::{save_bool, save_value_ext, EXT_OPTIONS, WRITE_OPTIONS},
         },
     },
-    DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_NAME, INI_SECTIONS, LOADER_FILES,
-    LOADER_KEYS, LOADER_SECTIONS,
+    ARRAY_VALUE, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_NAME, INI_SECTIONS,
+    LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
 };
 
 pub trait Config {
@@ -190,6 +191,59 @@ impl Cfg {
             Ok(save_log) => Ok(save_log.value),
             Err(err) => Err(self.save_default_val(INI_SECTIONS[0], INI_KEYS[1], err)),
         }
+    }
+
+    /// replaces invalid entries with valid ones and returns a message to display to the user if so  
+    /// **Note:** this does not write the validated changes to file
+    pub fn validate_entries(&mut self) -> Result<(), Vec<String>> {
+        let mut messages = Vec::new();
+        let state_len = self
+            .data
+            .section(INI_SECTIONS[2])
+            .expect("validated by is_setup")
+            .len();
+        let mod_states = self.data.section_mut(INI_SECTIONS[2]).expect("validated by is_setup");
+        let remove_keys = mod_states
+            .iter_mut()
+            .fold(
+                (HashSet::with_capacity(state_len), Vec::new()),
+                |(mut keys, mut keys_to_remove), (k, v)| {
+                    if !keys.insert(k) {
+                        keys_to_remove.push(k.to_owned());
+                    }
+                    if let Err(err) = parse_bool(v) {
+                        let msg = err.into_io_error(k, v).to_string();
+                        info!("{msg}");
+                        messages.push(msg);
+                        *v = String::from("true");
+                    }
+                    (keys, keys_to_remove)
+                },
+            )
+            .1;
+        remove_keys.into_iter().for_each(|k| {
+            let msg = format!("Duplicate key: {k}, found and removed from: {INI_NAME}");
+            info!("{msg}");
+            messages.push(msg);
+            eprintln!("removing: {k}");
+            mod_states.remove(k);
+        });
+        self.data
+            .section_mut(INI_SECTIONS[3])
+            .expect("validated by is_setup")
+            .iter_mut()
+            .for_each(|(k, v)| {
+                if v != ARRAY_VALUE && PathBuf::from(v.clone()).extension().is_none() {
+                    let msg = format!("Found invalid file: {v}, saved with key: {k}");
+                    info!("{msg}");
+                    messages.push(msg);
+                    v.push_str("path_can_not_point_to.directory");
+                }
+            });
+        if !messages.is_empty() {
+            return Err(messages);
+        }
+        Ok(())
     }
 }
 
