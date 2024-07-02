@@ -312,12 +312,9 @@ impl ModLoaderCfg {
             k_v.push((k, curr_v));
         }
         k_v.sort_by_key(|(_, v)| *v);
-        dbg!(&k_v);
-        dbg!((stable_k, stable_v));
-
-        let mut new_section = ini::Properties::new();
 
         let mut missing_vals = Vec::new();
+        let mut new_section = ini::Properties::new();
         let (max_order, missing_vals) = if k_v.is_empty() && !stable_k.is_empty() {
             new_section.append(
                 stable_k,
@@ -392,13 +389,6 @@ impl ModLoaderCfg {
                 },
             )
         };
-        dbg!(&unknown_keys);
-        dbg!(&new_section);
-        eprintln!(
-            "Max Order: {}, Multiple last_user_val: {}",
-            max_order.0, max_order.1
-        );
-        eprintln!("Missing val: {:?}", missing_vals);
         std::mem::swap(self.mut_section(), &mut new_section);
         trace!("re-calculated the order of entries in {}", LOADER_FILES[3]);
         OrdMetaData {

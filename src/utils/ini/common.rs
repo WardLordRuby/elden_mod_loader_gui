@@ -225,7 +225,6 @@ impl Cfg {
             let msg = format!("Duplicate key: {k}, found and removed from: {INI_NAME}");
             info!("{msg}");
             messages.push(msg);
-            eprintln!("removing: {k}");
             mod_states.remove(k);
         });
         self.data

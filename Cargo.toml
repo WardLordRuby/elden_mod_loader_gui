@@ -1,6 +1,6 @@
 [package]
 name = "elden_mod_loader_gui"
-version = "0.9.5"
+version = "0.9.6"
 authors = ["WardLordRuby"]
 edition = "2021"
 build = "build.rs"
@@ -9,8 +9,8 @@ build = "build.rs"
 
 [package.metadata.winresource]
 ProductName = "Elden Mod Loader GUI"
-FileDescription = "Elden Ring mod manager made by: WardLordRuby"
-ProductVersion = "0.9.5-beta"
+FileDescription = "Elden Ring mod manager by: WardLordRuby"
+ProductVersion = "0.9.6-beta"
 
 [profile.release]
 opt-level = "s"  # Optimize for size.
