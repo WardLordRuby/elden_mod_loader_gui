@@ -765,7 +765,12 @@ impl<'a> Combine for CollectedMaps<'a> {
                     }
                     (
                         key,
-                        parse_bool(state_str).unwrap_or(true),
+                        parse_bool(state_str).unwrap_or_else(|err| {
+                            error!("{}", err.into_io_error(key, state_str));
+                            save_bool(ini_dir, INI_SECTIONS[2], key, true)
+                                .expect("file was read from and should be writable");
+                            true
+                        }),
                         split_files,
                         load_order,
                     )
