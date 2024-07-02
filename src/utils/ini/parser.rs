@@ -9,7 +9,7 @@ use tracing::{error, info, instrument, trace, warn};
 
 use crate::{
     file_name_from_str, files_not_found, get_cfg, new_io_error, omit_off_state, toggle_files,
-    toggle_name_state,
+    toggle_path_state,
     utils::{
         display::{Merge, ModError},
         ini::{
@@ -17,8 +17,8 @@ use crate::{
             writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
         },
     },
-    Cfg, DisplayName, DisplayState, DisplayVec, DllSet, FileData, IntoIoError, OrderMap, ARRAY_KEY,
-    ARRAY_VALUE, INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
+    Cfg, DisplayName, DisplayVec, DllSet, FileData, IntoIoError, OrderMap, ARRAY_KEY, ARRAY_VALUE,
+    INI_KEYS, INI_SECTIONS, REQUIRED_GAME_FILES,
 };
 
 pub trait Parsable: Sized {
@@ -611,42 +611,37 @@ impl RegMod {
     /// if not correct, runs toggle files to put them in the correct state  
     #[instrument(level = "trace", skip_all)]
     pub fn verify_state(&mut self, game_dir: &Path, ini_dir: &Path) -> std::io::Result<()> {
-        let count_try_verify_ouput = || -> (usize, usize, usize) {
-            let (mut exists, mut no_exist, mut errors) = (0_usize, 0_usize, 0_usize);
-            self.files
-                .dll
-                .iter()
-                .for_each(|p| match game_dir.join(p).try_exists() {
+        let count_try_verify_ouput = || -> (usize, Vec<usize>, usize) {
+            let (mut exists, mut errors) = (0_usize, 0_usize);
+            let mut not_found_indices = Vec::new();
+            self.files.dll.iter().enumerate().for_each(|(i, p)| {
+                match game_dir.join(p).try_exists() {
                     Ok(true) => exists += 1,
-                    Ok(false) => no_exist += 1,
+                    Ok(false) => not_found_indices.push(i),
                     Err(_) => errors += 1,
-                });
-            (exists, no_exist, errors)
+                }
+            });
+            (exists, not_found_indices, errors)
         };
-        let (_, no_exist, errors) = count_try_verify_ouput();
-        if no_exist != 0 && errors == 0 {
-            let alt_file_state = !FileData::state_data(&self.files.dll[0].to_string_lossy()).0;
-            let test_alt_state = toggle_name_state(&self.files.dll, alt_file_state);
-            let not_found = test_alt_state
-                .iter()
-                .zip(&self.files.dll)
-                .filter_map(|(new, original)| {
-                    if !matches!(game_dir.join(new).try_exists(), Ok(true)) {
-                        Some(original.as_path())
-                    } else {
+        let (_, not_found_indices, errors) = count_try_verify_ouput();
+        if !not_found_indices.is_empty() && errors == 0 {
+            let not_found = not_found_indices
+                .into_iter()
+                .filter_map(|i| {
+                    let alt_path_state = toggle_path_state(&self.files.dll[i]);
+                    if matches!(game_dir.join(&alt_path_state).try_exists(), Ok(true)) {
+                        self.files.dll[i] = alt_path_state;
                         None
+                    } else {
+                        Some(alt_path_state)
                     }
                 })
                 .collect::<Vec<_>>();
             if not_found.is_empty() {
-                let is_array = self.is_array();
-                self.state = alt_file_state;
-                self.files.dll = test_alt_state;
-                self.write_to_file(ini_dir, is_array)?;
+                self.write_to_file(ini_dir, self.is_array())?;
                 info!(
-                    "{}'s files were saved in the incorrect state, updated files to reflect the correct state: {}",
+                    "{}'s files were saved in the incorrect state, updated files to reflect the correct state",
                     DisplayName(&self.name),
-                    DisplayState(alt_file_state)
                 );
                 trace!(new_fnames = ?self.files.dll, "Recovered from Error: file names saved in the incorrect state")
             } else {
@@ -671,7 +666,7 @@ impl RegMod {
             || (self.state && self.files.dll.iter().any(FileData::is_disabled))
         {
             info!(
-                "Wrong file state for \"{}\" chaning file state",
+                "Wrong file state for mod: '{}', chaning file state",
                 DisplayName(&self.name)
             );
             return toggle_files(game_dir, self.state, self, Some(ini_dir));

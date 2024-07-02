@@ -125,24 +125,40 @@ pub fn shorten_paths<'a, P: AsRef<Path>>(
     }
 }
 
-/// Takes in a potential pathBuf, finds file_name name and outputs the new_state version
-pub fn toggle_name_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
+/// finds the current state of the input Path and returns an owned Pathbuf in the opposite state
+pub fn toggle_path_state(path: &Path) -> PathBuf {
+    let mut file_str = path.to_string_lossy().to_string();
+    let file_data = FileData::from(&file_str);
+    if file_data.enabled {
+        PathBuf::from(format!("{}{}", file_str, OFF_STATE))
+    } else {
+        let len = file_str.chars().count();
+        file_str.replace_range(len - OFF_STATE.chars().count()..len, "");
+        PathBuf::from(file_str)
+    }
+}
+
+/// takes in an array of PathBufs, finds file_name name and outputs the new_state version
+pub fn toggle_paths_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBuf> {
     file_paths
         .iter()
         .map(|path| {
-            let file_name = match path.file_name() {
-                Some(name) => name,
-                None => path.as_os_str(),
-            };
-            let mut new_name = file_name.to_string_lossy().to_string();
+            let mut temp_string = None;
+            let mut new_name = file_name_from_str(path.to_str().unwrap_or_else(|| {
+                temp_string =
+                    Some(path.file_name().expect("is file").to_string_lossy().to_string());
+                temp_string.as_ref().unwrap()
+            }))
+            .to_string();
             if let Some(index) = new_name.to_lowercase().find(OFF_STATE) {
-                if new_state {
-                    new_name.replace_range(index..index + OFF_STATE.chars().count(), "");
+                let off_state_len = OFF_STATE.chars().count();
+                if new_state && index == new_name.chars().count() - off_state_len {
+                    new_name.replace_range(index..index + off_state_len, "");
                 }
             } else if !new_state {
                 new_name.push_str(OFF_STATE);
             }
-            let mut new_path = PathBuf::from(path);
+            let mut new_path = path.clone();
             new_path.set_file_name(new_name);
             new_path
         })
@@ -197,7 +213,7 @@ pub fn toggle_files(
     let num_rename_files = reg_mod.files.dll.len();
     let was_array = reg_mod.is_array();
 
-    let short_path_new = toggle_name_state(&reg_mod.files.dll, new_state);
+    let short_path_new = toggle_paths_state(&reg_mod.files.dll, new_state);
     let full_path_new = join_paths(game_dir, &short_path_new);
     let full_path_original = join_paths(game_dir, &reg_mod.files.dll);
 
@@ -319,6 +335,9 @@ where
     }
 }
 
+// MARK: TODO
+// create fn to ensure all saved long_paths are directories and short_paths are files
+
 pub struct FileData<'a> {
     pub name: &'a str,
     pub extension: &'a str,
@@ -411,7 +430,7 @@ pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
     ))
 }
 
-// returns whats right of the right most '\' or does nothing
+/// returns whats right of the right most '\' or does nothing
 #[instrument(level = "trace")]
 pub fn file_name_from_str(str: &str) -> &str {
     let split = str.rfind('\\').unwrap_or(0);

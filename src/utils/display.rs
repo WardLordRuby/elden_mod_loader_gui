@@ -172,7 +172,7 @@ impl IntoIoError for std::str::ParseBoolError {
         std::io::Error::new(
             ErrorKind::InvalidData,
             format!(
-                "string: \"{context}\" found in \"{key}\" was not `true`, `false`, `1`, or `0`."
+                "string: '{context}', saved with key: '{key}', was not `true`, `false`, `1`, or `0`"
             ),
         )
     }
@@ -185,7 +185,7 @@ impl IntoIoError for std::num::ParseIntError {
         std::io::Error::new(
             ErrorKind::InvalidData,
             format!(
-                "string: \"{context}\" found in \"{key}\" was not within the valid `U32 range`."
+                "string: '{context}', saved with key: '{key}', was not within the valid `U32 range`"
             ),
         )
     }
