@@ -369,6 +369,7 @@ impl ModLoaderCfg {
                 last_user_val = offset;
                 new_section.append(stable_k, &offset.to_string());
             }
+            let last_key = new_section.iter().nth(new_section.len() - 1).map(|(k, _)| k).unwrap();
             let end_user_offset = last_user_val.to_string();
             let new_section_len = new_section.len();
             (
@@ -380,7 +381,7 @@ impl ModLoaderCfg {
                     (last_user_val + 1, true)
                 },
                 if !missing_vals.is_empty() {
-                    if *missing_vals.last().unwrap() == offset {
+                    if *missing_vals.last().unwrap() == offset && unknown_keys.contains(last_key) {
                         missing_vals.pop();
                     }
                     Some(missing_vals).filter(|v| !v.is_empty())
