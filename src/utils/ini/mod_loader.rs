@@ -176,57 +176,79 @@ impl ModLoaderCfg {
             trace!("No mods have load order");
             return Ok(());
         }
-        let k_v = self
-            .iter()
-            .filter_map(|(k, v)| {
-                if k != LOADER_EXAMPLE {
-                    Some((k.to_owned(), v.parse::<usize>().unwrap_or(42069)))
-                } else {
-                    trace!("{LOADER_EXAMPLE} ignored");
-                    None
+        let mut high_order = None;
+        let mut unknown_keys = Vec::new();
+        let mut unknown_vals = Vec::new();
+        for (k, v) in self.iter() {
+            if k == LOADER_EXAMPLE {
+                trace!("{LOADER_EXAMPLE} ignored");
+                continue;
+            }
+            let curr_v = v.parse::<usize>().unwrap_or(42069);
+            if dlls.contains(k) {
+                if curr_v != 42069 {
+                    if let Some(prev_high) = high_order {
+                        if curr_v > prev_high {
+                            high_order = Some(curr_v);
+                        }
+                    } else {
+                        high_order = Some(curr_v);
+                    }
                 }
-            })
-            .collect::<Vec<_>>();
-        if k_v.is_empty() {
+            } else {
+                unknown_keys.push(k.to_string());
+                unknown_vals.push(curr_v);
+            }
+        }
+        if unknown_keys.is_empty() {
+            trace!("all load_order entries are files registered with the app");
             return Ok(());
         }
-        let mut unknown_keys = Vec::new();
         let mut update_order = false;
-        k_v.iter().for_each(|(k, v)| {
-            if !dlls.contains(k.as_str()) {
-                unknown_keys.push(k.as_str());
-                if *v <= order_count {
-                    update_order = true;
-                    self.mut_section().insert(k, (usize::MAX - v).to_string());
+        let mut update_entry = |k: &String, v: usize| {
+            update_order = true;
+            self.mut_section().insert(k, (usize::MAX - v).to_string());
+        };
+        let mut no_user_vals_counter = 0_usize;
+        unknown_keys.iter().zip(unknown_vals).for_each(|(k, v)| {
+            if order_count == 0 {
+                if v != no_user_vals_counter && {
+                    no_user_vals_counter += 1;
+                    no_user_vals_counter
+                } != v
+                {
+                    update_entry(k, v);
                 }
+            } else if let Some(high_order) = high_order {
+                if v <= high_order {
+                    update_entry(k, v);
+                }
+            } else {
+                update_entry(k, v);
             }
         });
-        if !unknown_keys.is_empty() {
-            let unknown_key_set =
-                unknown_keys.iter().map(|s| String::from(*s)).collect::<HashSet<_>>();
-            if update_order {
-                let update_ord_data = self.update_order_entries(None, &unknown_key_set);
-                self.write_to_file().map_err(UnknownKeyErr::empty_with_err)?;
-                return Err(UnknownKeyErr {
-                    err: std::io::Error::new(ErrorKind::Unsupported,
-                        format!("Found load order set for file(s) not registered with the app. The following key(s) order were changed: {}", 
-                        DisplayVec(&unknown_keys))
-                    ),
-                    unknown_keys: Some(unknown_key_set),
-                    update_ord_data: Some(update_ord_data),
-                });
-            }
-            return Err(UnknownKeyErr {
-                err: std::io::Error::new(ErrorKind::Other,
-                    format!("Found load order set for the following file(s) not registered with the app: {}",
+        if update_order {
+            let err = std::io::Error::new(ErrorKind::Unsupported,
+                    format!("Found load order set for file(s) not registered with the app. One or more of the following key(s) order has been changed: {}", 
                     DisplayVec(&unknown_keys))
-                ),
+                );
+            let unknown_key_set = unknown_keys.into_iter().collect::<HashSet<_>>();
+            let update_ord_data = self.update_order_entries(None, &unknown_key_set);
+            self.write_to_file().map_err(UnknownKeyErr::empty_with_err)?;
+            return Err(UnknownKeyErr {
+                err,
                 unknown_keys: Some(unknown_key_set),
-                update_ord_data: None,
+                update_ord_data: Some(update_ord_data),
             });
         }
-        trace!("all load_order entries are files registered with the app");
-        Ok(())
+        Err(UnknownKeyErr {
+            err: std::io::Error::other(format!(
+                "Found load order set for the following file(s) not registered with the app: {}",
+                DisplayVec(&unknown_keys)
+            )),
+            unknown_keys: Some(unknown_keys.into_iter().collect::<HashSet<_>>()),
+            update_ord_data: None,
+        })
     }
 
     /// returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
@@ -301,7 +323,17 @@ impl ModLoaderCfg {
         let mut input_vals = HashSet::with_capacity(self.section().len());
         let (mut stable_k, mut stable_v) = ("", 69420_usize);
         for (k, v) in self.iter() {
-            let curr_v = v.parse::<usize>().unwrap_or(usize::MAX);
+            if k == LOADER_EXAMPLE {
+                info!("Removed: '{LOADER_EXAMPLE}' from: {}", LOADER_FILES[3]);
+                continue;
+            }
+            let curr_v = v.parse::<usize>().unwrap_or_else(|_| {
+                if unknown_keys.contains(k) {
+                    usize::MAX
+                } else {
+                    usize::MAX / 2
+                }
+            });
             input_vals.insert(curr_v);
             if let Some(input_k) = stable {
                 if k == input_k {
