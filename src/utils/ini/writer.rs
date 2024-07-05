@@ -92,7 +92,7 @@ fn init_default_values<K, V>(
     sections: &[Option<&str>],
     keys: &[K],
     values: &[V],
-    format_with_space: bool,
+    write_options: WriteOption,
 ) -> Result<()>
 where
     K: Display,
@@ -104,25 +104,13 @@ where
             for j in 0..values.len() {
                 writeln!(
                     writer,
-                    "{}",
-                    line_formater(format_with_space, &keys[j], &values[j])
+                    "{}{}{}",
+                    &keys[j], write_options.kv_separator, &values[j]
                 )?
             }
         }
     }
     Ok(())
-}
-
-fn line_formater<K, V>(with_spaces: bool, k: &K, v: &V) -> String
-where
-    K: Display,
-    V: Display,
-{
-    if with_spaces {
-        format!("{k} = {v}")
-    } else {
-        format!("{k}={v}")
-    }
 }
 
 #[instrument(level = "trace", skip_all, fields(path = %path.display()))]
@@ -140,7 +128,7 @@ pub fn new_cfg(path: &Path) -> Result<Ini> {
                 &INI_SECTIONS,
                 &INI_KEYS,
                 &DEFAULT_INI_VALUES,
-                false,
+                WRITE_OPTIONS,
             )?;
             info!("Created new ini: {}", INI_NAME);
         }
@@ -150,7 +138,7 @@ pub fn new_cfg(path: &Path) -> Result<Ini> {
                 &LOADER_SECTIONS,
                 &LOADER_KEYS,
                 &DEFAULT_LOADER_VALUES,
-                true,
+                EXT_OPTIONS,
             )?;
             info!("Created new ini: {}", LOADER_FILES[3]);
         }
