@@ -176,6 +176,14 @@ impl std::fmt::Display for DisplayTheme {
     }
 }
 
+pub struct DisplayTime<D: std::fmt::Display>(pub D);
+
+impl<D: std::fmt::Display> std::fmt::Display for DisplayTime<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}ms", self.0)
+    }
+}
+
 pub trait IntoIoError {
     fn into_io_error(self, key: &str, context: &str) -> std::io::Error;
 }

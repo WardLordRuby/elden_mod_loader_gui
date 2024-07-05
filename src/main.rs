@@ -1065,9 +1065,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 ui.display_msg(&format!("Failed to set load delay\n\n{err}"));
                 return;
             }
-            info!("Load delay set to: {}ms", time);
+            info!("Load delay set to: {}", DisplayTime(&time));
             ui.global::<SettingsLogic>()
-                .set_load_delay(SharedString::from(format!("{time}ms")));
+                .set_load_delay(SharedString::from(DisplayTime(time).to_string()));
             ui.global::<SettingsLogic>().set_delay_input(SharedString::new());
         }
     });

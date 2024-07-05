@@ -187,9 +187,9 @@ impl ModLoaderCfg {
             let curr_v = v.parse::<usize>().unwrap_or(42069);
             if dlls.contains(k) {
                 if curr_v != 42069 {
-                    if let Some(prev_high) = high_order {
-                        if curr_v > prev_high {
-                            high_order = Some(curr_v);
+                    if let Some(ref mut prev_high) = high_order {
+                        if curr_v > *prev_high {
+                            *prev_high = curr_v;
                         }
                     } else {
                         high_order = Some(curr_v);
