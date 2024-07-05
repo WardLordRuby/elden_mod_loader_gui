@@ -95,19 +95,15 @@ impl Parsable for PathBuf {
         }
         parsed_value.as_path().validate(partial_path)?;
         if key == INI_KEYS[2] {
-            match files_not_found(&parsed_value, &REQUIRED_GAME_FILES) {
-                Ok(not_found) => {
-                    if !not_found.is_empty() {
-                        return new_io_error!(
-                            ErrorKind::NotFound,
-                            format!(
-                                "Could not verify the install directory of Elden Ring, the following files were not found: {}",
-                                DisplayVec(&not_found),
-                            )
-                        );
-                    }
-                }
-                Err(err) => return Err(err),
+            let not_found = files_not_found(&parsed_value, &REQUIRED_GAME_FILES)?;
+            if !not_found.is_empty() {
+                return new_io_error!(
+                    ErrorKind::NotFound,
+                    format!(
+                        "Could not verify the install directory of Elden Ring, the following files were not found: {}",
+                        DisplayVec(&not_found),
+                    )
+                );
             }
         }
         Ok(parsed_value)
@@ -441,29 +437,22 @@ impl LoadOrder {
         if dll_files.is_empty() {
             return LoadOrder::default();
         }
-        if let Some(files) = dll_files
+        let file_names = dll_files
             .iter()
             .map(|f| {
-                let file_name = f.file_name();
-                Some(String::from(omit_off_state(&file_name?.to_string_lossy())))
+                let file_str = f.to_string_lossy();
+                omit_off_state(file_name_from_str(&file_str)).to_string()
             })
-            .collect::<Option<Vec<_>>>()
-        {
-            for (i, dll) in files.iter().enumerate() {
-                if let Some(v) = parsed_order_val.get(dll) {
-                    return LoadOrder {
-                        set: true,
-                        i,
-                        at: *v,
-                    };
-                }
+            .collect::<Vec<_>>();
+        for (i, dll) in file_names.iter().enumerate() {
+            if let Some(v) = parsed_order_val.get(dll) {
+                return LoadOrder {
+                    set: true,
+                    i,
+                    at: *v,
+                };
             }
-        } else {
-            error!(
-                "Failed to retrieve file_name for Path in: {} Returning LoadOrder::default",
-                DisplayVec(dll_files)
-            )
-        };
+        }
         LoadOrder::default()
     }
 }
@@ -637,14 +626,7 @@ impl RegMod {
                     }
                 })
                 .collect::<Vec<_>>();
-            if not_found.is_empty() {
-                self.write_to_file(ini_dir, self.is_array())?;
-                info!(
-                    "{}'s files were saved in the incorrect state, updated files to reflect the correct state",
-                    DisplayName(&self.name),
-                );
-                trace!(new_fnames = ?self.files.dll, "Recovered from Error: file names saved in the incorrect state")
-            } else {
+            if !not_found.is_empty() {
                 return new_io_error!(
                     ErrorKind::NotFound,
                     format!(
@@ -653,6 +635,12 @@ impl RegMod {
                     )
                 );
             }
+            self.write_to_file(ini_dir, self.is_array())?;
+            info!(
+                "{}'s files were saved in the incorrect state, updated files to reflect the correct state",
+                DisplayName(&self.name),
+            );
+            trace!(new_fnames = ?self.files.dll, "Recovered from Error: file names saved in the incorrect state");
         } else if errors != 0 {
             return new_io_error!(
                 ErrorKind::PermissionDenied,
@@ -912,38 +900,35 @@ impl Cfg {
         order_map: Option<&OrderMap>,
     ) -> std::io::Result<RegMod> {
         let key = name.replace(' ', "_");
-        let split_files =
-            if self
-                .data()
-                .get_from(INI_SECTIONS[3], &key)
-                .ok_or(std::io::Error::new(
-                    ErrorKind::InvalidInput,
-                    format!("{key} not found in section: {}", INI_SECTIONS[3].unwrap()),
-                ))?
-                == ARRAY_VALUE
-            {
-                SplitFiles::from(
-                    IniProperty::<Vec<PathBuf>>::read(
-                        self.data(),
-                        INI_SECTIONS[3],
-                        &key,
-                        game_dir,
-                        false,
-                    )?
-                    .value,
-                )
-            } else {
-                SplitFiles::from(vec![
-                    IniProperty::<PathBuf>::read(
-                        self.data(),
-                        INI_SECTIONS[3],
-                        &key,
-                        Some(game_dir),
-                        false,
-                    )?
-                    .value,
-                ])
-            };
+        let split_files = if self.data().get_from(INI_SECTIONS[3], &key).ok_or_else(|| {
+            std::io::Error::new(
+                ErrorKind::InvalidInput,
+                format!("{key} not found in section: {}", INI_SECTIONS[3].unwrap()),
+            )
+        })? == ARRAY_VALUE
+        {
+            SplitFiles::from(
+                IniProperty::<Vec<PathBuf>>::read(
+                    self.data(),
+                    INI_SECTIONS[3],
+                    &key,
+                    game_dir,
+                    false,
+                )?
+                .value,
+            )
+        } else {
+            SplitFiles::from(vec![
+                IniProperty::<PathBuf>::read(
+                    self.data(),
+                    INI_SECTIONS[3],
+                    &key,
+                    Some(game_dir),
+                    false,
+                )?
+                .value,
+            ])
+        };
         Ok(RegMod {
             order: if let Some(map) = order_map {
                 LoadOrder::from(&split_files.dll, map)

@@ -197,41 +197,35 @@ impl Cfg {
     /// **Note:** this does not write the validated changes to file
     pub fn validate_entries(&mut self) -> Result<(), Vec<String>> {
         let mut messages = Vec::new();
-        let state_len = self
-            .data
-            .section(INI_SECTIONS[2])
-            .expect("validated by is_setup")
-            .len();
-        let mod_states = self.data.section_mut(INI_SECTIONS[2]).expect("validated by is_setup");
-        let remove_keys = mod_states
-            .iter_mut()
-            .fold(
-                (HashSet::with_capacity(state_len), Vec::new()),
-                |(mut keys, mut keys_to_remove), (k, v)| {
-                    if !keys.insert(k) {
-                        keys_to_remove.push(k.to_owned());
-                    }
-                    if let Err(err) = parse_bool(v) {
-                        let msg = err.into_io_error(k, v).to_string();
-                        info!("{msg}");
-                        messages.push(msg);
-                        *v = String::from("true");
-                    }
-                    (keys, keys_to_remove)
-                },
-            )
-            .1;
-        remove_keys.into_iter().for_each(|k| {
-            let msg = format!("Duplicate key: {k}, found and removed from: {INI_NAME}");
-            info!("{msg}");
-            messages.push(msg);
-            mod_states.remove(k);
-        });
-        self.data
-            .section_mut(INI_SECTIONS[3])
-            .expect("validated by is_setup")
-            .iter_mut()
-            .fold("", |mut last_key, (k, v)| {
+        let state_len = self.data.section(INI_SECTIONS[2]).map(|d| d.len());
+        if let Some(mod_states) = self.data.section_mut(INI_SECTIONS[2]) {
+            let remove_keys = mod_states
+                .iter_mut()
+                .fold(
+                    (HashSet::with_capacity(state_len.unwrap()), Vec::new()),
+                    |(mut keys, mut keys_to_remove), (k, v)| {
+                        if !keys.insert(k) {
+                            keys_to_remove.push(k.to_owned());
+                        }
+                        if let Err(err) = parse_bool(v) {
+                            let msg = err.into_io_error(k, v).to_string();
+                            info!("{msg}");
+                            messages.push(msg);
+                            *v = String::from("true");
+                        }
+                        (keys, keys_to_remove)
+                    },
+                )
+                .1;
+            remove_keys.into_iter().for_each(|k| {
+                let msg = format!("Duplicate key: {k}, found and removed from: {INI_NAME}");
+                info!("{msg}");
+                messages.push(msg);
+                mod_states.remove(k);
+            });
+        };
+        if let Some(mod_files) = self.data.section_mut(INI_SECTIONS[3]) {
+            mod_files.iter_mut().fold("", |mut last_key, (k, v)| {
                 if k != ARRAY_KEY {
                     last_key = k;
                 }
@@ -243,6 +237,7 @@ impl Cfg {
                 }
                 last_key
             });
+        }
         if !messages.is_empty() {
             return Err(messages);
         }

@@ -219,8 +219,8 @@ impl ModLoaderCfg {
                 {
                     update_entry(k, v);
                 }
-            } else if let Some(high_order) = high_order {
-                if v <= high_order {
+            } else if let Some(ref high_order) = high_order {
+                if v <= *high_order {
                     update_entry(k, v);
                 }
             } else {
