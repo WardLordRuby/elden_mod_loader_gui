@@ -22,8 +22,6 @@ export component App inherits Window {
             ((mp.width - popup-window-width) / 2) - (popup-border-width * 2)
         }
     };
-    // Still possible to run into the - px range
-    // only noticed on startup popups
     property <length> popup-window-y-pos: {
         if ((window-height - popup-window-height) / 2) < 0px {
             60px
@@ -77,7 +75,6 @@ export component App inherits Window {
         max-width: max-text-width;
     }
 
-    // Make popupWindow look nice 
     err-popup := PopupWindow {
         x: popup-window-x-pos;
         y: popup-window-y-pos;
@@ -111,7 +108,7 @@ export component App inherits Window {
             }
         }
     }
-    // Make popupWindow look nice 
+
     confirm-popup := PopupWindow {
         x: popup-window-x-pos;
         y: popup-window-y-pos;
@@ -190,8 +187,8 @@ export component App inherits Window {
     }
     fs := FocusScope {
         key-pressed(event) => {
-            if (event.text == Key.Escape) {
-                if (popup-visible) {
+            if event.text == Key.Escape {
+                if popup-visible {
                     popup-visible = false;
                     MainLogic.send-message(Message.esc);
                     err-popup.close();
@@ -201,17 +198,17 @@ export component App inherits Window {
                     MainLogic.current-subpage = 0
                 }
             }
-            if (event.text == Key.Tab) {
-                if (!popup-visible) {
-                    if (MainLogic.current-subpage == 0) {
+            if event.text == Key.Tab {
+                if !popup-visible {
+                    if MainLogic.current-subpage == 0 {
                         if (MainLogic.game-path-valid) {
                             mp.focus-line-edit()
                         }
-                    } else if (MainLogic.current-subpage == 1) {
+                    } else if MainLogic.current-subpage == 1 {
                         if (SettingsLogic.loader-installed) {
                             mp.focus-settings()
                         }
-                    } else if (MainLogic.current-subpage == 2) {
+                    } else if MainLogic.current-subpage == 2 {
                         mp.swap-tab()
                     }
                 }

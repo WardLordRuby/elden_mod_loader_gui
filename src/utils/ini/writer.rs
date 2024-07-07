@@ -92,7 +92,7 @@ fn init_default_values<K, V>(
     sections: &[Option<&str>],
     keys: &[K],
     values: &[V],
-    write_options: WriteOption,
+    write_options: &WriteOption,
 ) -> Result<()>
 where
     K: Display,
@@ -128,7 +128,7 @@ pub fn new_cfg(path: &Path) -> Result<Ini> {
                 &INI_SECTIONS,
                 &INI_KEYS,
                 &DEFAULT_INI_VALUES,
-                WRITE_OPTIONS,
+                &WRITE_OPTIONS,
             )?;
             info!("Created new ini: {}", INI_NAME);
         }
@@ -138,7 +138,7 @@ pub fn new_cfg(path: &Path) -> Result<Ini> {
                 &LOADER_SECTIONS,
                 &LOADER_KEYS,
                 &DEFAULT_LOADER_VALUES,
-                EXT_OPTIONS,
+                &EXT_OPTIONS,
             )?;
             info!("Created new ini: {}", LOADER_FILES[3]);
         }

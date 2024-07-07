@@ -13,9 +13,9 @@ export component ModDetailsPage inherits Page {
     in property <int> mod-index;
     in-out property <int> current-tab;
     property <color> state-color: SettingsLogic.loader-disabled ? #d01616 : 
-    MainLogic.current-mods[mod-index].enabled ? #206816 : #d01616;
+        MainLogic.current-mods[mod-index].enabled ? #206816 : #d01616;
     property <string> state: SettingsLogic.loader-disabled ? @tr("Mod Loader Disabled") : 
-    MainLogic.current-mods[mod-index].enabled ? @tr("Mod Enabled") : @tr("Mod Disabled");
+        MainLogic.current-mods[mod-index].enabled ? @tr("Mod Enabled") : @tr("Mod Disabled");
     property <length> header-offset: 12px;
     property <length> tab-height: self.height - Formatting.header-height - info-text.height - tab-bar.height + header-offset;
     property <length> tab-y: Formatting.header-height + tab-bar.height + info-text.height - header-offset;
