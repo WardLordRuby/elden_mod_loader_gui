@@ -176,7 +176,7 @@ pub fn remove_array(file_path: &Path, key: &str) -> Result<()> {
 #[instrument(level = "trace", skip(file_path), fields(section = section.unwrap()))]
 pub fn remove_entry(file_path: &Path, section: Option<&str>, key: &str) -> Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
-    config.delete_from(section, key).ok_or(Error::other(format!(
+    config.delete_from(section, key).ok_or_else(|| Error::other(format!(
         "Could not delete: {key}, from Section: {}",
         &section.expect("Passed in section should be valid")
     )))?;
@@ -194,10 +194,12 @@ pub fn remove_order_entry(entry: &RegMod, loader_dir: &Path) -> Result<()> {
         );
     }
     let file_name = file_name_or_err(&entry.files.dll[entry.order.i])?;
-    let file_name = file_name.to_str().ok_or(Error::new(
-        ErrorKind::InvalidData,
-        format!("{file_name:?} is not valid UTF-8"),
-    ))?;
+    let file_name = file_name.to_str().ok_or_else(|| {
+        Error::new(
+            ErrorKind::InvalidData,
+            format!("{file_name:?} is not valid UTF-8"),
+        )
+    })?;
     remove_entry(loader_dir, LOADER_SECTIONS[1], omit_off_state(file_name))?;
     trace!("removed order entry");
     Ok(())

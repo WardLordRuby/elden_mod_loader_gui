@@ -416,21 +416,17 @@ pub fn omit_off_state(name: &str) -> &str {
 /// convience function to map Option None to an io Error
 #[inline]
 pub fn parent_or_err(path: &Path) -> std::io::Result<&Path> {
-    path.parent().ok_or(std::io::Error::new(
-        ErrorKind::InvalidData,
-        "Could not get parent_dir",
-    ))
+    path.parent()
+        .ok_or_else(|| std::io::Error::new(ErrorKind::InvalidData, "Could not get parent_dir"))
 }
 /// convience function to map Option None to an io Error
 #[inline]
 pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
-    path.file_name().ok_or(std::io::Error::new(
-        ErrorKind::InvalidData,
-        "Could not get file_name",
-    ))
+    path.file_name()
+        .ok_or_else(|| std::io::Error::new(ErrorKind::InvalidData, "Could not get file_name"))
 }
 
-/// returns whats right of the right most '\' or does nothing
+/// returns whats right of the right most "\\" or does nothing
 #[instrument(level = "trace")]
 pub fn file_name_from_str(str: &str) -> &str {
     let split = str.rfind('\\').unwrap_or(0);
@@ -531,8 +527,5 @@ fn get_drive(path: &Path) -> std::io::Result<std::ffi::OsString> {
             drive.push("\\");
             drive
         })
-        .ok_or(std::io::Error::new(
-            ErrorKind::InvalidData,
-            "Could not get root component",
-        ))
+        .ok_or_else(|| std::io::Error::new(ErrorKind::InvalidData, "Could not get root component"))
 }

@@ -841,7 +841,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 let span = info_span!("remove_mod");
                 let _guard = span.enter();
                 let ui = handle_clone.unwrap();
-                ui.display_confirm(&format!("Are you sure you want to de-register: {key}?"), false);
+                ui.display_confirm(&format!("Are you sure you want to de-register: {key}?"), Buttons::OkCancel);
                 if receive_msg().await != Message::Confirm {
                     return
                 }
@@ -1466,14 +1466,29 @@ impl Sortable for ModelRc<DisplayMod> {
     }
 }
 
+enum Buttons {
+    YesNo,
+    OkCancel,
+}
+
+impl Buttons {
+    #[inline]
+    fn to_bool(&self) -> bool {
+        match self {
+            Buttons::YesNo => true,
+            Buttons::OkCancel => false,
+        }
+    }
+}
+
 impl App {
     fn display_msg(&self, msg: &str) {
         self.set_display_message(SharedString::from(msg));
         self.invoke_show_error_popup();
     }
 
-    fn display_confirm(&self, msg: &str, alt_buttons: bool) {
-        self.set_alt_std_buttons(alt_buttons);
+    fn display_confirm(&self, msg: &str, buttons: Buttons) {
+        self.set_alt_std_buttons(buttons.to_bool());
         self.set_display_message(SharedString::from(msg));
         self.invoke_show_confirm_popup();
     }
@@ -1702,11 +1717,11 @@ fn deserialize_split_files(split_files: &SplitFiles) -> DeserializedFileData {
                 .iter()
                 .map(|f| SharedString::from(omit_off_state(&f.to_string_lossy())).into()),
         );
-        dll_files.extend(split_files.dll.iter().map(|f| {
-            SharedString::from(omit_off_state(
-                &f.file_name().expect("file validated").to_string_lossy(),
-            ))
-        }));
+        dll_files.extend(
+            split_files.dll.iter().map(|f| {
+                SharedString::from(omit_off_state(file_name_from_str(&f.to_string_lossy())))
+            }),
+        );
     };
     if !split_files.config.is_empty() {
         files.extend(
@@ -1800,7 +1815,7 @@ async fn install_new_mod(
         &format!(
             "Mod files are not installed in game directory.\nAttempt to install \"{mod_name}\"?"
         ),
-        true,
+        Buttons::YesNo,
     );
     if receive_msg().await != Message::Confirm {
         return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled");
@@ -1819,7 +1834,7 @@ async fn install_new_files_to_mod(
     let ui = ui_handle.unwrap();
     ui.display_confirm(
         "Selected files are not installed? Would you like to try and install them?",
-        true,
+        Buttons::YesNo,
     );
     if receive_msg().await != Message::Confirm {
         return new_io_error!(
@@ -1839,7 +1854,7 @@ async fn add_dir_to_install_data(
     let ui = ui_handle.unwrap();
     ui.display_confirm(&format!(
         "Current Files to install:\n{}\n\nWould you like to add a directory eg. Folder containing a config file?", 
-        install_files.display_paths), true);
+        install_files.display_paths), Buttons::YesNo);
     let result = match receive_msg().await {
         Message::Confirm => match get_user_folder(&install_files.parent_dir, ui.window()) {
             Ok(path) => {
@@ -1878,7 +1893,7 @@ async fn confirm_install(
             install_files.display_paths,
             &install_files.install_dir.display()
         ),
-        false,
+        Buttons::OkCancel,
     );
     if receive_msg().await != Message::Confirm {
         return new_io_error!(ErrorKind::ConnectionAborted, "Mod install canceled");
@@ -1937,7 +1952,7 @@ async fn confirm_remove_mod(
                             "Do you want to remove the set load order of: {}",
                             reg_mod.order.at
                         ),
-                        true,
+                        Buttons::YesNo,
                     );
                     match receive_msg().await {
                         Message::Confirm => remove_order_entry(reg_mod, loader_dir)?,
@@ -1961,13 +1976,13 @@ async fn confirm_remove_mod(
 
     ui.display_confirm(
         "Do you want to remove mod files from the game directory?",
-        true,
+        Buttons::YesNo,
     );
     match_user_msg().await?;
 
     ui.display_confirm(
         "This is a distructive action. Are you sure you want to continue?",
-        false,
+        Buttons::YesNo,
     );
     match_user_msg().await?;
 
@@ -1986,7 +2001,7 @@ async fn confirm_scan_mods(
 
     ui.display_confirm(
         "Would you like to attempt to auto-import already installed mods to Elden Mod Loader GUI?",
-        true,
+        Buttons::YesNo,
     );
     if receive_msg().await != Message::Confirm {
         return Ok(());
@@ -2010,7 +2025,7 @@ async fn confirm_scan_mods(
     let mut old_mods = if ini.mods_is_empty() {
         Vec::new()
     } else {
-        ui.display_confirm("Warning: This action will reset current registered mods, are you sure you want to continue?", true);
+        ui.display_confirm("Warning: This action will reset current registered mods, are you sure you want to continue?", Buttons::YesNo);
         if receive_msg().await != Message::Confirm {
             return Ok(());
         };

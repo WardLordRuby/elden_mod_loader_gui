@@ -248,10 +248,9 @@ impl InstallData {
         let dll_names = amend_to.files.dll.iter().try_fold(
             Vec::with_capacity(amend_to.files.len()),
             |mut acc, file| {
-                let file_name = file_name_or_err(file)?.to_str().ok_or(std::io::Error::new(
-                    ErrorKind::InvalidData,
-                    "File name is not valid unicode",
-                ))?;
+                let file_name = file_name_or_err(file)?.to_str().ok_or_else(|| {
+                    std::io::Error::new(ErrorKind::InvalidData, "File name is not valid unicode")
+                })?;
                 acc.push(FileData::from(file_name).name);
                 Ok::<Vec<&str>, std::io::Error>(acc)
             },
