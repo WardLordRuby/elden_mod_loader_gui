@@ -1385,10 +1385,7 @@ impl Sortable for ModelRc<DisplayMod> {
         let mut selected_i = 0_usize;
         let mut no_order_count = 0_usize;
         let mut seen_names = HashSet::new();
-        while !unsorted_idx.is_empty() {
-            if no_order_count >= unsorted_idx.len() {
-                break;
-            }
+        while !unsorted_idx.is_empty() && no_order_count != unsorted_idx.len() {
             if i >= unsorted_idx.len() {
                 i = 0
             }
@@ -1982,7 +1979,7 @@ async fn confirm_remove_mod(
 
     ui.display_confirm(
         "This is a distructive action. Are you sure you want to continue?",
-        Buttons::YesNo,
+        Buttons::OkCancel,
     );
     match_user_msg().await?;
 

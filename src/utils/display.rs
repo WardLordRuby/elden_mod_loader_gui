@@ -81,10 +81,10 @@ impl<'a, D: DisplayItem> std::fmt::Display for DisplayVec<'a, D> {
         if self.0.len() == 1 {
             return self.0[0].display_item(f, "");
         }
+        let last_i = self.0.len() - 1;
         write!(f, "[")?;
-        let last_e = self.0.len() - 1;
         self.0.iter().enumerate().try_for_each(|(i, e)| {
-            if i != last_e {
+            if i != last_i {
                 e.display_item(f, ", ")
             } else {
                 e.display_item(f, "]")
@@ -100,16 +100,16 @@ impl<'a, D: DisplayItem> std::fmt::Display for DisplayIndices<'a, D> {
         if self.0.is_empty() || self.1.is_empty() {
             panic!("Tried to format an empty Vec");
         }
-        let last_i = self.0.iter().max().unwrap();
-        if *last_i >= self.1.len() {
+        if *self.0.iter().max().unwrap() >= self.1.len() {
             panic!("index is larger than what is trying to be displayed")
         }
         if self.0.len() == 1 {
             return self.1[self.0[0]].display_item(f, "");
         }
+        let last_e = self.0.last().unwrap();
         write!(f, "[")?;
         self.0.iter().try_for_each(|e| {
-            if e != last_i {
+            if e != last_e {
                 self.1[*e].display_item(f, ", ")
             } else {
                 self.1[*e].display_item(f, "]")
