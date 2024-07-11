@@ -46,7 +46,7 @@ const ERROR_VAL: i32 = 42069;
 const UPDATE_ELEMENTS_VAL: i32 = 1;
 const OK_VAL: i32 = 0;
 
-fn main() -> Result<(), slint::PlatformError> {
+fn main() {
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         error!(name: "PANIC", "{}", format_panic_info(info));
@@ -64,7 +64,7 @@ fn main() -> Result<(), slint::PlatformError> {
     ))
     .expect("This app uses the winit backend");
 
-    let ui = App::new()?;
+    let ui = App::new().unwrap();
     ui.window().with_winit_window(|window: &winit::window::Window| {
         window.set_enabled_buttons(
             winit::window::WindowButtons::CLOSE | winit::window::WindowButtons::MINIMIZE,
@@ -1220,7 +1220,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 let msg = DisplayMissingOrd(vals).to_string();
                 ui.display_msg(&msg);
                 info!("{msg}");
-                return UPDATE_ELEMENTS_VAL;
+                // because of the unsupported two way bindings with array structures in slint the front end always re-renders
+                // the state of both input fields after this closure completes there is no need to return UPDATE_ELEMENTS_VAL
             }
             OK_VAL
         }
@@ -1320,7 +1321,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     ui.invoke_focus_app();
-    ui.run()
+    ui.run().unwrap();
 }
 
 trait Sortable {
@@ -1385,6 +1386,7 @@ impl Sortable for ModelRc<DisplayMod> {
         let mut selected_i = 0_usize;
         let mut no_order_count = 0_usize;
         let mut seen_names = HashSet::new();
+        let mut row_swapped = false;
         while !unsorted_idx.is_empty() && no_order_count != unsorted_idx.len() {
             if i >= unsorted_idx.len() {
                 i = 0
@@ -1442,6 +1444,7 @@ impl Sortable for ModelRc<DisplayMod> {
                 let found_i = unsorted_idx.iter().position(|x| *x == swap_i).expect(
                     "unsorted_idx & placement_rows contain the same entries and are kept in sync",
                 );
+                row_swapped = true;
                 unsorted_idx.swap_remove(found_i);
                 continue;
             }
@@ -1459,7 +1462,9 @@ impl Sortable for ModelRc<DisplayMod> {
         if selected_row.is_some() && selected_row.unwrap() != selected_i as i32 {
             ui.invoke_update_mod_index(selected_i as i32, 1);
         }
-        ui.invoke_redraw_checkboxes();
+        if row_swapped {
+            ui.invoke_redraw_checkboxes();
+        }
     }
 }
 
