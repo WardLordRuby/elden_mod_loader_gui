@@ -176,10 +176,12 @@ pub fn remove_array(file_path: &Path, key: &str) -> Result<()> {
 #[instrument(level = "trace", skip(file_path), fields(section = section.unwrap()))]
 pub fn remove_entry(file_path: &Path, section: Option<&str>, key: &str) -> Result<()> {
     let mut config: Ini = get_cfg(file_path)?;
-    config.delete_from(section, key).ok_or_else(|| Error::other(format!(
-        "Could not delete: {key}, from Section: {}",
-        &section.expect("Passed in section should be valid")
-    )))?;
+    config.delete_from(section, key).ok_or_else(|| {
+        Error::other(format!(
+            "Could not delete: {key}, from Section: {}",
+            &section.expect("Passed in section should be valid")
+        ))
+    })?;
     config.write_to_file_opt(file_path, WRITE_OPTIONS)?;
     trace!("removed entry from file");
     Ok(())

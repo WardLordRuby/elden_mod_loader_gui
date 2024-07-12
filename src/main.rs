@@ -333,8 +333,7 @@ fn main() {
                     }
                     if !game_verified {
                         disp_msg = String::from("Could not locate Elden Ring\nPlease Select the install directory for Elden Ring")
-                    }
-                    if game_verified && !mod_loader.installed() {
+                    } else if !mod_loader.installed() {
                         disp_msg = format!(
                             "{TECHIE_W_MSG}\n\n\
                             Please install files to: '{}', and relaunch Elden Mod Loader GUI", game_dir.as_ref().expect("game_verified").display()
@@ -360,7 +359,13 @@ fn main() {
                         let _ = receive_msg().await;
                     }
                     if (game_verified && mod_loader.installed()) && (first_startup || ini.mods_is_empty()) {
-                        if let Err(err) = confirm_scan_mods(ui.as_weak(), game_dir.as_ref().expect("game_verified"), Some(&ini), order_data.as_ref()).await {
+                        if let Err(err) = confirm_scan_mods(
+                            ui.as_weak(),
+                            game_dir.as_ref().expect("game_verified"),
+                            Some(&ini),
+                            order_data.as_ref()
+                        ).await {
+                            error!("{err}");
                             ui.display_msg(&err.to_string());
                         };
                     }
@@ -413,11 +418,15 @@ fn main() {
                     Err(err) => {
                         if file_paths.len() != err.err_paths_long.len() {
                             error!("Encountered {} StripPrefixError on input files", err.err_paths_long.len());
-                            ui.display_msg(&format!("Some selected files are already installed\n\nSelected Files Installed: {}\nSelected Files not installed: {}", err.ok_paths_short.len(), err.err_paths_long.len()));
+                            ui.display_msg(
+                                &format!(
+                                    "Some selected files are already installed\n\nSelected Files Installed: {}\nSelected Files not installed: {}",
+                                    err.ok_paths_short.len(),
+                                    err.err_paths_long.len()
+                                ));
                             return;
                         }
-                        let ui_handle = ui.as_weak();
-                        match install_new_mod(&mod_name, file_paths, &game_dir, ui_handle).await {
+                        match install_new_mod(&mod_name, file_paths, &game_dir, ui.as_weak()).await {
                             Ok(installed_files) => {
                                 file_paths = installed_files;
                                 match shorten_paths(&file_paths, &game_dir) {
@@ -480,7 +489,7 @@ fn main() {
                     return;
                 };
                 for f in new_mod.files.dll.iter() {
-                    let Some(f_name) =  f.file_name().and_then(|o| o.to_str()).map(omit_off_state) else {
+                    let Some(f_name) = f.file_name().and_then(|o| o.to_str()).map(omit_off_state) else {
                         let err = format!("failed to get file name for {}", f.display());
                         error!("{err}");
                         continue;
@@ -600,6 +609,7 @@ fn main() {
                         if let Err(err) =
                             confirm_scan_mods(ui.as_weak(), &try_path, Some(&ini), None).await
                         {
+                            error!("{err}");
                             ui.display_msg(&err.to_string());
                         };
                     }
@@ -729,7 +739,12 @@ fn main() {
                     Err(err) => {
                         if file_paths.len() != err.err_paths_long.len() {
                             error!(files = ?err.err_paths_long, "Encountered {} StripPrefixError(s) on input", err.err_paths_long.len());
-                            ui.display_msg(&format!("Some selected files are already installed\n\nSelected Files Installed: {}\nSelected Files not installed: {}", err.ok_paths_short.len(), err.err_paths_long.len()));
+                            ui.display_msg(
+                                &format!(
+                                    "Some selected files are already installed\n\nSelected Files Installed: {}\nSelected Files not installed: {}",
+                                    err.ok_paths_short.len(),
+                                    err.err_paths_long.len()
+                                ));
                             return;
                         }
                         match install_new_files_to_mod(&found_mod, file_paths, &game_dir, ui.as_weak()).await {
@@ -1151,6 +1166,7 @@ fn main() {
                 let _guard = span.enter();
                 let game_dir = get_or_update_game_dir(None);
                 if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir, None, None).await {
+                    error!("{err}");
                     ui.display_msg(&err.to_string());
                 };
             })
@@ -1267,7 +1283,8 @@ fn main() {
                     if let Err(err) = load_order.write_to_file() {
                         error!("{err}");
                         ui.display_msg(&format!(
-                            "Failed to write to \"mod_loader_config.ini\"\n{err}"
+                            "Failed to write to: '{}'\n{err}",
+                            LOADER_FILES[3]
                         ));
                         return ERROR_VAL;
                     };
@@ -1382,11 +1399,9 @@ impl Sortable for ModelRc<DisplayMod> {
                 },
             )
             .0;
-        let mut i = 0_usize;
-        let mut selected_i = 0_usize;
-        let mut no_order_count = 0_usize;
-        let mut seen_names = HashSet::new();
+        let (mut i, mut selected_i, mut no_order_count) = (0_usize, 0_usize, 0_usize);
         let mut row_swapped = false;
+        let mut seen_names = HashSet::new();
         while !unsorted_idx.is_empty() && no_order_count != unsorted_idx.len() {
             if i >= unsorted_idx.len() {
                 i = 0
