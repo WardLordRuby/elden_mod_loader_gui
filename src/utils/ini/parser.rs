@@ -144,8 +144,8 @@ impl Parsable for Vec<PathBuf> {
 }
 
 trait Valitidity {
-    /// _full_paths_ (stored as `PathBuf`) are assumed to Point to directories,  
-    /// where as _partial_paths_ (stored as `Vec<PathBuf>`) are assumed to point to files  
+    /// _full_paths_ are assumed to Point to directories, where as  
+    /// _partial_paths_ are assumed to point to files and share a _path_prefix_   
     /// if you want to validate a _partial_path_ you must supply the _path_prefix_
     fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> std::io::Result<()>;
 }
@@ -168,8 +168,8 @@ struct ValitidityError {
 }
 
 trait ValitidityMany {
-    /// _full_paths_ (stored as `PathBuf`) are assumed to Point to directories,  
-    /// where as _partial_paths_ (stored as `Vec<PathBuf>`) are assumed to point to files  
+    /// _full_paths_ are assumed to Point to directories, where as  
+    /// _partial_paths_ are assumed to point to files and share a _path_prefix_   
     /// if you want to validate a _partial_path_ you must supply the _path_prefix_
     fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> Result<(), ValitidityError>;
 }
@@ -778,25 +778,12 @@ impl<'a> Combine for CollectedMaps<'a> {
                             error!("{err}");
                             warnings.push(err);
                         };
-                        None
-                    } else if let Err(mut err) =
-                        curr.files.other_file_refs().validate(Some(&game_dir))
-                    {
-                        let mut can_continue = true;
+                        return None;
+                    }
+                    if let Err(mut err) = curr.files.other_file_refs().validate(Some(&game_dir)) {
                         let was_array = curr.is_array();
                         for i in (0..err.errors.len()).rev() {
-                            if let Some(file) = curr.files.remove(&err.error_paths[i]) {
-                                err.errors[i].add_msg(
-                                    &format!(
-                                    "File: '{}' was removed, and is no longer associated with: {}",
-                                    file.display(),
-                                    DisplayName(&curr.name)
-                                ),
-                                    false,
-                                );
-                                warn!("{}", err.errors[i]);
-                                warnings.push(err.errors.pop().expect("valid range"))
-                            } else {
+                            let Some(file) = curr.files.remove(&err.error_paths[i]) else {
                                 err.errors.into_iter().for_each(|err| {
                                     error!("{err}");
                                     warnings.push(err);
@@ -805,23 +792,26 @@ impl<'a> Combine for CollectedMaps<'a> {
                                     error!("{err}");
                                     warnings.push(err);
                                 };
-                                can_continue = false;
-                                break;
-                            }
+                                return None;
+                            };
+                            err.errors[i].add_msg(
+                                &format!(
+                                    "File: '{}' was removed, and is no longer associated with: {}",
+                                    file.display(),
+                                    DisplayName(&curr.name)
+                                ),
+                                false,
+                            );
+                            warn!("{}", err.errors[i]);
+                            warnings.push(err.errors.pop().expect("valid range"))
                         }
-                        if can_continue {
-                            if let Err(err) = curr.write_to_file(ini_dir, was_array) {
-                                error!("{err}");
-                                None
-                            } else {
-                                Some(curr)
-                            }
-                        } else {
-                            None
+                        if let Err(err) = curr.write_to_file(ini_dir, was_array) {
+                            error!("{err}");
+                            warnings.push(err);
+                            return None;
                         }
-                    } else {
-                        Some(curr)
                     }
+                    Some(curr)
                 })
                 .collect(),
             warnings: if warnings.is_empty() {
