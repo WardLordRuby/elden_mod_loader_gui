@@ -467,13 +467,13 @@ fn get_correct_bucket<'a>(buckets: &'a mut SplitFiles, entry: &Path) -> &'a mut 
     }
 }
 
-impl SplitFiles {
-    fn from(in_files: Vec<PathBuf>) -> Self {
-        let len = in_files.len();
+impl From<Vec<PathBuf>> for SplitFiles {
+    fn from(value: Vec<PathBuf>) -> Self {
+        let len = value.len();
         let mut dll = Vec::with_capacity(len);
         let mut config = Vec::with_capacity(len);
         let mut other = Vec::with_capacity(len);
-        in_files.into_iter().for_each(|file| {
+        value.into_iter().for_each(|file| {
             match FileData::from(&file.to_string_lossy()).extension {
                 ".dll" => dll.push(file),
                 ".ini" => config.push(file),
@@ -482,7 +482,9 @@ impl SplitFiles {
         });
         SplitFiles { dll, config, other }
     }
+}
 
+impl SplitFiles {
     /// returns references to all files
     pub fn file_refs(&self) -> Vec<&Path> {
         let mut path_refs = Vec::with_capacity(self.len());
@@ -548,6 +550,20 @@ impl SplitFiles {
     }
 }
 
+type ModData<'a> = (&'a str, bool, SplitFiles, LoadOrder);
+
+impl<'a> From<ModData<'a>> for RegMod {
+    /// manual constructor for RegMod, note does not convert name to _snake_case_
+    fn from(value: ModData) -> Self {
+        RegMod {
+            name: String::from(value.0),
+            state: value.1,
+            files: value.2,
+            order: value.3,
+        }
+    }
+}
+
 impl RegMod {
     /// this function omits the population of the `order` field
     pub fn new(name: &str, state: bool, in_files: Vec<PathBuf>) -> Self {
@@ -574,16 +590,6 @@ impl RegMod {
             state,
             files: split_files,
             order: load_order,
-        }
-    }
-
-    /// manual constructor for RegMod, note does not convert name to _snake_case_
-    fn from_split_files(name: &str, state: bool, files: SplitFiles, order: LoadOrder) -> Self {
-        RegMod {
-            name: String::from(name),
-            state,
-            files,
-            order,
         }
     }
 
@@ -728,8 +734,6 @@ impl<'a> Combine for CollectedMaps<'a> {
         game_dir: &Path,
         ini_dir: &Path,
     ) -> CollectedMods {
-        type ModData<'a> = Vec<(&'a str, bool, SplitFiles, LoadOrder)>;
-
         let mut count = 0_usize;
         let mut warnings = Vec::new();
         let mut mod_data = self
@@ -738,7 +742,7 @@ impl<'a> Combine for CollectedMaps<'a> {
             .filter_map(|(&key, &state_str)| {
                 self.1.get(&key).map(|file_strs| {
                     let split_files =
-                        SplitFiles::from(file_strs.iter().map(PathBuf::from).collect());
+                        SplitFiles::from(file_strs.iter().map(PathBuf::from).collect::<Vec<_>>());
                     let load_order = match parsed_order_val {
                         Some(data) => LoadOrder::from(&split_files.dll, data),
                         None => LoadOrder::default(),
@@ -759,7 +763,7 @@ impl<'a> Combine for CollectedMaps<'a> {
                     )
                 })
             })
-            .collect::<ModData>();
+            .collect::<Vec<ModData>>();
 
         // if this fails `sync_keys()` did not do its job
         debug_assert_eq!(self.1.len(), mod_data.len());
@@ -769,8 +773,8 @@ impl<'a> Combine for CollectedMaps<'a> {
         CollectedMods {
             mods: mod_data
                 .drain(..)
-                .filter_map(|d| {
-                    let mut curr = RegMod::from_split_files(d.0, d.1, d.2, d.3);
+                .filter_map(|mod_data| {
+                    let mut curr = RegMod::from(mod_data);
                     if let Err(err) = curr.verify_state(game_dir, ini_dir) {
                         error!("{err}");
                         warnings.push(err);

@@ -1511,11 +1511,11 @@ impl App {
     }
 }
 
-impl MaxOrder {
-    fn from(data: (usize, bool)) -> Self {
+impl From<(usize, bool)> for MaxOrder {
+    fn from(value: (usize, bool)) -> Self {
         MaxOrder {
-            val: data.0 as i32,
-            duplicate_high_order: data.1,
+            val: value.0 as i32,
+            duplicate_high_order: value.1,
         }
     }
 }
