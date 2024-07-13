@@ -342,17 +342,17 @@ impl InstallData {
             .collect::<Vec<_>>())
     }
 
-    /// Use update_fields_with_new_dir when installing a mod from outside the game_dir  
-    /// This function is for internal use only and contians no saftey checks
+    /// use `update_fields_with_new_dir` when installing a mod from outside the game_dir  
+    /// this function is for internal use only and contians no saftey checks
     #[instrument(level = "trace", skip(self, directory), fields(valid_dir = %directory.display()))]
     fn import_files_from_dir(
         &mut self,
         directory: &Path,
-        cutoff: &DisplayItems,
+        cutoff: DisplayItems,
     ) -> std::io::Result<()> {
         let file_count = files_in_directory_tree(directory)?;
 
-        let mut cut_off_data = Cutoff::from(cutoff, file_count);
+        let mut cut_off_data = Cutoff::from(&cutoff, file_count);
         let mut files_to_display = Vec::with_capacity(cut_off_data.display_count);
         if !self.display_paths.is_empty() {
             files_to_display.push(self.display_paths.clone());
@@ -386,15 +386,12 @@ impl InstallData {
                         }
                     } else {
                         cutoff.reached = true;
-                        let remainder: i64 =
-                            cutoff.data.file_count as i64 - cutoff.data.counter as i64;
+                        assert!(
+                            cutoff.data.file_count >= cutoff.data.counter,
+                            "Unexpected behavior, remainder < 0"
+                        );
+                        let remainder = cutoff.data.file_count - cutoff.data.counter;
                         match remainder {
-                            ..=-1 => {
-                                return new_io_error!(
-                                    ErrorKind::BrokenPipe,
-                                    "Unexpected behavior, remainder < 0"
-                                )
-                            }
                             0 => (),
                             1 => display_data.push(String::from("Plus 1 more file")),
                             2.. => display_data.push(format!("Plus {} more files...", remainder)),
@@ -412,7 +409,7 @@ impl InstallData {
 
         format_loop(self, &mut files_to_display, directory, &mut cut_off_data)?;
 
-        if let DisplayItems::All | DisplayItems::Limit(_) = *cutoff {
+        if let DisplayItems::All | DisplayItems::Limit(_) = cutoff {
             self.display_paths = files_to_display.join("\n");
         }
         trace!("added files within path to {}", self.name);
@@ -464,7 +461,7 @@ impl InstallData {
                 }
             }
 
-            self_clone.import_files_from_dir(&valid_dir, &cutoff)?;
+            self_clone.import_files_from_dir(&valid_dir, cutoff)?;
 
             if self_clone.to_paths.len() != self_clone.from_paths.len() {
                 self_clone.collect_to_paths();
@@ -592,7 +589,7 @@ pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> 
         };
         if let Some(dir) = dirs.iter().find(|d| d.file_name().expect("is dir") == file_data.name) {
             let mut data = InstallData::new(file_data.name, vec![file.to_owned()], game_dir)?;
-            data.import_files_from_dir(dir, &DisplayItems::None)?;
+            data.import_files_from_dir(dir, DisplayItems::None)?;
             file_sets.push(RegMod::new(
                 &data.name,
                 file_data.enabled,

@@ -646,7 +646,6 @@ impl RegMod {
                 "{}'s files were saved in the incorrect state, updated files to reflect the correct state",
                 DisplayName(&self.name),
             );
-            trace!(new_fnames = ?self.files.dll, "Recovered from Error: file names saved in the incorrect state");
         } else if errors != 0 {
             return new_io_error!(
                 ErrorKind::PermissionDenied,
@@ -1037,9 +1036,10 @@ impl Cfg {
     }
 
     /// returns (`DllSet`, `order_count`, `key_value_removed`)  
-    /// where `DllSet` is a HashSet of all registered .dll files  
-    /// and `order_count` is the number of registered mods that have a set order in mod_loader_config.ini  
-    /// and `key_value_removed` is if any key_value pair was removed  
+    /// where:  
+    /// - `DllSet` is a HashSet of all registered .dll files,  
+    /// - `order_count` is the number of registered mods that have a set order in mod_loader_config.ini,  
+    /// - `key_value_removed` is if any load_order pair was removed. if `true` consider writing `ModLoaderCfg` to file  
     ///
     /// **Note:** this function will ensure each registered mod has _only_ one file with a set order
     pub fn dll_set_order_count(
@@ -1047,7 +1047,7 @@ impl Cfg {
         loader_section: &mut ini::Properties,
     ) -> (DllSet, usize, bool) {
         let mut counter = 0_usize;
-        let mut write_to_file = false;
+        let mut order_removed = false;
         (
             PropertyArray(self.data().section(INI_SECTIONS[3]).expect("valided on startup"))
                 .into_iter()
@@ -1062,7 +1062,7 @@ impl Cfg {
                                     order_found = true;
                                     counter += 1;
                                 } else {
-                                    write_to_file = true;
+                                    order_removed = true;
                                     loader_section.remove(f_name);
                                     warn!(
                                         "Load order found set for more than one file associated with mod: {}, removed order for file: {f_name}",
@@ -1076,7 +1076,7 @@ impl Cfg {
                 })
                 .collect::<DllSet>(),
             counter,
-            write_to_file,
+            order_removed,
         )
     }
 }
