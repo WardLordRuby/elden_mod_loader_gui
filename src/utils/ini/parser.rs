@@ -484,16 +484,31 @@ impl From<Vec<PathBuf>> for SplitFiles {
     }
 }
 
+type IterChain<'a, T> = std::iter::Chain<
+    std::iter::Chain<std::slice::Iter<'a, T>, std::slice::Iter<'a, T>>,
+    std::slice::Iter<'a, T>,
+>;
+
 impl SplitFiles {
-    /// returns references to all files
-    pub fn file_refs(&self) -> Vec<&Path> {
-        let mut path_refs = Vec::with_capacity(self.len());
-        path_refs.extend(self.dll.iter().map(|f| f.as_path()));
-        path_refs.extend(self.config.iter().map(|f| f.as_path()));
-        path_refs.extend(self.other.iter().map(|f| f.as_path()));
-        path_refs
+    #[inline]
+    /// returns an iterator over _all_ containing files  
+    pub fn chain_all(&self) -> IterChain<PathBuf> {
+        self.dll.iter().chain(self.config.iter()).chain(self.other.iter())
     }
 
+    #[inline]
+    /// returns references to _all_ files
+    pub fn file_refs(&self) -> Vec<&Path> {
+        self.chain_all().map(|f| f.as_path()).collect()
+    }
+
+    #[inline]
+    /// returns a collection of _all_ full length paths to containing files  
+    pub fn full_paths(&self, game_dir: &Path) -> Vec<PathBuf> {
+        self.chain_all().map(|short_path| game_dir.join(short_path)).collect()
+    }
+
+    #[inline]
     /// returns references to files in `self.dll`
     pub fn dll_refs(&self) -> Vec<&Path> {
         self.dll.iter().map(|f| f.as_path()).collect()
@@ -501,19 +516,21 @@ impl SplitFiles {
 
     /// returns references to files in `self.config` and `self.other`
     pub fn other_file_refs(&self) -> Vec<&Path> {
-        let mut path_refs = Vec::with_capacity(self.other_files_len());
-        path_refs.extend(self.config.iter().map(|f| f.as_path()));
-        path_refs.extend(self.other.iter().map(|f| f.as_path()));
-        path_refs
+        self.config
+            .iter()
+            .chain(self.other.iter())
+            .map(|f| f.as_path())
+            .collect()
     }
 
     /// returns references to `input_files` + `self.config` + `self.other`
     pub fn add_other_files_to_files<'a>(&'a self, files: &'a [PathBuf]) -> Vec<&'a Path> {
-        let mut path_refs = Vec::with_capacity(files.len() + self.other_files_len());
-        path_refs.extend(files.iter().map(|f| f.as_path()));
-        path_refs.extend(self.config.iter().map(|f| f.as_path()));
-        path_refs.extend(self.other.iter().map(|f| f.as_path()));
-        path_refs
+        files
+            .iter()
+            .chain(self.config.iter())
+            .chain(self.other.iter())
+            .map(|f| f.as_path())
+            .collect()
     }
 
     /// removes and returns entry using `swap_remove`

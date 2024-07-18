@@ -214,7 +214,7 @@ struct CutoffData {
     counter: usize,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct InstallData {
     pub name: String,
     from_paths: Vec<PathBuf>,
@@ -447,7 +447,7 @@ impl InstallData {
                 return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
             } else {
                 trace!("Selected directory contains unique files, entire folder will be moved");
-                self_clone.parent_dir = parent_or_err(&valid_dir)?.to_path_buf()
+                self_clone.parent_dir = parent_or_err(&valid_dir)?.to_path_buf();
             }
 
             self_clone.import_files_from_dir(&valid_dir, cutoff)?;
@@ -481,19 +481,14 @@ pub fn remove_mod_files(
     loader_dir: &Path,
     reg_mod: &RegMod,
 ) -> std::io::Result<()> {
-    let mut remove_files = reg_mod
-        .files
-        .file_refs()
-        .iter()
-        .map(|f| game_dir.join(f))
-        .collect::<Vec<_>>();
+    let mut remove_files = reg_mod.files.full_paths(game_dir);
 
     for i in (0..remove_files.len()).rev() {
         match remove_files[i].try_exists() {
             Ok(true) => (),
             Ok(false) => {
-                remove_files.swap_remove(i);
                 trace!(fname = %remove_files[i].display(), "input file doesn't exist removing from list");
+                remove_files.swap_remove(i);
             }
             Err(_) => {
                 return new_io_error!(
