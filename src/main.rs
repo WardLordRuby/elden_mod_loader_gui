@@ -1948,14 +1948,14 @@ async fn confirm_remove_mod(
     ini_dir: &Path,
 ) -> std::io::Result<()> {
     let ui = ui_handle.unwrap();
-    let install_dir = match reg_mod
+    let Some(install_dir) = reg_mod
         .files
         .file_refs()
         .iter()
         .min_by_key(|file| file.ancestors().count())
-    {
-        Some(path) => game_dir.join(parent_or_err(path)?),
-        None => return new_io_error!(ErrorKind::InvalidData, "Failed to create an install_dir"),
+        .and_then(|path| Some(game_dir.join(path.parent()?)))
+    else {
+        return new_io_error!(ErrorKind::InvalidData, "Failed to create an install_dir");
     };
 
     let match_user_msg = || async {

@@ -11,8 +11,8 @@ use crate::{
     FileData,
 };
 
-/// Returns the deepest occurance of a directory that contains at least 1 file  
-/// Use parent_or_err for a direct binding to what is one level up
+/// returns the deepest occurance of a directory that contains at least 1 file  
+/// use `parent_or_err` | `.parent` for a direct binding to what is one level up
 fn get_parent_dir(input: &Path) -> std::io::Result<PathBuf> {
     match input.metadata() {
         Ok(data) => {
@@ -30,6 +30,8 @@ fn get_parent_dir(input: &Path) -> std::io::Result<PathBuf> {
     }
 }
 
+/// returns the deepest occurance of a directory that contains at least 1 file  
+/// use `parent_or_err` | `.parent` for a direct binding to what is one level up
 fn check_dir_contains_files(path: &Path) -> std::io::Result<PathBuf> {
     let num_of_dirs = items_in_directory(path, FileType::Dir)?;
     if directory_tree_is_empty(path)? {
@@ -212,7 +214,7 @@ struct CutoffData {
     counter: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct InstallData {
     pub name: String,
     from_paths: Vec<PathBuf>,
@@ -278,13 +280,12 @@ impl InstallData {
         Ok(data)
     }
 
-    /// resets self to default and sets parent dir as the parent of `new_dirctory` input
-    fn reconstruct(&mut self, new_directory: &Path) -> std::io::Result<()> {
+    /// resets `to_paths`, `from_paths` and `display_paths` to default and sets `parent_dir` to `new_dirctory`  
+    fn reconstruct(&mut self, new_directory: &Path) {
         self.from_paths = Vec::new();
         self.to_paths = Vec::new();
         self.display_paths = String::new();
-        self.parent_dir = get_parent_dir(new_directory)?;
-        Ok(())
+        self.parent_dir = new_directory.to_path_buf();
     }
 
     /// strips `self.parent_dir` from `self.from_paths` if valid prefix and joins to a new line seperated string  
@@ -425,11 +426,10 @@ impl InstallData {
         cutoff: DisplayItems,
     ) -> std::io::Result<()> {
         let mut self_clone = self.clone();
-        let new_directory_owned = PathBuf::from(new_directory);
+        let valid_dir = check_dir_contains_files(new_directory)?;
         let jh = std::thread::spawn(move || -> std::io::Result<InstallData> {
-            let valid_dir = check_dir_contains_files(&new_directory_owned)?;
             let game_dir = self_clone.install_dir.parent().expect("has parent");
-            if valid_dir.strip_prefix(game_dir).is_ok() {
+            if valid_dir.starts_with(game_dir) {
                 return new_io_error!(ErrorKind::InvalidInput, "Files are already installed");
             } else if matches!(
                 does_dir_contain(&valid_dir, crate::Operation::All, &["mods"])?,
@@ -438,27 +438,16 @@ impl InstallData {
                 return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
             }
 
-            if self_clone.parent_dir.strip_prefix(&valid_dir).is_ok() {
-                if valid_dir.ancestors().count() <= self_clone.parent_dir.ancestors().count() {
-                    trace!("Selected directory contains the original files, reconstructing data");
-                    self_clone.reconstruct(&valid_dir)?;
-                }
-            } else if valid_dir.strip_prefix(&self_clone.parent_dir).is_ok() {
-                trace!("New directory selected contains unique files, and is inside the original_parent, entire folder will be moved");
-                if valid_dir.ends_with("mods")
-                    && items_in_directory(parent_or_err(&valid_dir)?, FileType::File)? > 0
-                {
-                    return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
-                }
-                self_clone.parent_dir = parent_or_err(&valid_dir)?.to_path_buf()
+            if self_clone.parent_dir.starts_with(&valid_dir) {
+                trace!("Selected directory contains the original files, reconstructing data");
+                self_clone.reconstruct(&valid_dir);
+            } else if valid_dir.ends_with("mods")
+                && items_in_directory(parent_or_err(&valid_dir)?, FileType::File)? > 0
+            {
+                return new_io_error!(ErrorKind::InvalidData, "Invalid file structure");
             } else {
-                // MARK: TODO
-                // This branch needs further debugging | do we ever want the false path? if so document why
-                trace!("New directory selected contains unique files, entire folder will be moved");
-                match items_in_directory(&valid_dir, FileType::Dir)? == 0 {
-                    true => self_clone.parent_dir = parent_or_err(&valid_dir)?.to_path_buf(),
-                    false => self_clone.parent_dir.clone_from(&valid_dir),
-                }
+                trace!("Selected directory contains unique files, entire folder will be moved");
+                self_clone.parent_dir = parent_or_err(&valid_dir)?.to_path_buf()
             }
 
             self_clone.import_files_from_dir(&valid_dir, cutoff)?;
