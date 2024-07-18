@@ -2073,6 +2073,16 @@ async fn confirm_scan_mods(
             ui.global::<MainLogic>().set_current_subpage(0);
             let order_data = order_data_or_default(ui.as_weak(), Some(loader_dir));
             let new_mods = new_ini.collect_mods(game_dir, Some(&order_data), false);
+            let mut unknown_orders = get_mut_unknown_orders();
+            new_mods.mods.iter().for_each(|m| {
+                m.files
+                    .dll
+                    .iter()
+                    .filter_map(|f| f.file_name().and_then(|o| o.to_str()).map(omit_off_state))
+                    .for_each(|f| {
+                        unknown_orders.remove(f);
+                    })
+            });
             deserialize_collected_mods(&new_mods, ui.as_weak());
             ui.display_msg(&format!("Found {len} mod(s)"));
             new_mods
