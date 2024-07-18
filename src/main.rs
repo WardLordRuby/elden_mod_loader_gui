@@ -512,7 +512,7 @@ fn main() {
                     model.update_order(None, &order_data, &unknown_orders, ui.as_weak());
                 }
                 info!(
-                    files = new_mod.files.file_refs().len(),
+                    files = new_mod.files.len(),
                     state = %DisplayState(new_mod.state),
                     order = %new_mod.order,
                     "{mod_name} added with"
@@ -632,7 +632,7 @@ fn main() {
 
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
-            let ini = match Cfg::read(ini_dir) {
+            let mut ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     error!("{err}");
@@ -666,7 +666,7 @@ fn main() {
                     ui.display_msg(&err.to_string());
                 }
             }
-            reset_app_state(ini, &game_dir, None, ui.as_weak());
+            reset_app_state(&mut ini, &game_dir, None, None, ui.as_weak());
             !state
         }
     });
@@ -686,7 +686,7 @@ fn main() {
             let ui = ui_handle.unwrap();
             let ini_dir = get_ini_dir();
             let game_dir = get_or_update_game_dir(None);
-            let ini = match Cfg::read(ini_dir) {
+            let mut ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
                     error!("{err}");
@@ -729,7 +729,7 @@ fn main() {
                     Err(err) => {
                         error!("{err}");
                         ui.display_msg(&err.to_string());
-                        reset_app_state(ini, &game_dir, None, ui.as_weak());
+                        reset_app_state(&mut ini, &game_dir, None, Some(&unknown_orders), ui.as_weak());
                         info!("deserialized after encountered error");
                         return;
                     }
@@ -792,7 +792,7 @@ fn main() {
                     let err_str = format!("Failed to verify state, mod was removed {err}");
                     error!("{err_str}");
                     ui.display_msg(&err_str);
-                    reset_app_state(ini, &game_dir, None, ui.as_weak());
+                    reset_app_state(&mut ini, &game_dir, None, Some(&unknown_orders), ui.as_weak());
                     return;
                 };
                 let mut unknown_orders = get_mut_unknown_orders();
@@ -817,7 +817,7 @@ fn main() {
                             let err = format!("File: {}, not correctly added to: {}", new_dll_with_set_order[0].1.display(), display_mod.name);
                             error!("{err}");
                             ui.display_msg(&err);
-                            reset_app_state(ini, &game_dir, Some(loader_cfg.path()), ui.as_weak());
+                            reset_app_state(&mut ini, &game_dir, Some(loader_cfg.path()), Some(&unknown_orders), ui.as_weak());
                             return;
                         };
                         display_mod.order.i = index as i32;
@@ -885,10 +885,10 @@ fn main() {
                     }
                 };
                 let game_dir = get_or_update_game_dir(None);
-                let reset_app_state_hook = |err: std::io::Error, ini: Cfg| {
+                let reset_app_state_hook = |err: std::io::Error, mut ini: Cfg| {
                     error!("{err}");
                     ui.display_msg(&err.to_string());
-                    reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
+                    reset_app_state(&mut ini, &game_dir, Some(loader_dir), Some(&unknown_orders), ui.as_weak());
                 };
                 let mut found_mod = match ini.get_mod(&key, &game_dir, order_map.as_ref()) {
                     Ok(found_data) => found_data,
@@ -948,13 +948,16 @@ fn main() {
                 mut_model.remove(row as usize);
                 let mut ord_meta_data = None;
                 loader.verify_keys(&dlls, order_count).unwrap_or_else(|key_err| {
-                    match key_err.err.kind() {
-                        ErrorKind::Other => info!("{}", key_err.err),
-                        ErrorKind::Unsupported => warn!("{}", key_err.err),
-                        _ => error!("{}", key_err.err),
-                    }
                     if let Some(unknown_keys) = key_err.unknown_keys {
                         *unknown_orders = unknown_keys;
+                    }
+                    match key_err.err.kind() {
+                        ErrorKind::Other => info!("{}", key_err.err),
+                        ErrorKind::Unsupported => {
+                            warn!("{}", key_err.err);
+                            reset_app_state(&mut ini, &game_dir, Some(loader_dir), Some(&unknown_orders), ui.as_weak());
+                        },
+                        _ => error!("{}", key_err.err),
                     }
                     messages.push(key_err.err.to_string());
                     if key_err.update_ord_data.is_some() {
@@ -973,7 +976,7 @@ fn main() {
                             error!("{err}");
                             ui.display_msg(&err.to_string());
                             let _ = receive_msg().await;
-                            reset_app_state(ini, &game_dir, Some(loader_dir), ui.as_weak());
+                            reset_app_state(&mut ini, &game_dir, Some(loader_dir), Some(&unknown_orders), ui.as_weak());
                             return;
                         }
                     }
@@ -1328,8 +1331,9 @@ fn main() {
             let _guard = span.enter();
 
             reset_app_state(
-                Cfg::default(get_ini_dir()),
+                &mut Cfg::default(get_ini_dir()),
                 &get_or_update_game_dir(None),
+                None,
                 None,
                 ui_handle.clone(),
             );
@@ -1668,7 +1672,13 @@ fn open_text_files(ui_handle: slint::Weak<App>, files: Vec<PathBuf>) {
 }
 
 #[instrument(level = "trace", skip_all, fields(path))]
-fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) -> OrderMap {
+/// **Note:** call to find unknown_orders is blocking, so you must give a ref to unknown_orders
+/// if you currently have access to the global map
+fn order_data_or_default(
+    ui_handle: slint::Weak<App>,
+    from_path: Option<&Path>,
+    unknown_orders: Option<&HashSet<String>>,
+) -> OrderMap {
     let ui = ui_handle.unwrap();
     let path = from_path.unwrap_or_else(|| get_loader_ini_dir());
 
@@ -1677,8 +1687,12 @@ fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) 
 
     match ModLoaderCfg::read(path) {
         Ok(mut data) => {
-            let unknown_orders = get_unknown_orders();
-            data.parse_section(&unknown_orders).unwrap_or_else(|err| {
+            let mut _guard_unknown_orders = None;
+            let unknown_orders = unknown_orders.unwrap_or_else(|| {
+                _guard_unknown_orders = Some(get_unknown_orders());
+                _guard_unknown_orders.as_ref().unwrap()
+            });
+            data.parse_section(unknown_orders).unwrap_or_else(|err| {
                 error!("{err}");
                 ui.display_msg(&err.to_string());
                 HashMap::new()
@@ -1693,11 +1707,14 @@ fn order_data_or_default(ui_handle: slint::Weak<App>, from_path: Option<&Path>) 
 }
 
 /// forces all data to be re-read from file, it is fine to pass in a `Cfg::default()` here  
+/// **Note:** call to find unknown_orders is blocking, so you must give a ref to unknown_orders
+/// if you currently have access to the global map
 #[instrument(level = "trace", skip_all)]
 fn reset_app_state(
-    mut cfg: Cfg,
+    cfg: &mut Cfg,
     game_dir: &Path,
     loader_dir: Option<&Path>,
+    unknown_orders: Option<&HashSet<String>>,
     ui_handle: slint::Weak<App>,
 ) {
     let ui = ui_handle.unwrap();
@@ -1708,7 +1725,7 @@ fn reset_app_state(
         ui.display_msg(dsp_err);
         cfg.empty_contents();
     });
-    let order_data = order_data_or_default(ui.as_weak(), loader_dir);
+    let order_data = order_data_or_default(ui.as_weak(), loader_dir, unknown_orders);
     deserialize_collected_mods(
         &cfg.collect_mods(game_dir, Some(&order_data), false),
         ui.as_weak(),
@@ -1950,8 +1967,7 @@ async fn confirm_remove_mod(
     let ui = ui_handle.unwrap();
     let Some(install_dir) = reg_mod
         .files
-        .file_refs()
-        .iter()
+        .chain_all()
         .min_by_key(|file| file.ancestors().count())
         .and_then(|path| Some(game_dir.join(path.parent()?)))
     else {
@@ -1966,8 +1982,13 @@ async fn confirm_remove_mod(
                 if reg_mod.order.set {
                     ui.display_confirm(
                         &format!(
-                            "Do you want to remove the set load order of: {}",
-                            reg_mod.order.at
+                            "Do you want to remove the set load order of: {}?\n\n\
+                            Note: order entries that are set within: {}, and not registered \
+                            with this app are always stored as `greatest registered order + 1`. \
+                            If you want to manually set an order for a mod not registered with this app \
+                            add a 'load.txt' to the mods config folder. 'load.txt' files are never modified.",
+                            reg_mod.order.at,
+                            LOADER_FILES[3]
                         ),
                         Buttons::YesNo,
                     );
@@ -2008,6 +2029,7 @@ async fn confirm_remove_mod(
 }
 
 #[instrument(level = "trace", skip_all)]
+/// **Note:** contains a blocking read of global UNKNOWN_ORDER_KEYS
 async fn confirm_scan_mods(
     ui_handle: slint::Weak<App>,
     game_dir: &Path,
@@ -2035,7 +2057,7 @@ async fn confirm_scan_mods(
     let loader_dir = get_loader_ini_dir();
     let mut _new_map = None;
     let order_map = order_map.unwrap_or_else(|| {
-        _new_map = Some(order_data_or_default(ui.as_weak(), Some(loader_dir)));
+        _new_map = Some(order_data_or_default(ui.as_weak(), Some(loader_dir), None));
         _new_map.as_ref().unwrap()
     });
 
@@ -2071,9 +2093,10 @@ async fn confirm_scan_mods(
         Ok(len) => {
             let new_ini = Cfg::read(ini.path())?;
             ui.global::<MainLogic>().set_current_subpage(0);
-            let order_data = order_data_or_default(ui.as_weak(), Some(loader_dir));
-            let new_mods = new_ini.collect_mods(game_dir, Some(&order_data), false);
             let mut unknown_orders = get_mut_unknown_orders();
+            let order_data =
+                order_data_or_default(ui.as_weak(), Some(loader_dir), Some(&unknown_orders));
+            let new_mods = new_ini.collect_mods(game_dir, Some(&order_data), false);
             new_mods.mods.iter().for_each(|m| {
                 m.files
                     .dll
