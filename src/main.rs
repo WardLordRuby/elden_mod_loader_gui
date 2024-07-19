@@ -1492,10 +1492,10 @@ enum Buttons {
     OkCancel,
 }
 
-impl Buttons {
+impl From<Buttons> for bool {
     #[inline]
-    fn to_bool(&self) -> bool {
-        match self {
+    fn from(value: Buttons) -> Self {
+        match value {
             Buttons::YesNo => true,
             Buttons::OkCancel => false,
         }
@@ -1509,17 +1509,32 @@ impl App {
     }
 
     fn display_confirm(&self, msg: &str, buttons: Buttons) {
-        self.set_alt_std_buttons(buttons.to_bool());
+        self.set_alt_std_buttons(bool::from(buttons));
         self.set_display_message(SharedString::from(msg));
         self.invoke_show_confirm_popup();
     }
 }
 
 impl From<(usize, bool)> for MaxOrder {
+    #[inline]
     fn from(value: (usize, bool)) -> Self {
         MaxOrder {
             val: value.0 as i32,
             duplicate_high_order: value.1,
+        }
+    }
+}
+
+impl From<&RegMod> for LoadOrder {
+    fn from(value: &RegMod) -> Self {
+        LoadOrder {
+            at: if !value.order.set { 0 } else { value.order.at as i32 },
+            i: if !value.order.set && value.files.dll.len() != 1 {
+                -1
+            } else {
+                value.order.i as i32
+            },
+            set: value.order.set,
         }
     }
 }
@@ -1671,9 +1686,9 @@ fn open_text_files(ui_handle: slint::Weak<App>, files: Vec<PathBuf>) {
     }
 }
 
+/// **Note:** call to find unknown_orders is blocking, so you must give a ref to unknown_orders  
+/// if you currently have access to the global set
 #[instrument(level = "trace", skip_all, fields(path))]
-/// **Note:** call to find unknown_orders is blocking, so you must give a ref to unknown_orders
-/// if you currently have access to the global map
 fn order_data_or_default(
     ui_handle: slint::Weak<App>,
     from_path: Option<&Path>,
@@ -1707,8 +1722,8 @@ fn order_data_or_default(
 }
 
 /// forces all data to be re-read from file, it is fine to pass in a `Cfg::default()` here  
-/// **Note:** call to find unknown_orders is blocking, so you must give a ref to unknown_orders
-/// if you currently have access to the global map
+/// **Note:** call to find unknown_orders is blocking, so you must give a ref to unknown_orders  
+/// if you currently have access to the global set
 #[instrument(level = "trace", skip_all)]
 fn reset_app_state(
     cfg: &mut Cfg,
@@ -1738,6 +1753,7 @@ type DeserializedFileData = (
     ModelRc<SharedString>,
     ModelRc<SharedString>,
 );
+
 /// deserializes `SplitFiles` to `ModelRc<T>` where `T` is the type the front end expects  
 /// output is in the following order (`files`, `dll_files`, `config_files`)
 fn deserialize_split_files(split_files: &SplitFiles) -> DeserializedFileData {
@@ -1802,19 +1818,7 @@ fn deserialize_mod(mod_data: &RegMod) -> DisplayMod {
         files,
         config_files,
         dll_files,
-        order: LoadOrder {
-            at: if !mod_data.order.set {
-                0
-            } else {
-                mod_data.order.at as i32
-            },
-            i: if !mod_data.order.set && mod_data.files.dll.len() != 1 {
-                -1
-            } else {
-                mod_data.order.i as i32
-            },
-            set: mod_data.order.set,
-        },
+        order: LoadOrder::from(mod_data),
     }
 }
 
