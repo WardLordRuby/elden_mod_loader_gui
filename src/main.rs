@@ -85,8 +85,6 @@ fn main() {
                 Some(ini_data)
             }
             Err(err) => {
-                // MARK: TODO
-                // create paths for these different error cases
                 first_startup = matches!(
                     err.kind(),
                     ErrorKind::NotFound | ErrorKind::PermissionDenied
@@ -100,26 +98,23 @@ fn main() {
                 None
             }
         };
-        let mut ini = match ini {
-            Some(ini_data) => {
-                let mut ini: Cfg = Config::from(ini_data, current_ini);
-                if let Err(messages) = ini.validate_entries() {
-                    dsp_msgs.extend(messages);
-                    ini.write_to_file()
-                        .unwrap_or_else(|_| panic!("failed to modify contents of {INI_NAME}"));
-                };
-                ini
-            }
-            None => {
-                new_cfg(current_ini)
-                    .map(|ini| Config::from(ini, current_ini))
-                    .unwrap_or_else(|err| {
-                        // io::write error
-                        error!(err_code = 2, "{err}");
-                        dsp_msgs.push(err.to_string());
-                        Cfg::default(current_ini)
-                    })
-            }
+        let mut ini = if let Some(ini_data) = ini {
+            let mut ini: Cfg = Config::from(ini_data, current_ini);
+            if let Err(messages) = ini.validate_entries() {
+                dsp_msgs.extend(messages);
+                ini.write_to_file()
+                    .unwrap_or_else(|err| panic!("{err}, while writing contents to: {INI_NAME}"));
+            };
+            ini
+        } else {
+            new_cfg(current_ini)
+                .map(|ini| Config::from(ini, current_ini))
+                .unwrap_or_else(|err| {
+                    // io::write error
+                    error!(err_code = 2, "{err}");
+                    dsp_msgs.push(err.to_string());
+                    Cfg::default(current_ini)
+                })
         };
 
         let game_verified: bool;

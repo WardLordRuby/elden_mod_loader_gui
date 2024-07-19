@@ -245,9 +245,7 @@ impl<T: AsRef<Path>> Setup for T {
     /// - **exists** - if not returns `Err(NotFound)` or `Err(PermissionDenied)`  
     /// - **is .ini** - if not will panic!  
     /// - **contains all sections** - if not returns `Err(InvalidData)`  
-    /// - **File::open** does not return an error  
-    ///  
-    /// it is safe to call unwrap on `get_cfg(self)` if this returns `Ok`
+    /// - **File::open** does not return an error
     #[instrument(level = "trace", name = "ini_is_setup", skip(self))]
     fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<ini::Ini> {
         let file_data = self.as_ref().to_string_lossy();
