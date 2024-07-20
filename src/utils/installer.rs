@@ -6,7 +6,7 @@ use std::{
 use tracing::{error, info, instrument, trace};
 
 use crate::{
-    does_dir_contain, file_name_or_err, new_io_error, parent_or_err,
+    does_dir_contain, file_name_from_str, file_name_or_err, new_io_error, parent_or_err,
     utils::ini::{parser::RegMod, writer::remove_order_entry},
     FileData,
 };
@@ -214,7 +214,7 @@ struct CutoffData {
     counter: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct InstallData {
     pub name: String,
     from_paths: Vec<PathBuf>,
@@ -280,12 +280,18 @@ impl InstallData {
         Ok(data)
     }
 
-    /// resets `to_paths`, `from_paths` and `display_paths` to default and sets `parent_dir` to `new_dirctory`  
-    fn reconstruct(&mut self, new_directory: &Path) {
-        self.from_paths = Vec::new();
-        self.to_paths = Vec::new();
-        self.display_paths = String::new();
-        self.parent_dir = new_directory.to_path_buf();
+    /// resets `to_paths`, `from_paths` and `display_paths` to default, sets `parent_dir` to `new_dirctory` on `self`  
+    /// and returns the original data
+    fn reconstruct(&mut self, new_directory: &Path) -> InstallData {
+        std::mem::replace(
+            self,
+            InstallData {
+                name: String::from(&self.name),
+                install_dir: PathBuf::from(&self.install_dir),
+                parent_dir: PathBuf::from(new_directory),
+                ..Default::default()
+            },
+        )
     }
 
     /// strips `self.parent_dir` from `self.from_paths` if valid prefix and joins to a new line seperated string  
@@ -566,8 +572,8 @@ pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> 
         }
     }
     for file in files.iter() {
-        let name = file_name_or_err(file)?.to_string_lossy();
-        let file_data = FileData::from(&name);
+        let path_string = file.to_string_lossy();
+        let file_data = FileData::from(file_name_from_str(&path_string));
         if file_data.extension != ".dll" {
             continue;
         };

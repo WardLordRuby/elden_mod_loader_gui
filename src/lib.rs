@@ -88,7 +88,7 @@ pub struct PathErrors<'a> {
 }
 
 impl PathErrors<'_> {
-    fn new(size: usize) -> Self {
+    fn with_capacity(size: usize) -> Self {
         PathErrors {
             ok_paths_short: Vec::with_capacity(size),
             err_paths_long: Vec::with_capacity(size),
@@ -105,24 +105,23 @@ pub fn shorten_paths<'a, P: AsRef<Path>>(
     paths: &'a [P],
     remove: &P,
 ) -> Result<Vec<&'a Path>, PathErrors<'a>> {
-    let mut results = PathErrors::new(paths.len());
+    let mut results = PathErrors::with_capacity(paths.len());
     paths
         .iter()
         .for_each(|path| match path.as_ref().strip_prefix(remove) {
             Ok(shortened_path) => results.ok_paths_short.push(shortened_path),
             Err(_) => results.err_paths_long.push(path.as_ref()),
         });
-    if results.err_paths_long.is_empty() {
-        trace!("successfuly shortened all paths");
-        Ok(results.ok_paths_short)
-    } else {
+    if !results.err_paths_long.is_empty() {
         trace!(
             "unable to remove prefix on {} of {} paths",
             results.err_paths_long.len(),
             paths.len()
         );
-        Err(results)
+        return Err(results);
     }
+    trace!("successfuly shortened all paths");
+    Ok(results.ok_paths_short)
 }
 
 /// finds the current state of the input Path and returns an owned Pathbuf in the opposite state

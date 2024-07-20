@@ -368,22 +368,25 @@ impl<T: Parsable> IniProperty<T> {
         skip_validation: bool,
         path_prefix: Option<&Path>,
     ) -> std::io::Result<T> {
-        match &ini.section(section) {
-            Some(s) => match s.contains_key(key) {
-                true => T::parse_str(ini, section, path_prefix, key, skip_validation),
-                false => new_io_error!(
-                    ErrorKind::NotFound,
-                    format!("Key: \"{key}\" not found in ini.")
-                ),
-            },
-            None => new_io_error!(
+        if let Some(s) = ini.section(section) {
+            if s.contains_key(key) {
+                return T::parse_str(ini, section, path_prefix, key, skip_validation);
+            }
+            return new_io_error!(
                 ErrorKind::NotFound,
                 format!(
-                    "Section: \"{}\" not found in ini.",
-                    section.expect("Passed in section should be valid")
+                    "Key: '{key}', not found in Section: '{}'",
+                    section.expect("section is some")
                 )
-            ),
+            );
         }
+        new_io_error!(
+            ErrorKind::NotFound,
+            format!(
+                "Section: '{}', not found",
+                section.expect("section is some")
+            )
+        )
     }
 }
 
@@ -1106,9 +1109,9 @@ pub struct PropertyArrayIter<'a> {
 
 impl<'a> PropertyArrayIter<'a> {
     #[inline]
-    fn new(section: ini::PropertyIter<'a>) -> Self {
+    fn new(section_iter: ini::PropertyIter<'a>) -> Self {
         PropertyArrayIter {
-            iter: section,
+            iter: section_iter,
             next_up_key: "",
             next_up_val: "",
         }
@@ -1146,9 +1149,8 @@ impl<'a> Iterator for PropertyArrayIter<'a> {
         if !self.next_up_key.is_empty() {
             if self.next_up_val != ARRAY_VALUE {
                 return Some((take(&mut self.next_up_key), vec![self.next_up_val]));
-            } else {
-                return Some((take(&mut self.next_up_key), collect_array(self)));
             }
+            return Some((take(&mut self.next_up_key), collect_array(self)));
         }
         if let Some((k, v)) = self.iter.next() {
             if v != ARRAY_VALUE {
