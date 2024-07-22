@@ -168,7 +168,7 @@ struct ValitidityError {
 }
 
 trait ValitidityMany {
-    /// _full_paths_ are assumed to Point to directories, where as  
+    /// _full_paths_ are assumed to point to directories, where as  
     /// _partial_paths_ are assumed to point to files and share a _path_prefix_   
     /// if you want to validate a _partial_path_ you must supply the _path_prefix_
     fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> Result<(), ValitidityError>;
@@ -854,7 +854,7 @@ impl Cfg {
     /// - ensures data has both files and state associated with the same name  
     /// - `self.files.dll` are valid to exist on disk check `self.verify_state()` for how it can recover  
     /// - `self.files.other_file_refs()` are valid to exist on disk  
-    ///   - if they are not files are removed and user can re-add them  
+    ///   - files not found are removed and user can re-add them  
     #[instrument(level = "trace", skip(self, game_dir, include_load_order))]
     pub fn collect_mods<P: AsRef<Path>>(
         &self,

@@ -126,14 +126,15 @@ pub fn shorten_paths<'a, P: AsRef<Path>>(
 
 /// finds the current state of the input Path and returns an owned Pathbuf in the opposite state
 pub fn toggle_path_state(path: &Path) -> PathBuf {
-    let mut file_str = path.to_string_lossy().to_string();
-    let file_data = FileData::from(&file_str);
-    if file_data.enabled {
-        PathBuf::from(format!("{}{}", file_str, OFF_STATE))
+    let mut path_str = path.to_string_lossy().to_string();
+    let path_data = FileData::from(&path_str);
+    if path_data.enabled {
+        path_str.push_str(OFF_STATE);
+        PathBuf::from(path_str)
     } else {
-        let len = file_str.chars().count();
-        file_str.replace_range(len - OFF_STATE.chars().count()..len, "");
-        PathBuf::from(file_str)
+        let len = path_str.chars().count();
+        path_str.replace_range(len - OFF_STATE.chars().count()..len, "");
+        PathBuf::from(path_str)
     }
 }
 
@@ -306,7 +307,7 @@ where
             trace!(operation_result = result);
             result
         })),
-        Operation::Count => {
+        Operation::Count => Ok(OperationResult::Count({
             let collection = list
                 .iter()
                 .filter(|&check_file| str_names.contains(check_file.borrow()))
@@ -314,8 +315,8 @@ where
                 .collect::<HashSet<_>>();
             let num_found = collection.len();
             trace!(files_found = num_found);
-            Ok(OperationResult::Count((num_found, collection)))
-        }
+            (num_found, collection)
+        })),
     }
 }
 
