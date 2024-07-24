@@ -386,6 +386,13 @@ impl FileData<'_> {
         }
     }
 
+    /// removes the off_state if the file name is in the off_state  
+    /// to get an accurate `FileData.name` function input needs `file_name()` called before hand  
+    #[inline]
+    pub fn omit_off_state(&self) -> String {
+        format!("{}{}", self.name, self.extension)
+    }
+
     /// returns `true` if the file is in the enabled state  
     #[inline]
     #[instrument(level = "trace", skip_all)]

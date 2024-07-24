@@ -707,7 +707,7 @@ fn main() {
                     ui.display_msg(&err.to_string());
                     ModLoaderCfg::empty()
                 });
-                let unknown_orders = get_unknown_orders();
+                let mut unknown_orders = get_mut_unknown_orders();
                 let order_map = if !loader_cfg.mods_is_empty() {
                     loader_cfg.parse_section(&unknown_orders).map(Some).unwrap_or_else(|err| {
                         error!("{err}");
@@ -790,16 +790,20 @@ fn main() {
                     reset_app_state(&mut ini, &game_dir, None, Some(&unknown_orders), ui.as_weak());
                     return;
                 };
-                let mut unknown_orders = get_mut_unknown_orders();
+                dbg!(&unknown_orders);
                 let new_dll_with_set_order = files.iter().filter_map(|f| {
                     let f_str = f.to_string_lossy();
-                    let f_data = FileData::from(&f_str);
-                    if f_data.extension == ".dll" && unknown_orders.contains(f_str.as_ref()) {
-                        Some((file_name_from_str(&f_str).to_owned(), *f))
-                    } else {
-                        None
+                    let f_data = FileData::from(file_name_from_str(&f_str));
+                    if f_data.extension != ".dll" {
+                        return None;
                     }
+                    let f_name = f_data.omit_off_state();
+                    if unknown_orders.remove(&f_name) {
+                        return Some((f_name, *f));
+                    }
+                    None
                 }).collect::<Vec<_>>();
+                dbg!(&unknown_orders);
                 let (files, dll_files, config_files) = deserialize_split_files(&found_mod.files);
                 display_mod.files = files;
                 display_mod.dll_files = dll_files;
@@ -832,9 +836,6 @@ fn main() {
                         ui.display_msg(&err.to_string());
                     });
                 }
-                new_dll_with_set_order.iter().for_each(|f| {
-                    unknown_orders.remove(&f.0);
-                });
                 model.set_row_data(row as usize, display_mod);
                 let success = format!("Added {} file(s) to: {}", num_files, DisplayName(&found_mod.name));
                 info!("{success}");
