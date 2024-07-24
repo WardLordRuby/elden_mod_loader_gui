@@ -790,7 +790,6 @@ fn main() {
                     reset_app_state(&mut ini, &game_dir, None, Some(&unknown_orders), ui.as_weak());
                     return;
                 };
-                dbg!(&unknown_orders);
                 let new_dll_with_set_order = files.iter().filter_map(|f| {
                     let f_str = f.to_string_lossy();
                     let f_data = FileData::from(file_name_from_str(&f_str));
@@ -803,7 +802,6 @@ fn main() {
                     }
                     None
                 }).collect::<Vec<_>>();
-                dbg!(&unknown_orders);
                 let (files, dll_files, config_files) = deserialize_split_files(&found_mod.files);
                 display_mod.files = files;
                 display_mod.dll_files = dll_files;
