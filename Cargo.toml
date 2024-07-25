@@ -18,9 +18,9 @@ lto = true
 
 [dependencies]
 tokio = { version = "1.39.1", features = ["sync"] }
-slint = { version = "=1.6.0", features = ["raw-window-handle-06"] }
-i-slint-backend-winit = "=1.6.0"
-winit = "=0.29.4"
+slint = { version = "1.7.1", features = ["raw-window-handle-06"] }
+i-slint-backend-winit = "1.7.1"
+winit = "0.30.2"
 rfd = "0.14.1"
 tracing = { version = "0.1.40", features = ["release_max_level_info"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
@@ -28,7 +28,7 @@ tracing-appender = "0.2.3"
 rust-ini = "0.21.0"
 
 [build-dependencies]
-slint-build = "=1.6.0"
+slint-build = "1.7.1"
 winresource = "0.1.17"
 
 [dev-dependencies]
