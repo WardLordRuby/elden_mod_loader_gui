@@ -263,7 +263,7 @@ impl InstallData {
         } else {
             return new_io_error!(
                 ErrorKind::InvalidInput,
-                "Error:\nCould not determine the proper file structure for installing files"
+                "Could not determine the proper file structure for installing files"
             );
         }
         let parent_dir = parent_dir_from_vec(&file_paths)?;

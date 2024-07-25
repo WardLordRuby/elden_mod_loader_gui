@@ -558,7 +558,7 @@ fn main() {
                 Err(err) => {
                     match err.kind() {
                         ErrorKind::NotFound => warn!("{err}"),
-                        _ => error!("Error: {err}"),
+                        _ => error!("{err}"),
                     }
                     ui.display_msg(&err.to_string());
                     return;
@@ -818,6 +818,7 @@ fn main() {
                             return;
                         };
                         display_mod.order.i = index as i32;
+                        // if user has modified elements they will not auto update
                     } else {
                         match found_mod.files.dll.len() {
                             0 => (),
@@ -863,17 +864,22 @@ fn main() {
                         return;
                     }
                 };
-                let order_map: Option<OrderMap>;
                 let loader_dir = get_loader_ini_dir();
+                let mut messages = Vec::with_capacity(5);
                 let mut unknown_orders = get_mut_unknown_orders();
+                let mut order_map: Option<OrderMap>;
                 let mut loader = match ModLoaderCfg::read(loader_dir) {
                     Ok(mut data) => {
-                        order_map = data.parse_section(&unknown_orders).ok();
+                        order_map = data.parse_section(&unknown_orders).map(Some).unwrap_or_else(|err| {
+                            error!("{err}");
+                            messages.push(err.to_string());
+                            Some(data.parse_into_map())
+                        });
                         data
                     },
                     Err(err) => {
                         error!("{err}");
-                        ui.display_msg(&err.to_string());
+                        messages.push(err.to_string());
                         order_map = None;
                         ModLoaderCfg::default(loader_dir)
                     }
@@ -899,7 +905,6 @@ fn main() {
                         return;
                     }
                 }
-                let mut messages = Vec::with_capacity(3);
                 match confirm_remove_mod(ui.as_weak(), &game_dir, loader.path(), &found_mod, ini_dir).await {
                     Ok(_) => {
                         let success = format!("{key} uninstalled, all associated files were removed");
@@ -909,11 +914,11 @@ fn main() {
                     },
                     Err(err) => {
                         match err.kind() {
+                            ErrorKind::ConnectionAborted => info!("{err}"),
                             ErrorKind::Interrupted => {
                                 info!("{err}");
                                 return;
                             },
-                            ErrorKind::ConnectionAborted => info!("{err}"),
                             _ => {
                                 reset_app_state_hook(err, ini);
                                 return;
@@ -949,19 +954,12 @@ fn main() {
                         ErrorKind::Other => info!("{}", key_err.err),
                         ErrorKind::Unsupported => {
                             warn!("{}", key_err.err);
+                            ord_meta_data = key_err.update_ord_data;
                             reset_app_state(&mut ini, &game_dir, Some(loader_dir), Some(&unknown_orders), ui.as_weak());
                         },
                         _ => error!("{}", key_err.err),
                     }
                     messages.push(key_err.err.to_string());
-                    if key_err.update_ord_data.is_some() {
-                        ord_meta_data = key_err.update_ord_data;
-                    }
-                });
-                let order_data = loader.parse_section(&unknown_orders).unwrap_or_else(|err| {
-                    error!("{err}");
-                    messages.push(err.to_string());
-                    HashMap::new()
                 });
                 if found_mod.order.set {
                     if ord_meta_data.is_none() {
@@ -973,10 +971,17 @@ fn main() {
                             reset_app_state(&mut ini, &game_dir, Some(loader_dir), Some(&unknown_orders), ui.as_weak());
                             return;
                         }
+                        order_map = Some(loader.parse_into_map());
+                    } else {
+                        order_map = loader.parse_section(&unknown_orders).map(Some).unwrap_or_else(|err| {
+                            error!("{err}");
+                            messages.push(err.to_string());
+                            Some(loader.parse_into_map())
+                        });
                     }
                     let ord_meta_data = ord_meta_data.expect("is_some");
                     ui.global::<MainLogic>().set_max_order(MaxOrder::from(ord_meta_data.max_order));
-                    model.update_order(None, &order_data, &unknown_orders, ui.as_weak());
+                    model.update_order(None, &order_map.expect("is_some"), &unknown_orders, ui.as_weak());
                     if let Some(ref vals) = ord_meta_data.missing_vals {
                         let msg = DisplayMissingOrd(vals).to_string();
                         info!("{msg}");
@@ -1587,10 +1592,7 @@ fn get_user_files(path: &Path, ui_window: &slint::Window) -> std::io::Result<Vec
                 .iter()
                 .any(|file| restricted_files.contains(file.file_name().expect("has valid name")))
             {
-                new_io_error!(
-                    ErrorKind::InvalidData,
-                    "Error: Tried to add a restricted file"
-                )
+                new_io_error!(ErrorKind::InvalidData, "Tried to add a restricted file")
             } else {
                 trace!("User Selected Files: {files:?}");
                 Ok(files)

@@ -170,6 +170,10 @@ impl ModLoaderCfg {
     /// verifies that all keys stored in "elden_mod_loader_config.ini" are registered with the app  
     /// a _unknown_ file is found as a key this will change the order to be greater than _known_ files  
     /// `DllSet` and `order_count` are retrieved by calling `dll_set_order_count` on `Cfg`  
+    ///
+    /// **Note:** if `UnknownKeyErr.err.kind() == Unsupported` then  
+    /// `update_order_entries()` & `self.write_to_file()` are called  
+    /// as a result `OrdMetaData` is re-calculated and returned
     #[instrument(level = "trace", skip_all)]
     pub fn verify_keys(&mut self, dlls: &DllSet, order_count: usize) -> Result<(), UnknownKeyErr> {
         if self.mods_is_empty() {
@@ -255,13 +259,17 @@ impl ModLoaderCfg {
     /// this function also fixes usize.parse() errors and if values are out of order
     #[instrument(level = "trace", skip_all)]
     pub fn parse_section(&mut self, unknown_keys: &HashSet<String>) -> std::io::Result<OrderMap> {
+        let mut write_to_file = false;
         if self.section().contains_key(LOADER_EXAMPLE) {
             self.mut_section().remove(LOADER_EXAMPLE);
-            self.write_to_file()?;
+            write_to_file = true;
             info!("Removed: '{LOADER_EXAMPLE}' from: {}", LOADER_FILES[3]);
         }
         if self.mods_is_empty() {
             trace!("No mods have load order");
+            if write_to_file {
+                self.write_to_file()?
+            }
             return Ok(HashMap::new());
         }
         let map = self.parse_into_map();
@@ -288,6 +296,9 @@ impl ModLoaderCfg {
                 );
                 return Ok(self.parse_into_map());
             }
+        }
+        if write_to_file {
+            self.write_to_file()?
         }
         Ok(map)
     }
