@@ -708,18 +708,14 @@ fn main() {
                     ModLoaderCfg::empty()
                 });
                 let mut unknown_orders = get_mut_unknown_orders();
-                let order_map = if !loader_cfg.mods_is_empty() {
-                    loader_cfg.parse_section(&unknown_orders).map(Some).unwrap_or_else(|err| {
+                let order_map = loader_cfg.parse_section(&unknown_orders).unwrap_or_else(|err| {
                         error!("{err}");
                         ui.display_msg(&err.to_string());
-                        None
-                    })
-                } else {
-                    None
-                };
+                        loader_cfg.parse_into_map()
+                });
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut display_mod = model.row_data(row as usize).expect("front end gives us valid row");
-                let mut found_mod = match ini.get_mod(&display_mod.name, &game_dir, order_map.as_ref()) {
+                let mut found_mod = match ini.get_mod(&display_mod.name, &game_dir, Some(&order_map)) {
                     Ok(reg_mod) => reg_mod,
                     Err(err) => {
                         error!("{err}");
@@ -808,8 +804,6 @@ fn main() {
                 display_mod.config_files = config_files;
                 if !found_mod.order.set {
                     if !new_dll_with_set_order.is_empty() {
-                        display_mod.order.set = true;
-                        display_mod.order.at = loader_cfg.section().get(&new_dll_with_set_order[0].0).expect("unknown_key was previously found").parse::<i32>().unwrap_or(69);
                         let Some(index) = found_mod.files.dll.iter().position(|f| f == new_dll_with_set_order[0].1) else {
                             let err = format!("File: {}, not correctly added to: {}", new_dll_with_set_order[0].1.display(), display_mod.name);
                             error!("{err}");
@@ -817,8 +811,11 @@ fn main() {
                             reset_app_state(&mut ini, &game_dir, Some(loader_cfg.path()), Some(&unknown_orders), ui.as_weak());
                             return;
                         };
+                        display_mod.order.set = true;
                         display_mod.order.i = index as i32;
-                        // if user has modified elements they will not auto update
+                        display_mod.order.at = *order_map.get(&new_dll_with_set_order[0].0).expect("entry was previously found as unknown") as i32;
+                        ui.global::<MainLogic>().set_current_subpage(0);
+                        model.update_order(None, &order_map, &unknown_orders, ui.as_weak());
                     } else {
                         match found_mod.files.dll.len() {
                             0 => (),
