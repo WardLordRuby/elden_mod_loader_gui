@@ -814,8 +814,8 @@ fn main() {
                         display_mod.order.set = true;
                         display_mod.order.i = index as i32;
                         display_mod.order.at = *order_map.get(&new_dll_with_set_order[0].0).expect("entry was previously found as unknown") as i32;
-                        ui.global::<MainLogic>().set_current_subpage(0);
-                        model.update_order(None, &order_map, &unknown_orders, ui.as_weak());
+                        ui.global::<MainLogic>().invoke_redraw_order_elements();
+                        model.update_order(Some(row), &order_map, &unknown_orders, ui.as_weak());
                     } else {
                         match found_mod.files.dll.len() {
                             0 => (),

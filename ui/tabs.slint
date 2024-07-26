@@ -44,7 +44,6 @@ export component ModDetails inherits Tab {
 
 export component ModEdit inherits Tab {
     in property <int> mod-index;
-    property <bool> update-toggle: true;
     property <bool> has-config: MainLogic.current-mods[mod-index].config-files.length > 0;
     property <int> selected-order: MainLogic.current-mods[mod-index].order.at;
     property <int> selected-index: MainLogic.current-mods[mod-index].order.i;
@@ -56,18 +55,19 @@ export component ModEdit inherits Tab {
         padding: Formatting.side-padding;
         padding-bottom: Formatting.side-padding / 2;
         alignment: space-between;
+        
+        property <int> OK: 0;
+        property <int> ERR: 42069;
+        property <int> UPDATE: 1;
+        property <int> NONE: -1;
+        
+        property <int> fn-result;
+        property <bool> load-order-box-enabled: MainLogic.current-mods[mod-index].dll-files.length > 0 && SettingsLogic.loader-installed;
 
-        load-order-box := GroupBox {
-            property <int> fn-result;
-            property <int> OK: 0;
-            property <int> ERR: 42069;
-            property <int> UPDATE: 1;
-
-            property <int> NONE: -1;
-
-            init => { init-selected-index() }
+        if MainLogic.update-order-elements-toggle : GroupBox {
             title: @tr("Load Order");
-            enabled: MainLogic.current-mods[mod-index].dll-files.length > 0 && SettingsLogic.loader-installed;
+            enabled: load-order-box-enabled;
+            init => { init-selected-index() }
 
             function init-selected-index() {
                 if !MainLogic.current-mods[mod-index].order.set {
@@ -77,10 +77,6 @@ export component ModEdit inherits Tab {
                     }
                 }
             }
-            function redraw-elements() {
-                update-toggle = false;
-                update-toggle = true;
-            }
 
             HorizontalLayout {
                 row: 1;
@@ -88,7 +84,7 @@ export component ModEdit inherits Tab {
 
                 load-order := Switch {
                     text: @tr("Set Load Order");
-                    enabled: load-order-box.enabled;
+                    enabled: load-order-box-enabled;
                     checked: MainLogic.current-mods[mod-index].order.set;
                     toggled => {
                         if self.checked {
@@ -104,7 +100,7 @@ export component ModEdit inherits Tab {
                         } else if !self.checked {
                             MainLogic.current-mods[mod-index].order.at = 0
                         }
-                        redraw-elements()
+                        MainLogic.redraw-order-elements()
                     }
                 }
             }
@@ -120,7 +116,7 @@ export component ModEdit inherits Tab {
                             init-selected-index();
                             MainLogic.force-deserialize()
                         } else if fn-result == UPDATE {
-                            redraw-elements()
+                            MainLogic.redraw-order-elements()
                         }
                         fn-result = OK
                     }
@@ -132,14 +128,14 @@ export component ModEdit inherits Tab {
                         if fn-result == ERR {
                             MainLogic.force-deserialize()
                         } else if fn-result == UPDATE {
-                            redraw-elements()
+                            MainLogic.redraw-order-elements()
                         }
                         fn-result == OK
                     }
                 }
 
-                if update-toggle : ComboBox {
-                    enabled: load-order.checked && load-order-box.enabled;
+                ComboBox {
+                    enabled: load-order.checked && load-order-box-enabled;
                     current-index: selected-index;
                     model: MainLogic.current-mods[mod-index].dll-files;
                     selected(file) => { modify-file(file, self.current-index) }
@@ -147,9 +143,9 @@ export component ModEdit inherits Tab {
 
                 // MARK: TODO
                 // Create a focus scope to handle up and down arrow inputs
-                if update-toggle : SpinBox {
+                SpinBox {
                     width: 106px;
-                    enabled: load-order.checked && load-order-box.enabled;
+                    enabled: load-order.checked && load-order-box-enabled;
                     minimum: 0;
                     maximum: MainLogic.max-order.val;
                     value: selected-order;
@@ -162,7 +158,7 @@ export component ModEdit inherits Tab {
                 spacing: Formatting.default-spacing;
 
                 Text {
-                    visible: load-order.checked && load-order-box.enabled && selected-order == 0;
+                    visible: load-order.checked && load-order-box-enabled && selected-order == 0;
                     wrap: word-wrap;
                     text: @tr("Mods with a load order of 0 will be loaded instantly. It is recommended to not use 0 unless the mod is absolutely required to have an immediate effect, as race conditions may occur for some types of mods if they load too quickly.");
                 }

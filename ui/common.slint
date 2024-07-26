@@ -33,6 +33,14 @@ export global MainLogic {
     callback force-app-focus();
     callback force-deserialize();
     callback send-message(Message);
+
+    out property <bool> update-order-elements-toggle: true;
+    callback redraw-order-elements;
+    redraw-order-elements => {
+        update-order-elements-toggle = false;
+        update-order-elements-toggle = true;
+    }
+
     in property <string> line-edit-text;
     in-out property <bool> game-path-valid;
     in-out property <MaxOrder> max-order;
