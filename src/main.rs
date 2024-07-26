@@ -785,7 +785,7 @@ fn main() {
                     reset_app_state(&mut ini, &game_dir, None, Some(&unknown_orders), ui.as_weak());
                     return;
                 };
-                let new_dll_with_set_order = files.iter().filter_map(|f| {
+                let new_dlls_with_set_order = files.iter().filter_map(|f| {
                     let f_str = f.to_string_lossy();
                     let f_data = FileData::from(file_name_from_str(&f_str));
                     if f_data.extension != ".dll" {
@@ -797,25 +797,24 @@ fn main() {
                     }
                     None
                 }).collect::<Vec<_>>();
+                let dll_added_with_set_order = !new_dlls_with_set_order.is_empty();
                 let mut update_order = false;
                 let (files, dll_files, config_files) = deserialize_split_files(&found_mod.files);
                 display_mod.files = files;
                 display_mod.dll_files = dll_files;
                 display_mod.config_files = config_files;
                 if !found_mod.order.set {
-                    if !new_dll_with_set_order.is_empty() {
-                        let Some(index) = found_mod.files.dll.iter().position(|f| f == new_dll_with_set_order[0].1) else {
-                            let err = format!("File: {}, not correctly added to: {}", new_dll_with_set_order[0].1.display(), display_mod.name);
+                    if dll_added_with_set_order {
+                        let Some(index) = found_mod.files.dll.iter().position(|f| f == new_dlls_with_set_order[0].1) else {
+                            let err = format!("File: {}, not correctly added to: {}", new_dlls_with_set_order[0].1.display(), display_mod.name);
                             error!("{err}");
                             ui.display_msg(&err);
                             reset_app_state(&mut ini, &game_dir, Some(loader_cfg.path()), Some(&unknown_orders), ui.as_weak());
                             return;
                         };
-                        let ord_meta_data = loader_cfg.update_order_entries(None, &unknown_orders);
-                        ui.global::<MainLogic>().set_max_order(MaxOrder::from(ord_meta_data.max_order));
                         display_mod.order.set = true;
                         display_mod.order.i = index as i32;
-                        display_mod.order.at = *order_map.get(&new_dll_with_set_order[0].0).expect("entry was previously found as unknown") as i32;
+                        display_mod.order.at = *order_map.get(&new_dlls_with_set_order[0].0).expect("entry was previously found as unknown") as i32;
                         update_order = true;
                     } else {
                         match found_mod.files.dll.len() {
@@ -824,8 +823,8 @@ fn main() {
                             2.. => display_mod.order.i = -1,
                         }
                     }
-                } else if !new_dll_with_set_order.is_empty() {
-                    new_dll_with_set_order.iter().for_each(|f| {
+                } else if dll_added_with_set_order {
+                    new_dlls_with_set_order.iter().for_each(|f| {
                         loader_cfg.mut_section().remove(&f.0);
                     });
                     loader_cfg.write_to_file().unwrap_or_else(|err| {
@@ -834,6 +833,10 @@ fn main() {
                     });
                 }
                 model.set_row_data(row as usize, display_mod);
+                if dll_added_with_set_order {
+                    let ord_meta_data = loader_cfg.update_order_entries(None, &unknown_orders);
+                    ui.global::<MainLogic>().set_max_order(MaxOrder::from(ord_meta_data.max_order));
+                }
                 if update_order {
                     model.update_order(Some(row), &order_map, &unknown_orders, ui.as_weak());
                 }
@@ -1187,7 +1190,7 @@ fn main() {
                 Some(key.as_str())
             } else {
                 if !load_orders.contains_key(&key) {
-                    warn!(?key, "Could not find key in: {}", LOADER_FILES[3]);
+                    warn!("Could not find key: {key}, in: {}", LOADER_FILES[3]);
                     return ERROR_VAL;
                 }
                 load_orders.remove(&key);
@@ -1228,8 +1231,8 @@ fn main() {
                 let msg = DisplayMissingOrd(vals).to_string();
                 ui.display_msg(&msg);
                 info!("{msg}");
-                // because of the unsupported two way bindings with array structures in slint `update_order(..)` always
-                // re-renders the state of the UI order elements
+                // because of the unsupported two way bindings with array structures in slint `update_order(..)`
+                // always re-renders the state of the UI order elements
             }
             OK_VAL
         }
