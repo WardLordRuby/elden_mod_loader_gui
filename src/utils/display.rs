@@ -118,9 +118,23 @@ impl<'a, D: DisplayItem> std::fmt::Display for DisplayIndices<'a, D> {
     }
 }
 
+pub struct DisplayAntiCheatFound(pub bool);
+
+impl std::fmt::Display for DisplayAntiCheatFound {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "'{ANTI_CHEAT_EXE}' {}found",
+            if self.0 { "" } else { "not" }
+        )
+    }
+}
+
 pub struct DisplayAntiCheatMsg;
 
 impl std::fmt::Display for DisplayAntiCheatMsg {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "'{ANTI_CHEAT_EXE}' has been toggled. EAC is currently enabled.\n\nTo use the app please toggle EAC using the exe")
     }
@@ -129,6 +143,7 @@ impl std::fmt::Display for DisplayAntiCheatMsg {
 pub struct DisplayMissingOrd<'a>(pub &'a [usize]);
 
 impl<'a> std::fmt::Display for DisplayMissingOrd<'a> {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -179,6 +194,7 @@ impl std::fmt::Display for DisplayTheme {
 pub struct DisplayTime<D: std::fmt::Display>(pub D);
 
 impl<D: std::fmt::Display> std::fmt::Display for DisplayTime<D> {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}ms", self.0)
     }

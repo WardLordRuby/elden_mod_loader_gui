@@ -175,12 +175,8 @@ fn main() {
                     mod_loader_cfg = ModLoaderCfg::default(mod_loader.path());
                 }
                 info!(
-                    "'{ANTI_CHEAT_EXE}' {}found",
-                    if mod_loader.anti_cheat_toggle_installed() {
-                        ""
-                    } else {
-                        "not "
-                    }
+                    "{}",
+                    DisplayAntiCheatFound(mod_loader.anti_cheat_toggle_installed())
                 );
                 reg_mods = {
                     let mut collection = ini.collect_mods(&path, order_data.as_ref(), false);
