@@ -414,11 +414,8 @@ impl ModLoaderCfg {
             }
             let last_key = new_section.iter().nth(new_section.len() - 1).map(|(k, _)| k).unwrap();
             let end_user_offset = last_user_val.to_string();
-            let new_section_len = new_section.len();
             (
-                if new_section_len == 1 {
-                    (1, false)
-                } else if new_section.iter().filter(|(_, v)| *v == end_user_offset).count() == 1 {
+                if new_section.iter().filter(|(_, v)| *v == end_user_offset).count() <= 1 {
                     (last_user_val, false)
                 } else {
                     (last_user_val + 1, true)
@@ -455,8 +452,9 @@ impl RegModsExt for [RegMod] {
             .filter(|(_, m)| m.order.set)
             .map(|(i, _)| i)
             .collect::<Vec<_>>();
-        if set_indices.len() < 2 {
-            return (set_indices.len(), false);
+        let len = set_indices.len();
+        if len < 2 {
+            return (len, false);
         }
         let high_order = set_indices
             .iter()
