@@ -43,7 +43,6 @@ static UNKNOWN_ORDER_KEYS: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
 
 const ERROR_VAL: i32 = 42069;
-const UPDATE_ELEMENTS_VAL: i32 = 1;
 const OK_VAL: i32 = 0;
 
 fn main() {
@@ -798,6 +797,7 @@ fn main() {
                     }
                     None
                 }).collect::<Vec<_>>();
+                let mut update_order = false;
                 let (files, dll_files, config_files) = deserialize_split_files(&found_mod.files);
                 display_mod.files = files;
                 display_mod.dll_files = dll_files;
@@ -811,11 +811,12 @@ fn main() {
                             reset_app_state(&mut ini, &game_dir, Some(loader_cfg.path()), Some(&unknown_orders), ui.as_weak());
                             return;
                         };
+                        let ord_meta_data = loader_cfg.update_order_entries(None, &unknown_orders);
+                        ui.global::<MainLogic>().set_max_order(MaxOrder::from(ord_meta_data.max_order));
                         display_mod.order.set = true;
                         display_mod.order.i = index as i32;
                         display_mod.order.at = *order_map.get(&new_dll_with_set_order[0].0).expect("entry was previously found as unknown") as i32;
-                        ui.global::<MainLogic>().invoke_redraw_order_elements();
-                        model.update_order(Some(row), &order_map, &unknown_orders, ui.as_weak());
+                        update_order = true;
                     } else {
                         match found_mod.files.dll.len() {
                             0 => (),
@@ -833,6 +834,9 @@ fn main() {
                     });
                 }
                 model.set_row_data(row as usize, display_mod);
+                if update_order {
+                    model.update_order(Some(row), &order_map, &unknown_orders, ui.as_weak());
+                }
                 let success = format!("Added {} file(s) to: {}", num_files, DisplayName(&found_mod.name));
                 info!("{success}");
                 ui.display_msg(&success);
@@ -864,30 +868,26 @@ fn main() {
                 let loader_dir = get_loader_ini_dir();
                 let mut messages = Vec::with_capacity(5);
                 let mut unknown_orders = get_mut_unknown_orders();
-                let mut order_map: Option<OrderMap>;
                 let mut loader = match ModLoaderCfg::read(loader_dir) {
-                    Ok(mut data) => {
-                        order_map = data.parse_section(&unknown_orders).map(Some).unwrap_or_else(|err| {
-                            error!("{err}");
-                            messages.push(err.to_string());
-                            Some(data.parse_into_map())
-                        });
-                        data
-                    },
+                    Ok(data) => data,
                     Err(err) => {
                         error!("{err}");
-                        messages.push(err.to_string());
-                        order_map = None;
-                        ModLoaderCfg::default(loader_dir)
+                        ui.display_msg(&err.to_string());
+                        return;
                     }
                 };
+                let mut order_map = loader.parse_section(&unknown_orders).unwrap_or_else(|err| {
+                    error!("{err}");
+                    messages.push(err.to_string());
+                    loader.parse_into_map()
+                });
                 let game_dir = get_or_update_game_dir(None);
                 let reset_app_state_hook = |err: std::io::Error, mut ini: Cfg| {
                     error!("{err}");
                     ui.display_msg(&err.to_string());
                     reset_app_state(&mut ini, &game_dir, Some(loader_dir), Some(&unknown_orders), ui.as_weak());
                 };
-                let mut found_mod = match ini.get_mod(&key, &game_dir, order_map.as_ref()) {
+                let mut found_mod = match ini.get_mod(&key, &game_dir, Some(&order_map)) {
                     Ok(found_data) => found_data,
                     Err(err) => {
                         reset_app_state_hook(err, ini);
@@ -942,23 +942,22 @@ fn main() {
                 let model = ui.global::<MainLogic>().get_current_mods();
                 let mut_model = model.as_any().downcast_ref::<VecModel<DisplayMod>>().expect("we set this type earlier");
                 mut_model.remove(row as usize);
-                let mut ord_meta_data = None;
-                loader.verify_keys(&dlls, order_count).unwrap_or_else(|key_err| {
-                    if let Some(unknown_keys) = key_err.unknown_keys {
-                        *unknown_orders = unknown_keys;
-                    }
-                    match key_err.err.kind() {
-                        ErrorKind::Other => info!("{}", key_err.err),
-                        ErrorKind::Unsupported => {
-                            warn!("{}", key_err.err);
-                            ord_meta_data = key_err.update_ord_data;
-                            reset_app_state(&mut ini, &game_dir, Some(loader_dir), Some(&unknown_orders), ui.as_weak());
-                        },
-                        _ => error!("{}", key_err.err),
-                    }
-                    messages.push(key_err.err.to_string());
-                });
                 if found_mod.order.set {
+                    let mut ord_meta_data = None;
+                    loader.verify_keys(&dlls, order_count).unwrap_or_else(|key_err| {
+                        if let Some(unknown_keys) = key_err.unknown_keys {
+                            *unknown_orders = unknown_keys;
+                        }
+                        match key_err.err.kind() {
+                            ErrorKind::Other => info!("{}", key_err.err),
+                            ErrorKind::Unsupported => {
+                                warn!("{}", key_err.err);
+                                ord_meta_data = key_err.update_ord_data;
+                            },
+                            _ => error!("{}", key_err.err),
+                        }
+                        messages.push(key_err.err.to_string());
+                    });
                     if ord_meta_data.is_none() {
                         ord_meta_data = Some(loader.update_order_entries(None, &unknown_orders));
                         if let Err(err) = loader.write_to_file() {
@@ -968,17 +967,11 @@ fn main() {
                             reset_app_state(&mut ini, &game_dir, Some(loader_dir), Some(&unknown_orders), ui.as_weak());
                             return;
                         }
-                        order_map = Some(loader.parse_into_map());
-                    } else {
-                        order_map = loader.parse_section(&unknown_orders).map(Some).unwrap_or_else(|err| {
-                            error!("{err}");
-                            messages.push(err.to_string());
-                            Some(loader.parse_into_map())
-                        });
                     }
+                    order_map = loader.parse_into_map();
                     let ord_meta_data = ord_meta_data.expect("is_some");
                     ui.global::<MainLogic>().set_max_order(MaxOrder::from(ord_meta_data.max_order));
-                    model.update_order(None, &order_map.expect("is_some"), &unknown_orders, ui.as_weak());
+                    model.update_order(None, &order_map, &unknown_orders, ui.as_weak());
                     if let Some(ref vals) = ord_meta_data.missing_vals {
                         let msg = DisplayMissingOrd(vals).to_string();
                         info!("{msg}");
@@ -1235,8 +1228,8 @@ fn main() {
                 let msg = DisplayMissingOrd(vals).to_string();
                 ui.display_msg(&msg);
                 info!("{msg}");
-                // because of the unsupported two way bindings with array structures in slint the front end always re-renders
-                // the state of both input fields after this closure completes there is no need to return UPDATE_ELEMENTS_VAL
+                // because of the unsupported two way bindings with array structures in slint `update_order(..)` always
+                // re-renders the state of the UI order elements
             }
             OK_VAL
         }
@@ -1314,7 +1307,7 @@ fn main() {
                 let msg = DisplayMissingOrd(vals).to_string();
                 ui.display_msg(&msg);
                 info!("{msg}");
-                return UPDATE_ELEMENTS_VAL;
+                return OK_VAL;
             }
             info!("Load order set to {}, for {}", new_val, to_k);
             OK_VAL
@@ -1474,12 +1467,13 @@ impl Sortable for ModelRc<DisplayMod> {
             }
             i += 1;
         }
-        if selected_row.is_some() && selected_row.unwrap() != selected_i as i32 {
+        if selected_row.is_some() {
             ui.invoke_update_mod_index(selected_i as i32, 1);
         }
         if row_swapped {
             ui.invoke_redraw_checkboxes();
         }
+        ui.global::<MainLogic>().invoke_redraw_order_elements();
     }
 }
 
@@ -1734,10 +1728,10 @@ fn reset_app_state(
         cfg.empty_contents();
     });
     let order_data = order_data_or_default(ui.as_weak(), loader_dir, unknown_orders);
-    deserialize_collected_mods(
-        &cfg.collect_mods(game_dir, Some(&order_data), false),
-        ui.as_weak(),
-    );
+    let collected_mods = cfg.collect_mods(game_dir, Some(&order_data), false);
+    ui.global::<MainLogic>()
+        .set_max_order(MaxOrder::from(collected_mods.mods.max_order()));
+    deserialize_collected_mods(&collected_mods, ui.as_weak());
     info!("reloaded state from file");
 }
 

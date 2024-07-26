@@ -58,7 +58,6 @@ export component ModEdit inherits Tab {
         
         property <int> OK: 0;
         property <int> ERR: 42069;
-        property <int> UPDATE: 1;
         property <int> NONE: -1;
         
         property <int> fn-result;
@@ -100,7 +99,6 @@ export component ModEdit inherits Tab {
                         } else if !self.checked {
                             MainLogic.current-mods[mod-index].order.at = 0
                         }
-                        MainLogic.redraw-order-elements()
                     }
                 }
             }
@@ -115,8 +113,6 @@ export component ModEdit inherits Tab {
                         if fn-result == ERR {
                             init-selected-index();
                             MainLogic.force-deserialize()
-                        } else if fn-result == UPDATE {
-                            MainLogic.redraw-order-elements()
                         }
                         fn-result = OK
                     }
@@ -127,8 +123,6 @@ export component ModEdit inherits Tab {
                         fn-result = MainLogic.modify-order(selected-dll, selected-dll, v, mod-index, selected-index);
                         if fn-result == ERR {
                             MainLogic.force-deserialize()
-                        } else if fn-result == UPDATE {
-                            MainLogic.redraw-order-elements()
                         }
                         fn-result == OK
                     }

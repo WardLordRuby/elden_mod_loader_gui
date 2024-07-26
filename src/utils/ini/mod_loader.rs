@@ -313,8 +313,8 @@ impl ModLoaderCfg {
 
     /// updates the load order values in `Some("loadorder")` so there are no gaps in values  
     /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  
-    /// this also calculates the correct max_order val (same logic appears in `[RegMod].max_order()`) &&  
-    /// stores any missing values in range `1..high_order` **returns:** `(MaxOrder, missing_vals)`
+    /// this also calculates the correct max_order val (same logic appears in `[RegMod].max_order()`)  
+    /// && stores any missing values in range `1..high_order`
     ///
     /// **NOTE:** this fn does not write any updated changes to file
     #[instrument(level = "trace", skip(self))]
