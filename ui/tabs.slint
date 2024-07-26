@@ -45,6 +45,7 @@ export component ModDetails inherits Tab {
 export component ModEdit inherits Tab {
     in property <int> mod-index;
     property <bool> has-config: MainLogic.current-mods[mod-index].config-files.length > 0;
+    property <bool> load-order-set: MainLogic.current-mods[mod-index].order.set;
     property <int> selected-order: MainLogic.current-mods[mod-index].order.at;
     property <int> selected-index: MainLogic.current-mods[mod-index].order.i;
     property <string> selected-dll: MainLogic.current-mods[mod-index].dll-files[selected-index];
@@ -63,73 +64,73 @@ export component ModEdit inherits Tab {
         property <int> fn-result;
         property <bool> load-order-box-enabled: MainLogic.current-mods[mod-index].dll-files.length > 0 && SettingsLogic.loader-installed;
 
+        function init-selected-index() {
+            if !MainLogic.current-mods[mod-index].order.set {
+                MainLogic.current-mods[mod-index].order.at = 0;
+                if MainLogic.current-mods[mod-index].dll-files.length != 1 {
+                    MainLogic.current-mods[mod-index].order.i = -1;
+                }
+            }
+        }
+
+        function toggle-load-order(checked: bool) {
+            if checked {
+                MainLogic.current-mods[mod-index].order.at = MainLogic.max-order.duplicate-high-order ? MainLogic.max-order.val : MainLogic.max-order.val + 1;
+            }
+            if selected-index != NONE {
+                fn-result = MainLogic.add-remove-order(checked, selected-dll, selected-order, mod-index);
+                if fn-result == ERR {
+                    MainLogic.force-deserialize()
+                }
+                fn-result = OK
+            } else if !checked {
+                MainLogic.current-mods[mod-index].order.at = 0
+            }
+        }
+        function modify-file(file: string, i: int) {
+            if file != selected-dll {
+                fn-result = MainLogic.modify-order(file, selected-dll, selected-order, mod-index, i);
+                if fn-result == ERR {
+                    init-selected-index();
+                    MainLogic.force-deserialize()
+                }
+                fn-result = OK
+            }
+            MainLogic.force-app-focus()
+        }
+        function modify-index(v: int) {
+            if selected-index != NONE {
+                fn-result = MainLogic.modify-order(selected-dll, selected-dll, v, mod-index, selected-index);
+                if fn-result == ERR {
+                    MainLogic.force-deserialize()
+                }
+                fn-result == OK
+            }
+        }
+
         if MainLogic.update-order-elements-toggle : GroupBox {
             title: @tr("Load Order");
             enabled: load-order-box-enabled;
             init => { init-selected-index() }
 
-            function init-selected-index() {
-                if !MainLogic.current-mods[mod-index].order.set {
-                    MainLogic.current-mods[mod-index].order.at = 0;
-                    if MainLogic.current-mods[mod-index].dll-files.length != 1 {
-                        MainLogic.current-mods[mod-index].order.i = -1;
-                    }
-                }
-            }
-
             HorizontalLayout {
                 row: 1;
                 padding-top: Formatting.default-padding;
 
-                load-order := Switch {
+                Switch {
                     text: @tr("Set Load Order");
                     enabled: load-order-box-enabled;
                     checked: MainLogic.current-mods[mod-index].order.set;
-                    toggled => {
-                        if self.checked {
-                            MainLogic.current-mods[mod-index].order.at = MainLogic.max-order.duplicate-high-order ? MainLogic.max-order.val : MainLogic.max-order.val + 1;
-                        }
-                        if selected-index != NONE {
-                            fn-result = MainLogic.add-remove-order(self.checked, selected-dll, selected-order, mod-index);
-                            if fn-result == ERR {
-                                self.checked = !self.checked;
-                                MainLogic.force-deserialize()
-                            }
-                            fn-result = OK
-                        } else if !self.checked {
-                            MainLogic.current-mods[mod-index].order.at = 0
-                        }
-                    }
+                    toggled => { toggle-load-order(self.checked) }
                 }
             }
             HorizontalLayout {
                 row: 2;
                 padding-top: Formatting.side-padding;
                 spacing: Formatting.default-spacing;
-                
-                function modify-file(file: string, i: int) {
-                    if file != selected-dll {
-                        fn-result = MainLogic.modify-order(file, selected-dll, selected-order, mod-index, i);
-                        if fn-result == ERR {
-                            init-selected-index();
-                            MainLogic.force-deserialize()
-                        }
-                        fn-result = OK
-                    }
-                    MainLogic.force-app-focus()
-                }
-                function modify-index(v: int) {
-                    if selected-index != NONE {
-                        fn-result = MainLogic.modify-order(selected-dll, selected-dll, v, mod-index, selected-index);
-                        if fn-result == ERR {
-                            MainLogic.force-deserialize()
-                        }
-                        fn-result == OK
-                    }
-                }
 
                 ComboBox {
-                    enabled: load-order.checked && load-order-box-enabled;
+                    enabled: load-order-set && load-order-box-enabled;
                     current-index: selected-index;
                     model: MainLogic.current-mods[mod-index].dll-files;
                     selected(file) => { modify-file(file, self.current-index) }
@@ -139,7 +140,7 @@ export component ModEdit inherits Tab {
                 // Create a focus scope to handle up and down arrow inputs
                 SpinBox {
                     width: 106px;
-                    enabled: load-order.checked && load-order-box-enabled;
+                    enabled: load-order-set && load-order-box-enabled;
                     minimum: 0;
                     maximum: MainLogic.max-order.val;
                     value: selected-order;
@@ -152,14 +153,14 @@ export component ModEdit inherits Tab {
                 spacing: Formatting.default-spacing;
 
                 Text {
-                    visible: load-order.checked && load-order-box-enabled && selected-order == 0;
+                    visible: load-order-set && load-order-box-enabled && selected-order == 0;
                     wrap: word-wrap;
                     text: @tr("Mods with a load order of 0 will be loaded instantly. It is recommended to not use 0 unless the mod is absolutely required to have an immediate effect, as race conditions may occur for some types of mods if they load too quickly.");
                 }
             }
         }
     
-        edit-mod-box := GroupBox {
+        GroupBox {
             title: @tr("Mod Actions");
             height: Formatting.group-box-r1-height;
             HorizontalLayout {
