@@ -635,11 +635,11 @@ fn main() {
                 Ok(ref mut reg_mod) => {
                     if reg_mod.files.dll.is_empty() {
                         info!(
-                            "Can not toggle {}, if mod has no .dll files",
+                            "Can not toggle: {}, mod has no .dll files",
                             DisplayName(&reg_mod.name)
                         );
                         ui.display_msg(&format!(
-                            "To toggle \"{}\" please add a .dll file",
+                            "To toggle: {}, please add a .dll file",
                             DisplayName(&reg_mod.name)
                         ));
                         return !state;
@@ -716,7 +716,6 @@ fn main() {
                         error!("{err}");
                         ui.display_msg(&err.to_string());
                         reset_app_state(&mut ini, &game_dir, None, Some(&unknown_orders), ui.as_weak());
-                        info!("deserialized after encountered error");
                         return;
                     }
                 };
