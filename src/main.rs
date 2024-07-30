@@ -355,8 +355,7 @@ fn main() {
                             Some(&ini),
                             order_data.as_ref()
                         ).await {
-                            error!("{err}");
-                            ui.display_msg(&err.to_string());
+                            ui.display_and_log_err(err);
                         };
                     }
                 }).unwrap();
@@ -376,8 +375,7 @@ fn main() {
             let mut ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     return;
                 }
             };
@@ -449,14 +447,12 @@ fn main() {
                 };
                 let loader_dir = get_loader_ini_dir();
                 let mut loader_cfg = ModLoaderCfg::read(loader_dir).unwrap_or_else(|err| {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     ModLoaderCfg::default(loader_dir)
                 });
                 let mut unknown_orders = get_mut_unknown_orders();
                 let order_data = loader_cfg.parse_section(&unknown_orders).unwrap_or_else(|err| {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     HashMap::new()
                 });
                 let mut new_mod = RegMod::with_load_order(&format_key, true, files.iter().map(PathBuf::from).collect(), &order_data);
@@ -474,22 +470,19 @@ fn main() {
                 }
                 if let Err(err) = new_mod.write_to_file(ini.path(), false) {
                     let _ = new_mod.remove_from_file(ini.path());
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     return;
                 };
                 for f in new_mod.files.dll.iter() {
                     let Some(f_name) = f.file_name().and_then(|o| o.to_str()).map(omit_off_state) else {
-                        let err = format!("failed to get file name for {}", f.display());
-                        error!("{err}");
+                        error!("Failed to get file name for: {}", f.display());
                         continue;
                     };
                     unknown_orders.remove(f_name);
                 }
                 ui.global::<MainLogic>().set_line_edit_text(SharedString::new());
                 ini.update().unwrap_or_else(|err| {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     ini = Cfg::default(ini_dir);
                 });
 
@@ -520,8 +513,7 @@ fn main() {
             let ini = match Cfg::read(get_ini_dir()) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     return;
                 }
             };
@@ -542,8 +534,7 @@ fn main() {
                 }
                 Ok(OperationResult::Bool(false)) => path,
                 Err(err) => {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     return;
                 }
                 _ => unreachable!(),
@@ -625,8 +616,7 @@ fn main() {
             let mut ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     return !state;
                 }
             };
@@ -652,8 +642,7 @@ fn main() {
                     };
                 }
                 Err(err) => {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                 }
             }
             reset_app_state(&mut ini, &game_dir, None, None, ui.as_weak());
@@ -679,8 +668,7 @@ fn main() {
             let mut ini = match Cfg::read(ini_dir) {
                 Ok(ini_data) => ini_data,
                 Err(err) => {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     return;
                 }
             };
@@ -767,8 +755,7 @@ fn main() {
                 let was_array = found_mod.is_array();
                 files.iter().for_each(|path| found_mod.files.add(path));
                 if let Err(err) = found_mod.write_to_file(ini_dir, was_array) {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     return;
                 };
                 if let Err(err) = found_mod.verify_state(&game_dir, ini.path()) {
@@ -881,8 +868,7 @@ fn main() {
                 });
                 let game_dir = get_or_update_game_dir(None);
                 let reset_app_state_hook = |err: std::io::Error, mut ini: Cfg| {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     reset_app_state(&mut ini, &game_dir, Some(loader_dir), Some(&unknown_orders), ui.as_weak());
                 };
                 let mut found_mod = match ini.get_mod(&key, &game_dir, Some(&order_map)) {
@@ -1156,8 +1142,7 @@ fn main() {
                 let _guard = span.enter();
                 let game_dir = get_or_update_game_dir(None);
                 if let Err(err) = confirm_scan_mods(ui.as_weak(), &game_dir, None, None).await {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                 };
             })
             .unwrap();
@@ -1174,8 +1159,7 @@ fn main() {
             let mut load_order = match ModLoaderCfg::read(cfg_dir) {
                 Ok(data) => data,
                 Err(err) => {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     return ERROR_VAL;
                 }
             };
@@ -1243,8 +1227,7 @@ fn main() {
             let mut load_order = match ModLoaderCfg::read(cfg_dir) {
                 Ok(data) => data,
                 Err(err) => {
-                    error!("{err}");
-                    ui.display_msg(&err.to_string());
+                    ui.display_and_log_err(err);
                     return ERROR_VAL;
                 }
             };
@@ -1501,6 +1484,12 @@ impl App {
         self.set_display_message(SharedString::from(msg));
         self.invoke_show_confirm_popup();
     }
+
+    fn display_and_log_err(&self, err: std::io::Error) {
+        let err_str = err.to_string();
+        error!("{err_str}");
+        self.display_msg(&err_str);
+    }
 }
 
 impl From<(usize, bool)> for MaxOrder {
@@ -1693,14 +1682,12 @@ fn order_data_or_default(
                 _guard_unknown_orders.as_ref().unwrap()
             });
             data.parse_section(unknown_orders).unwrap_or_else(|err| {
-                error!("{err}");
-                ui.display_msg(&err.to_string());
+                ui.display_and_log_err(err);
                 HashMap::new()
             })
         }
         Err(err) => {
-            error!("{err}");
-            ui.display_msg(&err.to_string());
+            ui.display_and_log_err(err);
             HashMap::new()
         }
     }
@@ -1720,7 +1707,7 @@ fn reset_app_state(
     let ui = ui_handle.unwrap();
     ui.global::<MainLogic>().set_current_subpage(0);
     cfg.update().unwrap_or_else(|err| {
-        let dsp_err = "failed to read config data from file";
+        let dsp_err = "Failed to read config data from file";
         error!("{dsp_err} {err}");
         ui.display_msg(dsp_err);
         cfg.empty_contents();
