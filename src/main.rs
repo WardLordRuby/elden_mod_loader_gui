@@ -26,7 +26,7 @@ use std::{
     rc::Rc,
     sync::{
         atomic::{AtomicU32, Ordering},
-        OnceLock,
+        LazyLock, OnceLock,
     },
 };
 use tokio::sync::{
@@ -38,9 +38,9 @@ use tracing::{error, info, info_span, instrument, trace, warn};
 slint::include_modules!();
 
 static GLOBAL_NUM_KEY: AtomicU32 = AtomicU32::new(0);
-static RESTRICTED_FILES: OnceLock<HashSet<&OsStr>> = OnceLock::new();
 static UNKNOWN_ORDER_KEYS: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
 static RECEIVER: OnceLock<RwLock<UnboundedReceiver<MessageData>>> = OnceLock::new();
+static RESTRICTED_FILES: LazyLock<HashSet<&OsStr>> = LazyLock::new(populate_restricted_files);
 
 const ERROR_VAL: i32 = 42069;
 const OK_VAL: i32 = 0;
@@ -71,7 +71,6 @@ fn main() {
     });
     let (message_sender, message_receiver) = unbounded_channel::<MessageData>();
     RECEIVER.set(RwLock::new(message_receiver)).unwrap();
-    RESTRICTED_FILES.set(populate_restricted_files()).unwrap();
     {
         let span = info_span!("startup");
         let _guard = span.enter();
@@ -1565,10 +1564,9 @@ fn get_user_files(path: &Path, ui_window: &slint::Window) -> std::io::Result<Vec
         .pick_files()
     {
         Some(files) => {
-            let restricted_files = RESTRICTED_FILES.get().unwrap();
             if files
                 .iter()
-                .any(|file| restricted_files.contains(file.file_name().expect("has valid name")))
+                .any(|file| RESTRICTED_FILES.contains(file.file_name().expect("has valid name")))
             {
                 new_io_error!(ErrorKind::InvalidData, "Tried to add a restricted file")
             } else {
