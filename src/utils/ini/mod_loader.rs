@@ -410,7 +410,7 @@ impl ModLoaderCfg {
             }
             if !stable_k.is_empty() {
                 last_user_val = offset;
-                new_section.append(stable_k, &offset.to_string());
+                new_section.append(stable_k, offset.to_string());
             }
             let last_key = new_section.iter().nth(new_section.len() - 1).map(|(k, _)| k).unwrap();
             let end_user_offset = last_user_val.to_string();

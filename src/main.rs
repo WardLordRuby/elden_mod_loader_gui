@@ -1165,7 +1165,7 @@ fn main() {
             };
             let load_orders = load_order.mut_section();
             let stable_k = if state {
-                load_orders.insert(&key, &value.to_string());
+                load_orders.insert(&key, value.to_string());
                 Some(key.as_str())
             } else {
                 if !load_orders.contains_key(&key) {
