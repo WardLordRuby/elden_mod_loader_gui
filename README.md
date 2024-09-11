@@ -1,7 +1,7 @@
 [TechieW-Loader-Link]: https://www.nexusmods.com/eldenring/mods/117  
 [Download-Link]: https://github.com/WardLordRuby/elden_mod_loader_gui/releases/download/v0.9.7-beta/elden_mod_loader_gui.exe  
 <div align="center">
-    <img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML-icon.png" width="30%" height="30%">
+    <img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML-icon.png" width="20%" height="20%">
 </div>
 
 # Elden Mod Loader GUI   
@@ -55,8 +55,8 @@ as well. It is not recommended to edit this apps ini file manually. If you want 
 ## Screenshots  
 
 <div id="image-screenshots">
-    <img src="https://i.imgur.com/qJC5Tyy.png" width="95%" height="95%">
-    <img src="https://i.imgur.com/vuMAqmt.png" width="95%" height="95%">
-    <img src="https://i.imgur.com/xd0XlBC.png" width="95%" height="95%">
-    <img src="https://i.imgur.com/xRe7Ig4.png" width="95%" height="95%">
+    <img src="https://i.imgur.com/qJC5Tyy.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/vuMAqmt.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/xd0XlBC.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/xRe7Ig4.png" width="26%" height="26%">
 </div>
