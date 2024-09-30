@@ -1,4 +1,4 @@
 [target.'cfg(all())']
 rustflags = [
-  "-C", "inline-threshold=250",
+  "-C", "llvm-args=--inline-threshold=250",
 ]
