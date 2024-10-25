@@ -1,5 +1,5 @@
 [TechieW-Loader-Link]: https://www.nexusmods.com/eldenring/mods/117  
-[Download-Link]: https://github.com/WardLordRuby/elden_mod_loader_gui/releases/download/v0.9.7-beta/elden_mod_loader_gui.exe  
+[Download-Link]: https://github.com/WardLordRuby/elden_mod_loader_gui/releases/latest/download/elden_mod_loader_gui.exe  
 [Nexus-Link]: https://www.nexusmods.com/eldenring/mods/4825
 <div align="center">
     <img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML-icon.png" width="20%" height="20%">
