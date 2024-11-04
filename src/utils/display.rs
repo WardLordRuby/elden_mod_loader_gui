@@ -12,7 +12,7 @@ pub const TUTORIAL_MSG: &str =
     You can always add more files to a mod or de-register a mod at any time from within the app\n\n\
     Do not forget to disable easy anti-cheat before playing with mods installed!";
 
-pub fn format_panic_info(info: &std::panic::PanicInfo) -> String {
+pub fn format_panic_info(info: &std::panic::PanicHookInfo) -> String {
     let payload_str = if let Some(location) = info.location() {
         format!(
             "PANIC {}:{}:{}:",
