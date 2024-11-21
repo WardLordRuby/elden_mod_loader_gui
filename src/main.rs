@@ -1778,6 +1778,8 @@ fn deserialize_mod(mod_data: &RegMod) -> DisplayMod {
     let (files, dll_files, config_files) = deserialize_split_files(&mod_data.files);
     let name = mod_data.name.replace('_', " ");
     DisplayMod {
+        // MARK: Workaround
+        // Fix this manual elide once slint deals with elding text properly via a max width
         displayname: SharedString::from(if mod_data.name.chars().count() > ELIDE_LEN {
             name.chars().take(ELIDE_LEN - 3).chain("...".chars()).collect()
         } else {
