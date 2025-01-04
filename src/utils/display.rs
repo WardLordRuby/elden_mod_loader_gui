@@ -73,7 +73,7 @@ impl DisplayItem for usize {
 
 pub struct DisplayVec<'a, D: DisplayItem>(pub &'a [D]);
 
-impl<'a, D: DisplayItem> std::fmt::Display for DisplayVec<'a, D> {
+impl<D: DisplayItem> std::fmt::Display for DisplayVec<'_, D> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if self.0.is_empty() {
             panic!("Tried to format an empty Vec");
@@ -95,7 +95,7 @@ impl<'a, D: DisplayItem> std::fmt::Display for DisplayVec<'a, D> {
 
 pub struct DisplayIndices<'a, D: DisplayItem>(pub &'a [usize], pub &'a [D]);
 
-impl<'a, D: DisplayItem> std::fmt::Display for DisplayIndices<'a, D> {
+impl<D: DisplayItem> std::fmt::Display for DisplayIndices<'_, D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.0.is_empty() || self.1.is_empty() {
             panic!("Tried to format an empty Vec");
@@ -142,7 +142,7 @@ impl std::fmt::Display for DisplayAntiCheatMsg {
 
 pub struct DisplayMissingOrd<'a>(pub &'a [usize]);
 
-impl<'a> std::fmt::Display for DisplayMissingOrd<'a> {
+impl std::fmt::Display for DisplayMissingOrd<'_> {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -155,7 +155,7 @@ impl<'a> std::fmt::Display for DisplayMissingOrd<'a> {
 
 pub struct DisplayName<'a>(pub &'a str);
 
-impl<'a> std::fmt::Display for DisplayName<'a> {
+impl std::fmt::Display for DisplayName<'_> {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.replace('_', " "))

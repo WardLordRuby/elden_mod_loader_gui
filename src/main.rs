@@ -1014,7 +1014,7 @@ fn main() {
                 .expect("We know we set a VecModel earlier");
             let os_files = downcast_config_file
                 .iter()
-                .map(|path| game_dir.join(path.to_string()))
+                .map(|path| game_dir.join(&path))
                 .collect::<Vec<_>>();
             open_text_files(ui.as_weak(), os_files);
         }

@@ -570,7 +570,7 @@ impl SplitFiles {
 
 type ModData<'a> = (&'a str, bool, SplitFiles, LoadOrder);
 
-impl<'a> From<ModData<'a>> for RegMod {
+impl From<ModData<'_>> for RegMod {
     /// manual constructor for RegMod, note does not convert name to _snake_case_
     fn from(value: ModData) -> Self {
         RegMod {
@@ -743,7 +743,7 @@ trait Combine {
     ) -> CollectedMods;
 }
 
-impl<'a> Combine for CollectedMaps<'a> {
+impl Combine for CollectedMaps<'_> {
     #[instrument(level = "trace", skip_all)]
     fn combine_map_data(
         self,
