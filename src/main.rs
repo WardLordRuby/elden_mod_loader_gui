@@ -1332,8 +1332,7 @@ impl Sortable for ModelRc<DisplayMod> {
         unknown_orders: &HashSet<String>,
         ui_handle: slint::Weak<App>,
     ) {
-        let order_map_len = order_map.len();
-        if order_map_len == 0 {
+        if order_map.is_empty() {
             return;
         }
         let ui = ui_handle.unwrap();
@@ -1343,21 +1342,21 @@ impl Sortable for ModelRc<DisplayMod> {
                 .name
         });
         let mut unsorted_idx = (0..self.row_count()).collect::<Vec<_>>();
-        let mut possible_vals = HashSet::with_capacity(order_map_len);
-        let mut order_counts = vec![0_usize; order_map_len + 1];
+        let mut possible_vals = HashSet::with_capacity(order_map.len());
+        let mut order_counts = vec![0_usize; order_map.len() + 1];
         let Some(low_order) = order_map
             .iter()
-            .filter(|(k, _)| !unknown_orders.contains(*k))
-            .map(|(_, v)| {
-                order_counts[*v] += 1;
-                possible_vals.insert(*v);
+            .filter(|&(k, _)| !unknown_orders.contains(k))
+            .map(|(_, &v)| {
+                order_counts[v] += 1;
+                possible_vals.insert(v);
                 v
             })
             .min()
         else {
             return;
         };
-        assert!(*low_order < 2);
+        assert!(low_order < 2);
         let mut placement_rows = order_counts
             .iter()
             .enumerate()
@@ -1382,15 +1381,11 @@ impl Sortable for ModelRc<DisplayMod> {
             let unsorted_i = unsorted_idx[i];
             let mut curr_row = self.row_data(unsorted_i).expect("unsorted_idx is valid ranges");
             let curr_key = curr_row.dll_files.row_data(curr_row.order.i as usize);
-            let new_order: Option<&usize>;
-            if curr_key.is_some() && {
-                new_order = order_map.get(&curr_key.unwrap().to_string());
-                new_order
-            }
-            .is_some()
+            if let Some(new_order) = curr_key
+                .as_deref()
+                .and_then(|key| order_map.get(key).map(|x| *x as i32))
             {
-                let placement_i = *new_order.unwrap() - *low_order;
-                let new_order = *new_order.unwrap() as i32;
+                let placement_i = new_order as usize - low_order;
                 if let Some(index) =
                     placement_rows[placement_i].iter().position(|&x| x == unsorted_i)
                 {
