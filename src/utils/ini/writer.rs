@@ -166,7 +166,10 @@ pub fn remove_array(file_path: &Path, key: &str) -> Result<()> {
         !skip_next_line
     };
 
-    let lines = content.lines().filter(|&line| filter_lines(line)).collect::<Vec<_>>();
+    let lines = content
+        .lines()
+        .filter(|&line| filter_lines(line))
+        .collect::<Vec<_>>();
 
     write(file_path, lines.join("\r\n"))?;
     trace!("removed paths from file");

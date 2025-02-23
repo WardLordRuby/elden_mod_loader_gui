@@ -135,14 +135,21 @@ impl Config for Cfg {
     #[inline]
     fn mods_is_empty(&self) -> bool {
         self.data.section(INI_SECTIONS[2]).is_none()
-            || self.data.section(INI_SECTIONS[2]).expect("Cfg verified").is_empty()
+            || self
+                .data
+                .section(INI_SECTIONS[2])
+                .expect("Cfg verified")
+                .is_empty()
     }
 
     fn mods_registered(&self) -> usize {
         if self.mods_is_empty() {
             0
         } else {
-            self.data.section(INI_SECTIONS[2]).expect("Cfg verified").len()
+            self.data
+                .section(INI_SECTIONS[2])
+                .expect("Cfg verified")
+                .len()
         }
     }
 

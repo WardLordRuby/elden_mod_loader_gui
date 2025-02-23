@@ -145,8 +145,12 @@ pub fn toggle_paths_state(file_paths: &[PathBuf], new_state: bool) -> Vec<PathBu
         .map(|path| {
             let mut temp_string = None;
             let mut new_name = file_name_from_str(path.to_str().unwrap_or_else(|| {
-                temp_string =
-                    Some(path.file_name().expect("is file").to_string_lossy().to_string());
+                temp_string = Some(
+                    path.file_name()
+                        .expect("is file")
+                        .to_string_lossy()
+                        .to_string(),
+                );
                 temp_string.as_ref().unwrap()
             }))
             .to_string();
@@ -192,14 +196,17 @@ pub fn toggle_files(
             );
         }
 
-        paths.iter().zip(new_paths.iter()).try_for_each(|(path, new_path)| {
-            std::fs::rename(path, new_path)?;
-            trace!(
-                old = ?path.file_name().unwrap(),
-                new = ?new_path.file_name().unwrap(), "Rename success"
-            );
-            Ok(())
-        })
+        paths
+            .iter()
+            .zip(new_paths.iter())
+            .try_for_each(|(path, new_path)| {
+                std::fs::rename(path, new_path)?;
+                trace!(
+                    old = ?path.file_name().unwrap(),
+                    new = ?new_path.file_name().unwrap(), "Rename success"
+                );
+                Ok(())
+            })
     }
 
     if reg_mod.state == new_state
@@ -294,16 +301,23 @@ where
     let file_names = entries
         .filter_map(|entry| Some(entry.ok()?.file_name()))
         .collect::<Vec<_>>();
-    let str_names = file_names.iter().filter_map(|f| f.to_str()).collect::<HashSet<_>>();
+    let str_names = file_names
+        .iter()
+        .filter_map(|f| f.to_str())
+        .collect::<HashSet<_>>();
 
     match operation {
         Operation::All => Ok(OperationResult::Bool({
-            let result = list.iter().all(|check_file| str_names.contains(check_file.borrow()));
+            let result = list
+                .iter()
+                .all(|check_file| str_names.contains(check_file.borrow()));
             trace!(operation_result = result);
             result
         })),
         Operation::Any => Ok(OperationResult::Bool({
-            let result = list.iter().any(|check_file| str_names.contains(check_file.borrow()));
+            let result = list
+                .iter()
+                .any(|check_file| str_names.contains(check_file.borrow()));
             trace!(operation_result = result);
             result
         })),

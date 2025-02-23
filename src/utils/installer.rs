@@ -152,7 +152,10 @@ fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
 
 /// returns the parent of input path with the _least_ ammount of ancestors  
 fn parent_dir_from_vec<P: AsRef<Path>>(in_files: &[P]) -> std::io::Result<PathBuf> {
-    match in_files.iter().min_by_key(|path| path.as_ref().ancestors().count()) {
+    match in_files
+        .iter()
+        .min_by_key(|path| path.as_ref().ancestors().count())
+    {
         Some(path) => get_parent_dir(path.as_ref()),
         None => new_io_error!(ErrorKind::Other, "Failed to create a parent_dir"),
     }
@@ -577,7 +580,10 @@ pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> 
         if file_data.extension != ".dll" {
             continue;
         };
-        if let Some(dir) = dirs.iter().find(|d| d.file_name().expect("is dir") == file_data.name) {
+        if let Some(dir) = dirs
+            .iter()
+            .find(|d| d.file_name().expect("is dir") == file_data.name)
+        {
             let mut data = InstallData::new(file_data.name, vec![file.to_owned()], game_dir)?;
             data.import_files_from_dir(dir, DisplayItems::None)?;
             file_sets.push(RegMod::new(
@@ -585,14 +591,21 @@ pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> 
                 file_data.enabled,
                 data.from_paths
                     .into_iter()
-                    .map(|p| p.strip_prefix(game_dir).expect("file found here").to_path_buf())
+                    .map(|p| {
+                        p.strip_prefix(game_dir)
+                            .expect("file found here")
+                            .to_path_buf()
+                    })
                     .collect(),
             ));
         } else {
             file_sets.push(RegMod::new(
                 file_data.name,
                 file_data.enabled,
-                vec![file.strip_prefix(game_dir).expect("file found here").to_path_buf()],
+                vec![file
+                    .strip_prefix(game_dir)
+                    .expect("file found here")
+                    .to_path_buf()],
             ));
         }
     }

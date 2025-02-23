@@ -64,11 +64,12 @@ fn main() {
     .expect("This app uses the winit backend");
 
     let ui = App::new().unwrap();
-    ui.window().with_winit_window(|window: &winit::window::Window| {
-        window.set_enabled_buttons(
-            winit::window::WindowButtons::CLOSE | winit::window::WindowButtons::MINIMIZE,
-        );
-    });
+    ui.window()
+        .with_winit_window(|window: &winit::window::Window| {
+            window.set_enabled_buttons(
+                winit::window::WindowButtons::CLOSE | winit::window::WindowButtons::MINIMIZE,
+            );
+        });
     let (message_sender, message_receiver) = unbounded_channel::<MessageData>();
     RECEIVER.set(RwLock::new(message_receiver)).unwrap();
     {
@@ -282,7 +283,8 @@ fn main() {
 
                 ui.global::<SettingsLogic>()
                     .set_load_delay(SharedString::from(format!("{delay}ms")));
-                ui.global::<SettingsLogic>().set_show_terminal(show_terminal);
+                ui.global::<SettingsLogic>()
+                    .set_show_terminal(show_terminal);
 
                 if mod_loader.anti_cheat_enabled() {
                     dsp_msgs.push(DisplayAntiCheatMsg.to_string());
@@ -1058,7 +1060,8 @@ fn main() {
             info!("Load delay set to: {}", DisplayTime(&time));
             ui.global::<SettingsLogic>()
                 .set_load_delay(SharedString::from(DisplayTime(time).to_string()));
-            ui.global::<SettingsLogic>().set_delay_input(SharedString::new());
+            ui.global::<SettingsLogic>()
+                .set_delay_input(SharedString::new());
         }
     });
     ui.global::<SettingsLogic>().on_toggle_all({
@@ -1103,7 +1106,9 @@ fn main() {
             let ui = ui_handle.unwrap();
             let jh = std::thread::spawn(move || {
                 let game_dir = get_or_update_game_dir(None);
-                std::process::Command::new("explorer").arg(game_dir.as_path()).spawn()
+                std::process::Command::new("explorer")
+                    .arg(game_dir.as_path())
+                    .spawn()
             });
             match jh.join() {
                 Ok(result) => match result {
@@ -1187,8 +1192,9 @@ fn main() {
             ui.global::<MainLogic>()
                 .set_max_order(MaxOrder::from(ord_meta_data.max_order));
             let model = ui.global::<MainLogic>().get_current_mods();
-            let mut selected_mod =
-                model.row_data(row as usize).expect("front end gives us valid row");
+            let mut selected_mod = model
+                .row_data(row as usize)
+                .expect("front end gives us valid row");
             selected_mod.order.set = state;
             if !state {
                 selected_mod.order.at = 0;
@@ -1244,8 +1250,9 @@ fn main() {
             };
 
             let model = ui.global::<MainLogic>().get_current_mods();
-            let mut selected_mod =
-                model.row_data(row as usize).expect("front end gives us valid row");
+            let mut selected_mod = model
+                .row_data(row as usize)
+                .expect("front end gives us valid row");
             if to_k != from_k {
                 selected_mod.order.i = dll_i;
                 if !selected_mod.order.set {
@@ -1379,15 +1386,18 @@ impl Sortable for ModelRc<DisplayMod> {
                 i = 0
             }
             let unsorted_i = unsorted_idx[i];
-            let mut curr_row = self.row_data(unsorted_i).expect("unsorted_idx is valid ranges");
+            let mut curr_row = self
+                .row_data(unsorted_i)
+                .expect("unsorted_idx is valid ranges");
             let curr_key = curr_row.dll_files.row_data(curr_row.order.i as usize);
             if let Some(new_order) = curr_key
                 .as_deref()
                 .and_then(|key| order_map.get(key).map(|x| *x as i32))
             {
                 let placement_i = new_order as usize - low_order;
-                if let Some(index) =
-                    placement_rows[placement_i].iter().position(|&x| x == unsorted_i)
+                if let Some(index) = placement_rows[placement_i]
+                    .iter()
+                    .position(|&x| x == unsorted_i)
                 {
                     if let Some(ref key) = selected_key {
                         if curr_row.name == key {
@@ -1411,7 +1421,9 @@ impl Sortable for ModelRc<DisplayMod> {
                 let swap_i = placement_rows[placement_i]
                     .pop_front()
                     .expect("placement_rows can not be empty if unsorted_idx is not empty");
-                let swap_row = self.row_data(swap_i).expect("placement rows contains valid rows");
+                let swap_row = self
+                    .row_data(swap_i)
+                    .expect("placement rows contains valid rows");
                 if let Some(ref key) = selected_key {
                     if swap_row.name == key {
                         selected_i = unsorted_i;
@@ -1499,7 +1511,11 @@ impl From<(usize, bool)> for MaxOrder {
 impl From<&RegMod> for LoadOrder {
     fn from(value: &RegMod) -> Self {
         LoadOrder {
-            at: if !value.order.set { 0 } else { value.order.at as i32 },
+            at: if !value.order.set {
+                0
+            } else {
+                value.order.at as i32
+            },
             i: if !value.order.set && value.files.dll.len() != 1 {
                 -1
             } else {
@@ -1776,7 +1792,10 @@ fn deserialize_mod(mod_data: &RegMod) -> DisplayMod {
         // MARK: Workaround
         // Fix this manual elide once slint deals with elding text properly via a max width
         displayname: SharedString::from(if mod_data.name.chars().count() > ELIDE_LEN {
-            name.chars().take(ELIDE_LEN - 3).chain("...".chars()).collect()
+            name.chars()
+                .take(ELIDE_LEN - 3)
+                .chain("...".chars())
+                .collect()
         } else {
             name.clone()
         }),
@@ -1801,7 +1820,8 @@ fn deserialize_collected_mods(data: &CollectedMods, ui_handle: slint::Weak<App>)
         .iter()
         .for_each(|mod_data| display_mods.push(deserialize_mod(mod_data)));
 
-    ui.global::<MainLogic>().set_current_mods(ModelRc::from(display_mods));
+    ui.global::<MainLogic>()
+        .set_current_mods(ModelRc::from(display_mods));
     ui.global::<MainLogic>()
         .set_max_order(MaxOrder::from(data.mods.max_order()));
     trace!("deserialized mods");
@@ -1924,7 +1944,10 @@ async fn confirm_install(
     zip.iter()
         .try_for_each(|(from_path, to_path)| std::fs::copy(from_path, to_path).map(|_| ()))?;
     ui.display_msg(&format!("Installed mod: {}", &install_files.name));
-    Ok(zip.iter().map(|(_, to_path)| to_path.to_path_buf()).collect())
+    Ok(zip
+        .iter()
+        .map(|(_, to_path)| to_path.to_path_buf())
+        .collect())
 }
 
 #[instrument(level = "trace", skip_all, fields(mod_name = reg_mod.name))]
@@ -2095,7 +2118,12 @@ async fn confirm_scan_mods(
             .iter()
             .flat_map(|m| m.files.file_refs())
             .collect::<HashSet<_>>();
-        old_mods.retain(|m| m.files.dll.iter().any(|f| !all_new_files.contains(f.as_path())));
+        old_mods.retain(|m| {
+            m.files
+                .dll
+                .iter()
+                .any(|f| !all_new_files.contains(f.as_path()))
+        });
         if old_mods.is_empty() {
             return Ok(());
         }

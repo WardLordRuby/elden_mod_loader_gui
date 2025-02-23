@@ -134,7 +134,11 @@ mod tests {
             does_dir_contain(
                 &mods_dir,
                 Operation::Count,
-                entries.iter().map(|e| e.as_ref()).collect::<Vec<_>>().as_slice()
+                entries
+                    .iter()
+                    .map(|e| e.as_ref())
+                    .collect::<Vec<_>>()
+                    .as_slice()
             ),
             Ok(OperationResult::Count((num_entries, _)))
         ));

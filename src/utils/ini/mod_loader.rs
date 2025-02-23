@@ -238,7 +238,8 @@ impl ModLoaderCfg {
                 );
             let unknown_key_set = unknown_keys.into_iter().collect::<HashSet<_>>();
             let update_ord_data = self.update_order_entries(None, &unknown_key_set);
-            self.write_to_file().map_err(UnknownKeyErr::empty_with_err)?;
+            self.write_to_file()
+                .map_err(UnknownKeyErr::empty_with_err)?;
             return Err(UnknownKeyErr {
                 err,
                 unknown_keys: Some(unknown_key_set),
@@ -279,7 +280,10 @@ impl ModLoaderCfg {
             self.write_to_file()?;
             return Ok(self.parse_into_map());
         }
-        let mut values = self.iter().filter_map(|(k, _)| map.get(k)).collect::<Vec<_>>();
+        let mut values = self
+            .iter()
+            .filter_map(|(k, _)| map.get(k))
+            .collect::<Vec<_>>();
         values.sort();
         let mut count = if *values[0] == 0 { 0 } else { 1 };
         for value in values {
@@ -412,10 +416,19 @@ impl ModLoaderCfg {
                 last_user_val = offset;
                 new_section.append(stable_k, offset.to_string());
             }
-            let last_key = new_section.iter().nth(new_section.len() - 1).map(|(k, _)| k).unwrap();
+            let last_key = new_section
+                .iter()
+                .nth(new_section.len() - 1)
+                .map(|(k, _)| k)
+                .unwrap();
             let end_user_offset = last_user_val.to_string();
             (
-                if new_section.iter().filter(|(_, v)| *v == end_user_offset).count() <= 1 {
+                if new_section
+                    .iter()
+                    .filter(|(_, v)| *v == end_user_offset)
+                    .count()
+                    <= 1
+                {
                     (last_user_val, false)
                 } else {
                     (last_user_val + 1, true)

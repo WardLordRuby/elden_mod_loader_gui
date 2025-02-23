@@ -74,7 +74,10 @@ pub fn init_subscriber() -> std::io::Result<Option<tracing_appender::non_blockin
         .with(
             fmt::layer()
                 .event_format(CustomFormatter::new(
-                    fmt::format().with_target(false).with_ansi(false).without_time(),
+                    fmt::format()
+                        .with_target(false)
+                        .with_ansi(false)
+                        .without_time(),
                 ))
                 .fmt_fields(PrettyFields::new())
                 .with_writer(non_blocking),

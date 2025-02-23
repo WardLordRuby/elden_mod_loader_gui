@@ -66,7 +66,8 @@ impl Parsable for u32 {
         let str = ini
             .get_from(section, key)
             .expect("Validated by IniProperty::is_valid");
-        str.parse::<u32>().map_err(|err| err.into_io_error(key, str))
+        str.parse::<u32>()
+            .map_err(|err| err.into_io_error(key, str))
     }
 }
 
@@ -124,15 +125,17 @@ impl Parsable for Vec<PathBuf> {
                 "Invalid type found. Expected: Vec<Path>, Found: Path"
             );
         }
-        let parsed_value =
-            PropertyArray(ini.section(section).expect("Validated by IniProperty::is_valid"))
-                .into_iter()
-                .find(|(k, _)| *k == key)
-                .expect("Validated by IniProperty::is_valid")
-                .1
-                .iter()
-                .map(PathBuf::from)
-                .collect();
+        let parsed_value = PropertyArray(
+            ini.section(section)
+                .expect("Validated by IniProperty::is_valid"),
+        )
+        .into_iter()
+        .find(|(k, _)| *k == key)
+        .expect("Validated by IniProperty::is_valid")
+        .1
+        .iter()
+        .map(PathBuf::from)
+        .collect();
         if skip_validation {
             return Ok(parsed_value);
         }
@@ -485,16 +488,14 @@ impl From<Vec<PathBuf>> for SplitFiles {
     }
 }
 
-type IterChain<'a, T> = std::iter::Chain<
-    std::iter::Chain<std::slice::Iter<'a, T>, std::slice::Iter<'a, T>>,
-    std::slice::Iter<'a, T>,
->;
-
 impl SplitFiles {
     #[inline]
     /// returns an iterator over _all_ containing files  
-    pub fn chain_all(&self) -> IterChain<PathBuf> {
-        self.dll.iter().chain(self.config.iter()).chain(self.other.iter())
+    pub fn chain_all(&self) -> impl Iterator<Item = &PathBuf> {
+        self.dll
+            .iter()
+            .chain(self.config.iter())
+            .chain(self.other.iter())
     }
 
     #[inline]
@@ -506,7 +507,9 @@ impl SplitFiles {
     #[inline]
     /// returns a collection of _all_ full length paths to containing files  
     pub fn full_paths(&self, game_dir: &Path) -> Vec<PathBuf> {
-        self.chain_all().map(|short_path| game_dir.join(short_path)).collect()
+        self.chain_all()
+            .map(|short_path| game_dir.join(short_path))
+            .collect()
     }
 
     #[inline]
@@ -1036,9 +1039,13 @@ impl Cfg {
         }
         let registered_mods = {
             let (mods_map, _) = self.sync_keys();
-            mods_map.keys().map(|k| k.to_lowercase()).collect::<HashSet<_>>()
+            mods_map
+                .keys()
+                .map(|k| k.to_lowercase())
+                .collect::<HashSet<_>>()
         };
-        self.update().expect("already exists in an accessable directory");
+        self.update()
+            .expect("already exists in an accessable directory");
         registered_mods
     }
 
@@ -1046,7 +1053,10 @@ impl Cfg {
     // we _need_ to compare short_paths for the intened functionality to be correct
     // this is because mods typically have the same file names but in seprate directories
     pub fn files(&self) -> HashSet<&str> {
-        let mod_files = self.data().section(INI_SECTIONS[3]).expect("Validated by is_setup");
+        let mod_files = self
+            .data()
+            .section(INI_SECTIONS[3])
+            .expect("Validated by is_setup");
         mod_files
             .iter()
             .filter_map(|(_, v)| if v != ARRAY_VALUE { Some(v) } else { None })
