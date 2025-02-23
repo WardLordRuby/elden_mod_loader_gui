@@ -1,10 +1,10 @@
 use std::{
-    fs::{create_dir_all, metadata, File},
+    fs::{File, create_dir_all, metadata},
     io::Write,
     path::Path,
 };
 
-pub const GAME_DIR: &str = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\ELDEN RING\\Game";
+pub const GAME_DIR: &str = "G:/SteamLibrary/steamapps/common/ELDEN RING/Game";
 
 pub fn new_cfg_with_sections(path: &Path, sections: &[Option<&str>]) -> std::io::Result<()> {
     let parent = path.parent().unwrap();

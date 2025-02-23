@@ -6,8 +6,8 @@ use tracing::{Event, Level, Subscriber};
 #[cfg(not(debug_assertions))]
 use tracing_subscriber::{
     fmt::{
-        format::{FormatEvent, FormatFields, PrettyFields, Writer},
         FmtContext,
+        format::{FormatEvent, FormatFields, PrettyFields, Writer},
     },
     registry::LookupSpan,
 };
@@ -49,7 +49,7 @@ where
 
 #[cfg(not(debug_assertions))]
 pub fn init_subscriber() -> std::io::Result<Option<tracing_appender::non_blocking::WorkerGuard>> {
-    use crate::{utils::ini::parser::Setup, Cfg, Config, INI_NAME, INI_SECTIONS, LOG_NAME};
+    use crate::{Cfg, Config, INI_NAME, INI_SECTIONS, LOG_NAME, utils::ini::parser::Setup};
 
     let env_dir = std::env::current_dir()?;
     let log_dir = env_dir.join(LOG_NAME);

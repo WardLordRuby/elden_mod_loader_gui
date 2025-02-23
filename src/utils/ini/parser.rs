@@ -1,15 +1,16 @@
 use ini::Ini;
 use std::{
     collections::{HashMap, HashSet},
-    io::ErrorKind,
+    io::{self, ErrorKind},
     path::{Path, PathBuf},
     str::ParseBoolError,
 };
 use tracing::{error, info, instrument, trace, warn};
 
 use crate::{
-    file_name_from_str, files_not_found, get_cfg, new_io_error, omit_off_state, toggle_files,
-    toggle_path_state,
+    ARRAY_KEY, ARRAY_VALUE, DllSet, FileData, INI_KEYS, INI_SECTIONS, OrderMap,
+    REQUIRED_GAME_FILES, file_name_from_str, files_not_found, get_cfg, new_io_error,
+    omit_off_state, toggle_files, toggle_path_state,
     utils::{
         display::{DisplayIndices, DisplayName, DisplayVec, IntoIoError, Merge, ModError},
         ini::{
@@ -17,8 +18,6 @@ use crate::{
             writer::{remove_array, remove_entry, save_bool, save_path, save_paths},
         },
     },
-    DllSet, FileData, OrderMap, ARRAY_KEY, ARRAY_VALUE, INI_KEYS, INI_SECTIONS,
-    REQUIRED_GAME_FILES,
 };
 
 pub trait Parsable: Sized {
@@ -28,7 +27,7 @@ pub trait Parsable: Sized {
         partial_path: Option<&Path>,
         key: &str,
         skip_validation: bool,
-    ) -> std::io::Result<Self>;
+    ) -> io::Result<Self>;
 }
 
 impl Parsable for bool {
@@ -38,7 +37,7 @@ impl Parsable for bool {
         _partial_path: Option<&Path>,
         key: &str,
         _skip_validation: bool,
-    ) -> std::io::Result<Self> {
+    ) -> io::Result<Self> {
         let str = ini
             .get_from(section, key)
             .expect("Validated by IniProperty::is_valid");
@@ -62,7 +61,7 @@ impl Parsable for u32 {
         _partial_path: Option<&Path>,
         key: &str,
         _skip_validation: bool,
-    ) -> std::io::Result<Self> {
+    ) -> io::Result<Self> {
         let str = ini
             .get_from(section, key)
             .expect("Validated by IniProperty::is_valid");
@@ -78,7 +77,7 @@ impl Parsable for PathBuf {
         partial_path: Option<&Path>,
         key: &str,
         skip_validation: bool,
-    ) -> std::io::Result<Self> {
+    ) -> io::Result<Self> {
         let parsed_value = PathBuf::from({
             let value = ini
                 .get_from(section, key)
@@ -118,7 +117,7 @@ impl Parsable for Vec<PathBuf> {
         partial_path: Option<&Path>,
         key: &str,
         skip_validation: bool,
-    ) -> std::io::Result<Self> {
+    ) -> io::Result<Self> {
         if !matches!(ini.get_from(section, key), Some(ARRAY_VALUE)) {
             return new_io_error!(
                 ErrorKind::InvalidData,
@@ -150,11 +149,11 @@ trait Valitidity {
     /// _full_paths_ are assumed to Point to directories, where as  
     /// _partial_paths_ are assumed to point to files and share a _path_prefix_   
     /// if you want to validate a _partial_path_ you must supply the _path_prefix_
-    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> std::io::Result<()>;
+    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> io::Result<()>;
 }
 
 impl<T: AsRef<Path>> Valitidity for T {
-    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> std::io::Result<()> {
+    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> io::Result<()> {
         if let Some(prefix) = partial_path {
             validate_file(&prefix.as_ref().join(self))?;
             Ok(())
@@ -167,7 +166,7 @@ impl<T: AsRef<Path>> Valitidity for T {
 
 struct ValitidityError {
     error_paths: Vec<PathBuf>,
-    errors: Vec<std::io::Error>,
+    errors: Vec<io::Error>,
 }
 
 trait ValitidityMany {
@@ -198,7 +197,7 @@ impl<T: AsRef<Path>> ValitidityMany for [T] {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn validate_file(path: &Path) -> std::io::Result<()> {
+fn validate_file(path: &Path) -> io::Result<()> {
     if path.extension().is_none() {
         let input_file = path.to_string_lossy().to_string();
         return new_io_error!(
@@ -214,7 +213,7 @@ fn validate_file(path: &Path) -> std::io::Result<()> {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn validate_existance(path: &Path) -> std::io::Result<()> {
+fn validate_existance(path: &Path) -> io::Result<()> {
     match path.try_exists() {
         Ok(true) => {
             trace!(file = ?path.file_name().expect("valid directory"), "exists on disk");
@@ -240,7 +239,7 @@ fn validate_existance(path: &Path) -> std::io::Result<()> {
 }
 
 pub trait Setup {
-    fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<ini::Ini>;
+    fn is_setup(&self, sections: &[Option<&str>]) -> io::Result<ini::Ini>;
 }
 
 impl<T: AsRef<Path>> Setup for T {
@@ -250,7 +249,7 @@ impl<T: AsRef<Path>> Setup for T {
     /// - **contains all sections** - if not returns `Err(InvalidData)`  
     /// - **File::open** does not return an error
     #[instrument(level = "trace", name = "ini_is_setup", skip(self))]
-    fn is_setup(&self, sections: &[Option<&str>]) -> std::io::Result<ini::Ini> {
+    fn is_setup(&self, sections: &[Option<&str>]) -> io::Result<ini::Ini> {
         let file_data = self.as_ref().to_string_lossy();
         let file_data = FileData::from(&file_data);
         if file_data.extension != ".ini" {
@@ -291,7 +290,7 @@ pub struct IniProperty<T: Parsable> {
 
 impl IniProperty<bool> {
     /// reads and parses a `bool` from a given Ini
-    pub fn read(ini: &Ini, section: Option<&str>, key: &str) -> std::io::Result<IniProperty<bool>> {
+    pub fn read(ini: &Ini, section: Option<&str>, key: &str) -> io::Result<IniProperty<bool>> {
         Ok(IniProperty {
             //section: section.map(String::from),
             //key: key.to_string(),
@@ -301,7 +300,7 @@ impl IniProperty<bool> {
 }
 impl IniProperty<u32> {
     /// reads and parses a `u32` from a given Ini
-    pub fn read(ini: &Ini, section: Option<&str>, key: &str) -> std::io::Result<IniProperty<u32>> {
+    pub fn read(ini: &Ini, section: Option<&str>, key: &str) -> io::Result<IniProperty<u32>> {
         Ok(IniProperty {
             //section: section.map(String::from),
             //key: key.to_string(),
@@ -320,7 +319,7 @@ impl IniProperty<PathBuf> {
         key: &str,
         path_prefix: Option<&Path>,
         skip_validation: bool,
-    ) -> std::io::Result<IniProperty<PathBuf>> {
+    ) -> io::Result<IniProperty<PathBuf>> {
         if section == INI_SECTIONS[1] && path_prefix.is_some() {
             panic!(
                 "path_prefix is invalid when reading a path from: {}",
@@ -348,7 +347,7 @@ impl IniProperty<Vec<PathBuf>> {
         key: &str,
         path_prefix: P,
         skip_validation: bool,
-    ) -> std::io::Result<IniProperty<Vec<PathBuf>>> {
+    ) -> io::Result<IniProperty<Vec<PathBuf>>> {
         Ok(IniProperty {
             //section: section.map(String::from),
             //key: key.to_string(),
@@ -370,7 +369,7 @@ impl<T: Parsable> IniProperty<T> {
         key: &str,
         skip_validation: bool,
         path_prefix: Option<&Path>,
-    ) -> std::io::Result<T> {
+    ) -> io::Result<T> {
         if let Some(s) = ini.section(section) {
             if s.contains_key(key) {
                 return T::parse_str(ini, section, path_prefix, key, skip_validation);
@@ -626,7 +625,7 @@ impl RegMod {
     /// then verifies that the saved state matches the state of the files  
     /// if not correct, runs toggle files to put them in the correct state  
     #[instrument(level = "trace", skip_all)]
-    pub fn verify_state(&mut self, game_dir: &Path, ini_dir: &Path) -> std::io::Result<()> {
+    pub fn verify_state(&mut self, game_dir: &Path, ini_dir: &Path) -> io::Result<()> {
         let count_try_verify_ouput = || -> (usize, Vec<usize>, usize) {
             let (mut exists, mut errors) = (0_usize, 0_usize);
             let mut not_found_indices = Vec::new();
@@ -692,7 +691,7 @@ impl RegMod {
     /// saves `self.state` and all `self.files` to file  
     /// it is important to keep track of the length of `self.files.file_refs()` before  
     /// making modifications to `self.files` to insure that the .ini file remains valid  
-    pub fn write_to_file(&self, ini_dir: &Path, was_array: bool) -> std::io::Result<()> {
+    pub fn write_to_file(&self, ini_dir: &Path, was_array: bool) -> io::Result<()> {
         save_bool(ini_dir, INI_SECTIONS[2], &self.name, self.state)?;
         if was_array {
             remove_array(ini_dir, &self.name)?;
@@ -717,7 +716,7 @@ impl RegMod {
 
     /// removes `self` from the given ini_dir, removes files based on the current status of self.is_array()  
     /// note if you modify `self.files` you might run into unexpected behavior
-    pub fn remove_from_file(&self, ini_dir: &Path) -> std::io::Result<()> {
+    pub fn remove_from_file(&self, ini_dir: &Path) -> io::Result<()> {
         remove_entry(ini_dir, INI_SECTIONS[2], &self.name)?;
         if self.is_array() {
             remove_array(ini_dir, &self.name)?;
@@ -731,7 +730,7 @@ impl RegMod {
 #[derive(Default)]
 pub struct CollectedMods {
     pub mods: Vec<RegMod>,
-    pub warnings: Option<std::io::Error>,
+    pub warnings: Option<io::Error>,
 }
 
 /// (`HashMap<key, bool_str`>, `HashMap<key, Vec<short_paths>`)
@@ -912,10 +911,10 @@ impl Cfg {
         name: &slint::SharedString,
         game_dir: &Path,
         order_map: Option<&OrderMap>,
-    ) -> std::io::Result<RegMod> {
+    ) -> io::Result<RegMod> {
         let key = name.replace(' ', "_");
         let split_files = if self.data().get_from(INI_SECTIONS[3], &key).ok_or_else(|| {
-            std::io::Error::new(
+            io::Error::new(
                 ErrorKind::InvalidInput,
                 format!("{key} not found in section: {}", INI_SECTIONS[3].unwrap()),
             )

@@ -1,19 +1,18 @@
 use std::{
     collections::HashSet,
-    io::ErrorKind,
+    io::{self, ErrorKind},
     path::{Path, PathBuf},
 };
 use tracing::{error, info, instrument, trace};
 
 use crate::{
-    does_dir_contain, file_name_from_str, file_name_or_err, new_io_error, parent_or_err,
+    FileData, does_dir_contain, file_name_from_str, file_name_or_err, new_io_error, parent_or_err,
     utils::ini::{parser::RegMod, writer::remove_order_entry},
-    FileData,
 };
 
 /// returns the deepest occurance of a directory that contains at least 1 file  
 /// use `parent_or_err` | `.parent` for a direct binding to what is one level up
-fn get_parent_dir(input: &Path) -> std::io::Result<PathBuf> {
+fn get_parent_dir(input: &Path) -> io::Result<PathBuf> {
     match input.metadata() {
         Ok(data) => {
             if data.is_dir() {
@@ -32,7 +31,7 @@ fn get_parent_dir(input: &Path) -> std::io::Result<PathBuf> {
 
 /// returns the deepest occurance of a directory that contains at least 1 file  
 /// use `parent_or_err` | `.parent` for a direct binding to what is one level up
-fn check_dir_contains_files(path: &Path) -> std::io::Result<PathBuf> {
+fn check_dir_contains_files(path: &Path) -> io::Result<PathBuf> {
     let num_of_dirs = items_in_directory(path, FileType::Dir)?;
     if directory_tree_is_empty(path)? {
         return new_io_error!(
@@ -70,7 +69,7 @@ enum FileType {
 
 /// returns `Ok(num)` of items of the given type located in the given directory  
 /// can error on fs::read_dir or failed to retrieve metadata
-fn items_in_directory(path: &Path, f_type: FileType) -> std::io::Result<usize> {
+fn items_in_directory(path: &Path, f_type: FileType) -> io::Result<usize> {
     let mut count = 0;
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
@@ -98,8 +97,8 @@ fn items_in_directory(path: &Path, f_type: FileType) -> std::io::Result<usize> {
 
 /// returns `Ok(num)` of files in a dir_tree,  
 /// returns `Err(InvalidData)` if _any_ symlink is found or fs::read_dir err
-fn files_in_directory_tree(directory: &Path) -> std::io::Result<usize> {
-    fn count_loop(count: &mut usize, path: &Path) -> std::io::Result<()> {
+fn files_in_directory_tree(directory: &Path) -> io::Result<usize> {
+    fn count_loop(count: &mut usize, path: &Path) -> io::Result<()> {
         for entry in std::fs::read_dir(path)? {
             let entry = entry?;
             let metadata = entry.metadata()?;
@@ -121,8 +120,8 @@ fn files_in_directory_tree(directory: &Path) -> std::io::Result<usize> {
 
 /// returns `Ok(true)` if dir_tree contains no files, note directories are not counted as files  
 /// returns `Err(InvalidData)` if _any_ symlink is found or fs::read_dir err
-fn directory_tree_is_empty(directory: &Path) -> std::io::Result<bool> {
-    fn lookup_loop(path: &Path) -> std::io::Result<bool> {
+fn directory_tree_is_empty(directory: &Path) -> io::Result<bool> {
+    fn lookup_loop(path: &Path) -> io::Result<bool> {
         for entry in std::fs::read_dir(path)? {
             let entry = entry?;
             let metadata = entry.metadata()?;
@@ -140,7 +139,7 @@ fn directory_tree_is_empty(directory: &Path) -> std::io::Result<bool> {
 
 /// returns the `path()` of the first directory found in the given path  
 /// can error on fs::read_dir
-fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
+fn next_dir(path: &Path) -> io::Result<PathBuf> {
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
@@ -151,7 +150,7 @@ fn next_dir(path: &Path) -> std::io::Result<PathBuf> {
 }
 
 /// returns the parent of input path with the _least_ ammount of ancestors  
-fn parent_dir_from_vec<P: AsRef<Path>>(in_files: &[P]) -> std::io::Result<PathBuf> {
+fn parent_dir_from_vec<P: AsRef<Path>>(in_files: &[P]) -> io::Result<PathBuf> {
     match in_files
         .iter()
         .min_by_key(|path| path.as_ref().ancestors().count())
@@ -229,7 +228,7 @@ pub struct InstallData {
 
 impl InstallData {
     /// creates a new `InstallData` from a collection of files
-    pub fn new(name: &str, file_paths: Vec<PathBuf>, game_dir: &Path) -> std::io::Result<Self> {
+    pub fn new(name: &str, file_paths: Vec<PathBuf>, game_dir: &Path) -> io::Result<Self> {
         let parent_dir = parent_dir_from_vec(&file_paths)?;
         let mut data = InstallData {
             name: String::from(name),
@@ -245,19 +244,15 @@ impl InstallData {
     }
 
     /// creates a new `InstallData` from a previously installed `RegMod` and amends a new collection of files  
-    pub fn amend(
-        amend_to: &RegMod,
-        file_paths: Vec<PathBuf>,
-        game_dir: &Path,
-    ) -> std::io::Result<Self> {
+    pub fn amend(amend_to: &RegMod, file_paths: Vec<PathBuf>, game_dir: &Path) -> io::Result<Self> {
         let dll_names = amend_to.files.dll.iter().try_fold(
             Vec::with_capacity(amend_to.files.len()),
             |mut acc, file| {
                 let file_name = file_name_or_err(file)?.to_str().ok_or_else(|| {
-                    std::io::Error::new(ErrorKind::InvalidData, "File name is not valid unicode")
+                    io::Error::new(ErrorKind::InvalidData, "File name is not valid unicode")
                 })?;
                 acc.push(FileData::from(file_name).name);
-                Ok::<Vec<&str>, std::io::Error>(acc)
+                Ok::<Vec<&str>, io::Error>(acc)
             },
         )?;
         let mut install_dir = game_dir.join("mods");
@@ -331,7 +326,7 @@ impl InstallData {
 
     /// returns a collection of `(from_path, to_path)` for easy copy operations  
     #[instrument(level = "trace", skip_all)]
-    pub fn zip_from_to_paths(&self) -> std::io::Result<Vec<(&Path, &Path)>> {
+    pub fn zip_from_to_paths(&self) -> io::Result<Vec<(&Path, &Path)>> {
         if self.from_paths.len() != self.to_paths.len() {
             error!(
                 from_len = self.from_paths.len(),
@@ -355,11 +350,7 @@ impl InstallData {
     /// use `update_fields_with_new_dir` when installing a mod from outside the game_dir  
     /// this function is for internal use only and contians no saftey checks
     #[instrument(level = "trace", skip(self, directory), fields(valid_dir = %directory.display()))]
-    fn import_files_from_dir(
-        &mut self,
-        directory: &Path,
-        cutoff: DisplayItems,
-    ) -> std::io::Result<()> {
+    fn import_files_from_dir(&mut self, directory: &Path, cutoff: DisplayItems) -> io::Result<()> {
         let file_count = files_in_directory_tree(directory)?;
 
         let mut cut_off_data = Cutoff::from(&cutoff, file_count);
@@ -374,7 +365,7 @@ impl InstallData {
             display_data: &mut Vec<String>,
             directory: &Path,
             cutoff: &mut Cutoff,
-        ) -> std::io::Result<()> {
+        ) -> io::Result<()> {
             for entry in std::fs::read_dir(directory)? {
                 let entry = entry?;
                 let path = entry.path();
@@ -433,10 +424,10 @@ impl InstallData {
         &mut self,
         new_directory: &Path,
         cutoff: DisplayItems,
-    ) -> std::io::Result<()> {
+    ) -> io::Result<()> {
         let mut self_clone = self.clone();
         let valid_dir = check_dir_contains_files(new_directory)?;
-        let jh = std::thread::spawn(move || -> std::io::Result<InstallData> {
+        let jh = std::thread::spawn(move || -> io::Result<InstallData> {
             let game_dir = self_clone.install_dir.parent().expect("has parent");
             if valid_dir.starts_with(game_dir) {
                 return new_io_error!(ErrorKind::InvalidInput, "Files are already installed");
@@ -485,11 +476,7 @@ impl InstallData {
 /// removes mod files safely by avoiding any call to `remove_dir_all()`  
 /// will remove all associated fiales with a `RegMod` then clean up any empty directories
 #[instrument(level = "trace", skip_all, fields(reg_mod = reg_mod.name))]
-pub fn remove_mod_files(
-    game_dir: &Path,
-    loader_dir: &Path,
-    reg_mod: &RegMod,
-) -> std::io::Result<()> {
+pub fn remove_mod_files(game_dir: &Path, loader_dir: &Path, reg_mod: &RegMod) -> io::Result<()> {
     let mut remove_files = reg_mod.files.full_paths(game_dir);
 
     for i in (0..remove_files.len()).rev() {
@@ -506,7 +493,7 @@ pub fn remove_mod_files(
                         "Permission denied while trying to access {}",
                         remove_files[i].display()
                     )
-                )
+                );
             }
         }
     }
@@ -553,7 +540,7 @@ pub fn remove_mod_files(
 /// scans the "mods" folder for ".dll"s | if the ".dll" has the same name as a directory the contentents  
 /// of that directory are included in that mod
 #[instrument(level = "trace", skip_all)]
-pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> {
+pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> io::Result<usize> {
     let scan_dir = game_dir.join("mods");
     if !matches!(scan_dir.try_exists(), Ok(true)) {
         return new_io_error!(
@@ -602,10 +589,11 @@ pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> std::io::Result<usize> 
             file_sets.push(RegMod::new(
                 file_data.name,
                 file_data.enabled,
-                vec![file
-                    .strip_prefix(game_dir)
-                    .expect("file found here")
-                    .to_path_buf()],
+                vec![
+                    file.strip_prefix(game_dir)
+                        .expect("file found here")
+                        .to_path_buf(),
+                ],
             ));
         }
     }

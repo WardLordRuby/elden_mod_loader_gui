@@ -4,21 +4,21 @@ pub mod common;
 mod tests {
     use std::{
         collections::HashSet,
-        fs::{remove_file, File},
+        fs::{File, remove_file},
+        io,
         path::{Path, PathBuf},
     };
 
     use elden_mod_loader_gui::{
-        get_cfg,
+        INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_SECTIONS, OFF_STATE, get_cfg,
         utils::ini::{
             common::*,
             parser::{IniProperty, RegMod, Setup},
             writer::*,
         },
-        INI_KEYS, INI_SECTIONS, LOADER_FILES, LOADER_SECTIONS, OFF_STATE,
     };
 
-    use crate::common::{new_cfg_with_sections, GAME_DIR};
+    use crate::common::{GAME_DIR, new_cfg_with_sections};
 
     #[test]
     fn does_u32_parse() {
@@ -169,7 +169,7 @@ mod tests {
         let expected_unknown_key_err = loader.verify_keys(&dlls, order_count).unwrap_err();
         assert_eq!(
             expected_unknown_key_err.err.kind(),
-            std::io::ErrorKind::Unsupported
+            io::ErrorKind::Unsupported
         );
 
         let ord_meta_data = loader.update_order_entries(None, &test_unknown_keys);
@@ -206,12 +206,12 @@ mod tests {
 
         let config = get_cfg(test_file).unwrap();
 
-        let pathbuf_err = std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
+        let pathbuf_err = io::Error::new(
+            io::ErrorKind::InvalidData,
             "Invalid type found. Expected: Path, Found: Vec<Path>",
         );
-        let vec_pathbuf_err = std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
+        let vec_pathbuf_err = io::Error::new(
+            io::ErrorKind::InvalidData,
             "Invalid type found. Expected: Vec<Path>, Found: Path",
         );
 

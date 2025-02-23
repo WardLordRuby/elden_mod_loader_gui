@@ -23,7 +23,7 @@ use utils::{
 
 use std::{
     collections::{HashMap, HashSet},
-    io::ErrorKind,
+    io::{self, ErrorKind},
     path::{Path, PathBuf},
 };
 
@@ -180,15 +180,11 @@ pub fn toggle_files(
     new_state: bool,
     reg_mod: &mut RegMod,
     save_file: Option<&Path>,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     fn join_paths(base_path: &Path, join_to: &[PathBuf]) -> Vec<PathBuf> {
         join_to.iter().map(|path| base_path.join(path)).collect()
     }
-    fn rename_files(
-        num_files: &usize,
-        paths: &[PathBuf],
-        new_paths: &[PathBuf],
-    ) -> std::io::Result<()> {
+    fn rename_files(num_files: &usize, paths: &[PathBuf], new_paths: &[PathBuf]) -> io::Result<()> {
         if *num_files != paths.len() || *num_files != new_paths.len() {
             return new_io_error!(
                 ErrorKind::InvalidInput,
@@ -252,7 +248,7 @@ pub fn toggle_files(
 /// if cfg file does not exist or is not set up with provided sections this function will  
 /// create a new ".ini" file in the given path  
 #[instrument(level = "trace", skip_all, fields(cfg_dir = %from_path.display()))]
-pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io::Result<Ini> {
+pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> io::Result<Ini> {
     match from_path.is_setup(sections) {
         Ok(ini) => return Ok(ini),
         Err(err) => warn!("{err}"),
@@ -263,7 +259,7 @@ pub fn get_or_setup_cfg(from_path: &Path, sections: &[Option<&str>]) -> std::io:
 /// returns ini read into memory, only call this if you know ini exists  
 /// if you are not sure call `get_or_setup_cfg()` or `check &path.is_setup()`  
 #[instrument(level = "trace", skip_all)]
-pub fn get_cfg(from_path: &Path) -> std::io::Result<Ini> {
+pub fn get_cfg(from_path: &Path) -> io::Result<Ini> {
     let ini = Ini::load_from_file_noescape(from_path).map_err(|err| err.into_io_error("", ""))?;
     trace!(file = ?from_path.file_name().unwrap(), "loaded ini from file");
     Ok(ini)
@@ -293,7 +289,7 @@ pub fn does_dir_contain<'a, T>(
     dir: &Path,
     operation: Operation,
     list: &'a [T],
-) -> std::io::Result<OperationResult<'a>>
+) -> io::Result<OperationResult<'a>>
 where
     T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash,
 {
@@ -336,7 +332,7 @@ where
 
 /// returns a collection of references to entries in list that are not found in the supplied directory  
 /// returns an empty Vec if all files were found
-pub fn files_not_found<'a, T>(dir: &Path, list: &'a [T]) -> std::io::Result<Vec<&'a str>>
+pub fn files_not_found<'a, T>(dir: &Path, list: &'a [T]) -> io::Result<Vec<&'a str>>
 where
     T: std::borrow::Borrow<str> + std::cmp::Eq + std::hash::Hash,
 {
@@ -427,24 +423,20 @@ impl FileData<'_> {
 #[instrument(level = "trace", skip_all)]
 pub fn omit_off_state(name: &str) -> &str {
     let (file_state, index) = FileData::state_data(name);
-    if file_state {
-        name
-    } else {
-        &name[..index]
-    }
+    if file_state { name } else { &name[..index] }
 }
 
 /// convience function to map Option None to an io Error
 #[inline]
-pub fn parent_or_err(path: &Path) -> std::io::Result<&Path> {
+pub fn parent_or_err(path: &Path) -> io::Result<&Path> {
     path.parent()
-        .ok_or_else(|| std::io::Error::new(ErrorKind::InvalidData, "Could not get parent_dir"))
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "Could not get parent_dir"))
 }
 /// convience function to map Option None to an io Error
 #[inline]
-pub fn file_name_or_err(path: &Path) -> std::io::Result<&std::ffi::OsStr> {
+pub fn file_name_or_err(path: &Path) -> io::Result<&std::ffi::OsStr> {
     path.file_name()
-        .ok_or_else(|| std::io::Error::new(ErrorKind::InvalidData, "Could not get file_name"))
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "Could not get file_name"))
 }
 
 /// returns whats right of the right most "\\" or does nothing
@@ -471,7 +463,7 @@ impl Cfg {
     /// first tries to validate the path saved in the .ini if that fails then tries to located the "game_dir" on disk  
     /// if that fails will return a `PathResult::Partial` that is known to exist if not returns `PathResult::None` that contains just the found drive
     #[instrument(level = "trace", skip_all)]
-    pub fn attempt_locate_game(&mut self) -> std::io::Result<PathResult> {
+    pub fn attempt_locate_game(&mut self) -> io::Result<PathResult> {
         match IniProperty::<PathBuf>::read(self.data(), INI_SECTIONS[1], INI_KEYS[2], None, false) {
             Ok(path) => {
                 info!("Game directory in: {INI_NAME}, is valid");
@@ -505,7 +497,7 @@ impl Cfg {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn attempt_locate_dir(target_path: &[&str]) -> std::io::Result<PathBuf> {
+fn attempt_locate_dir(target_path: &[&str]) -> io::Result<PathBuf> {
     let curr_drive = get_drive(&std::env::current_dir()?)?;
 
     trace!(?curr_drive, "Drive Found");
@@ -523,7 +515,7 @@ fn attempt_locate_dir(target_path: &[&str]) -> std::io::Result<PathBuf> {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> std::io::Result<PathBuf> {
+fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> io::Result<PathBuf> {
     for (index, dir) in target_path.iter().enumerate() {
         path.push(dir);
         trace!(path = %path.display(), "Testing");
@@ -540,7 +532,7 @@ fn test_path_buf(mut path: PathBuf, target_path: &[&str]) -> std::io::Result<Pat
     Ok(path)
 }
 
-fn get_drive(path: &Path) -> std::io::Result<std::ffi::OsString> {
+fn get_drive(path: &Path) -> io::Result<std::ffi::OsString> {
     path.components()
         .next()
         .map(|root| {
@@ -548,5 +540,5 @@ fn get_drive(path: &Path) -> std::io::Result<std::ffi::OsString> {
             drive.push("\\");
             drive
         })
-        .ok_or_else(|| std::io::Error::new(ErrorKind::InvalidData, "Could not get root component"))
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "Could not get root component"))
 }

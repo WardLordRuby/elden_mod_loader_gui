@@ -3,16 +3,15 @@ use tracing::{info, instrument, trace};
 
 use std::{
     fmt::Display,
-    fs::{self, read_to_string, write, File},
+    fs::{self, File, read_to_string, write},
     io::{Error, ErrorKind, Result, Write},
     path::Path,
 };
 
 use crate::{
-    file_name_or_err, get_cfg, new_io_error, omit_off_state, parent_or_err,
-    utils::ini::parser::RegMod, DisplayName, ARRAY_KEY, ARRAY_VALUE, DEFAULT_INI_VALUES,
-    DEFAULT_LOADER_VALUES, INI_KEYS, INI_NAME, INI_SECTIONS, LOADER_FILES, LOADER_KEYS,
-    LOADER_SECTIONS,
+    ARRAY_KEY, ARRAY_VALUE, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, DisplayName, INI_KEYS,
+    INI_NAME, INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS, file_name_or_err, get_cfg,
+    new_io_error, omit_off_state, parent_or_err, utils::ini::parser::RegMod,
 };
 
 pub const WRITE_OPTIONS: WriteOption = WriteOption {

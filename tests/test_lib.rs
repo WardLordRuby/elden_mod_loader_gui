@@ -3,19 +3,19 @@ pub mod common;
 #[cfg(test)]
 mod tests {
     use elden_mod_loader_gui::{
-        does_dir_contain, get_cfg, toggle_files,
+        INI_SECTIONS, OFF_STATE, Operation, OperationResult, does_dir_contain, get_cfg,
+        toggle_files,
         utils::ini::{
             parser::{IniProperty, RegMod},
             writer::{save_path, save_paths},
         },
-        Operation, OperationResult, INI_SECTIONS, OFF_STATE,
     };
     use std::{
-        fs::{self, remove_file, File},
+        fs::{self, File, remove_file},
         path::{Path, PathBuf},
     };
 
-    use crate::common::{file_exists, new_cfg_with_sections, GAME_DIR};
+    use crate::common::{GAME_DIR, file_exists, new_cfg_with_sections};
 
     #[test]
     fn do_files_toggle() {
@@ -82,9 +82,11 @@ mod tests {
         .unwrap()
         .value;
 
-        assert!(read_disabled_ini
-            .iter()
-            .all(|read| test_files_disabled.contains(read)));
+        assert!(
+            read_disabled_ini
+                .iter()
+                .all(|read| test_files_disabled.contains(read))
+        );
 
         let mut test_mod = RegMod::new(&test_mod.name, false, test_files_disabled);
 
@@ -110,9 +112,11 @@ mod tests {
         .unwrap()
         .value;
 
-        assert!(read_enabled_ini
-            .iter()
-            .all(|read| test_files.contains(&read.as_path())));
+        assert!(
+            read_enabled_ini
+                .iter()
+                .all(|read| test_files.contains(&read.as_path()))
+        );
 
         for test_file in test_files.iter() {
             remove_file(test_file).unwrap();

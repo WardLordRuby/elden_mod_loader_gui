@@ -1,14 +1,13 @@
 use std::{
-    io::ErrorKind,
+    io::{self, ErrorKind},
     path::{Path, PathBuf},
 };
 
-use crate::{utils::ini::parser::LoadOrder, ANTI_CHEAT_EXE};
+use crate::{ANTI_CHEAT_EXE, utils::ini::parser::LoadOrder};
 
 pub const TECHIE_W_MSG: &str = "Could not find Elden Mod Loader Script!\n\
     This tool requires 'Elden Mod Loader' by TechieW to be installed!";
-pub const TUTORIAL_MSG: &str =
-    "Add mods to the app by entering a name and selecting mod files with \"Select Files\"\n\n\
+pub const TUTORIAL_MSG: &str = "Add mods to the app by entering a name and selecting mod files with \"Select Files\"\n\n\
     You can always add more files to a mod or de-register a mod at any time from within the app\n\n\
     Do not forget to disable easy anti-cheat before playing with mods installed!";
 
@@ -136,7 +135,10 @@ pub struct DisplayAntiCheatMsg;
 impl std::fmt::Display for DisplayAntiCheatMsg {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "'{ANTI_CHEAT_EXE}' has been toggled. EAC is currently enabled.\n\nTo use the app please toggle EAC using the exe")
+        write!(
+            f,
+            "'{ANTI_CHEAT_EXE}' has been toggled. EAC is currently enabled.\n\nTo use the app please toggle EAC using the exe"
+        )
     }
 }
 
@@ -201,15 +203,15 @@ impl<D: std::fmt::Display> std::fmt::Display for DisplayTime<D> {
 }
 
 pub trait IntoIoError {
-    fn into_io_error(self, key: &str, context: &str) -> std::io::Error;
+    fn into_io_error(self, key: &str, context: &str) -> io::Error;
 }
 
 impl IntoIoError for ini::Error {
     /// converts `ini::Error` into `io::Error` key and context are not used  
-    fn into_io_error(self, _key: &str, _context: &str) -> std::io::Error {
+    fn into_io_error(self, _key: &str, _context: &str) -> io::Error {
         match self {
             ini::Error::Io(err) => err,
-            ini::Error::Parse(err) => std::io::Error::new(ErrorKind::InvalidData, err),
+            ini::Error::Parse(err) => io::Error::new(ErrorKind::InvalidData, err),
         }
     }
 }
@@ -217,8 +219,8 @@ impl IntoIoError for ini::Error {
 impl IntoIoError for std::str::ParseBoolError {
     /// converts `ParseBoolError` into `io::Error` key and context add context to err msg
     #[inline]
-    fn into_io_error(self, key: &str, context: &str) -> std::io::Error {
-        std::io::Error::new(
+    fn into_io_error(self, key: &str, context: &str) -> io::Error {
+        io::Error::new(
             ErrorKind::InvalidData,
             format!(
                 "string: '{context}', saved with key: '{key}', was not `true`, `false`, `1`, or `0`"
@@ -230,8 +232,8 @@ impl IntoIoError for std::str::ParseBoolError {
 impl IntoIoError for std::num::ParseIntError {
     /// converts `ParseIntError` into `io::Error` key and context add context to err msg
     #[inline]
-    fn into_io_error(self, key: &str, context: &str) -> std::io::Error {
-        std::io::Error::new(
+    fn into_io_error(self, key: &str, context: &str) -> io::Error {
+        io::Error::new(
             ErrorKind::InvalidData,
             format!(
                 "string: '{context}', saved with key: '{key}', was not within the valid `U32 range`"
@@ -245,40 +247,40 @@ pub trait ModError {
     fn add_msg(&mut self, msg: &str, add_new_line: bool);
 }
 
-impl ModError for std::io::Error {
+impl ModError for io::Error {
     #[inline]
     fn add_msg(&mut self, msg: &str, add_new_line: bool) {
         let formatter = if add_new_line { "\n" } else { ", " };
         std::mem::swap(
             self,
-            &mut std::io::Error::new(self.kind(), format!("{self}{formatter}{msg}")),
+            &mut io::Error::new(self.kind(), format!("{self}{formatter}{msg}")),
         )
     }
 }
 
 pub trait ErrorClone {
     /// clones a immutable reference to an `Error` to a owned `io::Error`
-    fn clone_err(&self) -> std::io::Error;
+    fn clone_err(&self) -> io::Error;
 }
 
-impl ErrorClone for std::io::Error {
+impl ErrorClone for io::Error {
     #[inline]
-    fn clone_err(&self) -> std::io::Error {
-        std::io::Error::new(self.kind(), self.to_string())
+    fn clone_err(&self) -> io::Error {
+        io::Error::new(self.kind(), self.to_string())
     }
 }
 
 pub trait Merge {
     /// joins all `io::Error`'s in a collection while leaving the collection intact  
     /// **Note:** will panic if called on an empty array
-    fn merge(&self, add_new_line: bool) -> std::io::Error;
+    fn merge(&self, add_new_line: bool) -> io::Error;
 }
-impl Merge for [std::io::Error] {
-    fn merge(&self, add_new_line: bool) -> std::io::Error {
+impl Merge for [io::Error] {
+    fn merge(&self, add_new_line: bool) -> io::Error {
         if self.is_empty() {
             panic!("Tried to merge 0 errors");
         }
-        let mut new_err: std::io::Error = self[0].clone_err();
+        let mut new_err: io::Error = self[0].clone_err();
         if self.len() > 1 {
             self.iter()
                 .skip(1)

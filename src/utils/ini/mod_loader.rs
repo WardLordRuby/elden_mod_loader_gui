@@ -1,19 +1,18 @@
 use std::{
     collections::{HashMap, HashSet},
-    io::ErrorKind,
+    io::{self, ErrorKind},
     path::{Path, PathBuf},
 };
 use tracing::{info, instrument, trace, warn};
 
 use crate::{
-    does_dir_contain,
+    ANTI_CHEAT_EXE, DisplayState, DisplayVec, DllSet, LOADER_EXAMPLE, LOADER_FILES, Operation,
+    OperationResult, OrderMap, does_dir_contain,
     utils::ini::{
         common::{Config, ModLoaderCfg},
         parser::RegMod,
         writer::new_cfg,
     },
-    DisplayState, DisplayVec, DllSet, Operation, OperationResult, OrderMap, ANTI_CHEAT_EXE,
-    LOADER_EXAMPLE, LOADER_FILES,
 };
 
 #[derive(Debug, Default)]
@@ -31,7 +30,7 @@ impl ModLoader {
     ///
     /// can only error if it finds loader hook installed && "elden_mod_loader_config.ini" is not found so it fails on writing a new one to disk
     #[instrument(level = "trace", name = "mod_loader_properties", skip_all)]
-    pub fn properties(game_dir: &Path) -> std::io::Result<ModLoader> {
+    pub fn properties(game_dir: &Path) -> io::Result<ModLoader> {
         let mut cfg_dir = game_dir.join(LOADER_FILES[3]);
         let mut properties = ModLoader::default();
         let search_for = LOADER_FILES
@@ -136,13 +135,13 @@ impl ModLoader {
 /// it is save to update the global `UNKNOWN_ORDER_KEYS` with `unknown_keys` if `is_some()`  
 /// this is because of the case a write to file fails `unknown_keys` will be `None`
 pub struct UnknownKeyErr {
-    pub err: std::io::Error,
+    pub err: io::Error,
     pub unknown_keys: Option<HashSet<String>>,
     pub update_ord_data: Option<OrdMetaData>,
 }
 
 impl UnknownKeyErr {
-    fn empty_with_err(err: std::io::Error) -> Self {
+    fn empty_with_err(err: io::Error) -> Self {
         UnknownKeyErr {
             err,
             unknown_keys: None,
@@ -232,10 +231,13 @@ impl ModLoaderCfg {
             }
         });
         if update_order {
-            let err = std::io::Error::new(ErrorKind::Unsupported,
-                    format!("Found load order set for file(s) not registered with the app. One or more of the following key(s) order has been changed: {}", 
-                    DisplayVec(&unknown_keys))
-                );
+            let err = io::Error::new(
+                ErrorKind::Unsupported,
+                format!(
+                    "Found load order set for file(s) not registered with the app. One or more of the following key(s) order has been changed: {}",
+                    DisplayVec(&unknown_keys)
+                ),
+            );
             let unknown_key_set = unknown_keys.into_iter().collect::<HashSet<_>>();
             let update_ord_data = self.update_order_entries(None, &unknown_key_set);
             self.write_to_file()
@@ -247,7 +249,7 @@ impl ModLoaderCfg {
             });
         }
         Err(UnknownKeyErr {
-            err: std::io::Error::other(format!(
+            err: io::Error::other(format!(
                 "Found load order set for the following file(s) not registered with the app: {}",
                 DisplayVec(&unknown_keys)
             )),
@@ -259,7 +261,7 @@ impl ModLoaderCfg {
     /// returns an owned `HashMap` with values parsed into K: `String`, V: `usize`  
     /// this function also fixes usize.parse() errors and if values are out of order
     #[instrument(level = "trace", skip_all)]
-    pub fn parse_section(&mut self, unknown_keys: &HashSet<String>) -> std::io::Result<OrderMap> {
+    pub fn parse_section(&mut self, unknown_keys: &HashSet<String>) -> io::Result<OrderMap> {
         let mut write_to_file = false;
         if self.section().contains_key(LOADER_EXAMPLE) {
             self.mut_section().remove(LOADER_EXAMPLE);

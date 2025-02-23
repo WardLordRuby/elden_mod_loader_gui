@@ -8,16 +8,15 @@ use std::{
 use tracing::{info, instrument};
 
 use crate::{
-    get_or_setup_cfg,
+    ARRAY_KEY, ARRAY_VALUE, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_NAME,
+    INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS, get_or_setup_cfg,
     utils::{
         display::{DisplayTheme, DisplayTime, IntoIoError, ModError},
         ini::{
-            parser::{parse_bool, IniProperty},
-            writer::{save_bool, save_value_ext, EXT_OPTIONS, WRITE_OPTIONS},
+            parser::{IniProperty, parse_bool},
+            writer::{EXT_OPTIONS, WRITE_OPTIONS, save_bool, save_value_ext},
         },
     },
-    ARRAY_KEY, ARRAY_VALUE, DEFAULT_INI_VALUES, DEFAULT_LOADER_VALUES, INI_KEYS, INI_NAME,
-    INI_SECTIONS, LOADER_FILES, LOADER_KEYS, LOADER_SECTIONS,
 };
 
 pub trait Config {

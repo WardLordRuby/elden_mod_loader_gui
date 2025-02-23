@@ -11,7 +11,7 @@ use elden_mod_loader_gui::{
             parser::{CollectedMods, RegMod, Setup, SplitFiles},
             writer::*,
         },
-        installer::{remove_mod_files, scan_for_mods, InstallData},
+        installer::{InstallData, remove_mod_files, scan_for_mods},
         subscriber::init_subscriber,
     },
     *,
@@ -21,17 +21,17 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, StandardListViewItem,
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     ffi::OsStr,
-    io::ErrorKind,
+    io::{self, ErrorKind},
     path::{Path, PathBuf},
     rc::Rc,
     sync::{
-        atomic::{AtomicU32, Ordering},
         LazyLock, OnceLock,
+        atomic::{AtomicU32, Ordering},
     },
 };
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver},
     RwLock,
+    mpsc::{UnboundedReceiver, unbounded_channel},
 };
 use tracing::{error, info, info_span, instrument, trace, warn};
 
@@ -868,7 +868,7 @@ fn main() {
                     loader.parse_into_map()
                 });
                 let game_dir = get_or_update_game_dir(None);
-                let reset_app_state_hook = |err: std::io::Error, mut ini: Cfg| {
+                let reset_app_state_hook = |err: io::Error, mut ini: Cfg| {
                     ui.display_and_log_err(err);
                     reset_app_state(&mut ini, &game_dir, Some(loader_dir), Some(&unknown_orders), ui.as_weak());
                 };
@@ -1491,7 +1491,7 @@ impl App {
         self.invoke_show_confirm_popup();
     }
 
-    fn display_and_log_err(&self, err: std::io::Error) {
+    fn display_and_log_err(&self, err: io::Error) {
         let err_str = err.to_string();
         error!("{err_str}");
         self.display_msg(&err_str);
@@ -1552,7 +1552,7 @@ fn rfd_hang_workaround(window: &slint::Window) {
     window.set_size(size);
 }
 
-fn get_user_folder(path: &Path, ui_window: &slint::Window) -> std::io::Result<PathBuf> {
+fn get_user_folder(path: &Path, ui_window: &slint::Window) -> io::Result<PathBuf> {
     let f_result = match rfd::FileDialog::new()
         .set_directory(path)
         .set_parent(&ui_window.window_handle())
@@ -1568,7 +1568,7 @@ fn get_user_folder(path: &Path, ui_window: &slint::Window) -> std::io::Result<Pa
     f_result
 }
 
-fn get_user_files(path: &Path, ui_window: &slint::Window) -> std::io::Result<Vec<PathBuf>> {
+fn get_user_files(path: &Path, ui_window: &slint::Window) -> io::Result<Vec<PathBuf>> {
     let f_result = match rfd::FileDialog::new()
         .set_directory(path)
         .set_parent(&ui_window.window_handle())
@@ -1833,7 +1833,7 @@ async fn install_new_mod(
     files: Vec<PathBuf>,
     game_dir: &Path,
     ui_handle: slint::Weak<App>,
-) -> std::io::Result<Vec<PathBuf>> {
+) -> io::Result<Vec<PathBuf>> {
     let ui = ui_handle.unwrap();
     let mod_name = name.trim();
     ui.display_confirm(
@@ -1855,7 +1855,7 @@ async fn install_new_files_to_mod(
     files: Vec<PathBuf>,
     game_dir: &Path,
     ui_handle: slint::Weak<App>,
-) -> std::io::Result<Vec<PathBuf>> {
+) -> io::Result<Vec<PathBuf>> {
     let ui = ui_handle.unwrap();
     ui.display_confirm(
         "Selected files are not installed? Would you like to try and install them?",
@@ -1875,7 +1875,7 @@ async fn install_new_files_to_mod(
 async fn add_dir_to_install_data(
     mut install_files: InstallData,
     ui_handle: slint::Weak<App>,
-) -> std::io::Result<Vec<PathBuf>> {
+) -> io::Result<Vec<PathBuf>> {
     let ui = ui_handle.unwrap();
     ui.display_confirm(&format!(
         "Current Files to install:\n{}\n\nWould you like to add a directory eg. Folder containing a config file?", 
@@ -1909,7 +1909,7 @@ async fn add_dir_to_install_data(
 async fn confirm_install(
     install_files: InstallData,
     ui_handle: slint::Weak<App>,
-) -> std::io::Result<Vec<PathBuf>> {
+) -> io::Result<Vec<PathBuf>> {
     let ui = ui_handle.unwrap();
     ui.display_confirm(
         &format!(
@@ -1939,7 +1939,7 @@ async fn confirm_install(
     let parents = zip
         .iter()
         .map(|(_, to_path)| parent_or_err(to_path))
-        .collect::<std::io::Result<Vec<&Path>>>()?;
+        .collect::<io::Result<Vec<&Path>>>()?;
     parents.iter().try_for_each(std::fs::create_dir_all)?;
     zip.iter()
         .try_for_each(|(from_path, to_path)| std::fs::copy(from_path, to_path).map(|_| ()))?;
@@ -1950,6 +1950,15 @@ async fn confirm_install(
         .collect())
 }
 
+impl From<Message> for io::Result<()> {
+    fn from(value: Message) -> Self {
+        let Message::Esc = value else {
+            panic!("Only escape has a into impl for io::Error")
+        };
+        new_io_error!(ErrorKind::Interrupted, "De-registration canceled")
+    }
+}
+
 #[instrument(level = "trace", skip_all, fields(mod_name = reg_mod.name))]
 async fn confirm_remove_mod(
     ui_handle: slint::Weak<App>,
@@ -1957,7 +1966,7 @@ async fn confirm_remove_mod(
     loader_dir: &Path,
     reg_mod: &RegMod,
     ini_dir: &Path,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     let ui = ui_handle.unwrap();
     let Some(install_dir) = reg_mod
         .files
@@ -1968,13 +1977,11 @@ async fn confirm_remove_mod(
         return new_io_error!(ErrorKind::InvalidData, "Failed to create an install_dir");
     };
 
-    let match_user_msg = || async {
-        let esc_result = new_io_error!(ErrorKind::Interrupted, "De-registration canceled");
-        match receive_msg().await {
-            Message::Confirm => Ok(()),
-            Message::Deny => {
-                if reg_mod.order.set {
-                    ui.display_confirm(
+    let match_user_msg = async || match receive_msg().await {
+        Message::Confirm => Ok(()),
+        Message::Deny => {
+            if reg_mod.order.set {
+                ui.display_confirm(
                         &format!(
                             "Do you want to remove the set load order of: {}?\n\n\
                             Note: order entries that are set within: {}, and not registered \
@@ -1986,24 +1993,23 @@ async fn confirm_remove_mod(
                         ),
                         Buttons::YesNo,
                     );
-                    match receive_msg().await {
-                        Message::Confirm => remove_order_entry(reg_mod, loader_dir)?,
-                        Message::Deny => (),
-                        Message::Esc => return esc_result,
-                    }
+                match receive_msg().await {
+                    Message::Confirm => remove_order_entry(reg_mod, loader_dir)?,
+                    Message::Deny => (),
+                    esc @ Message::Esc => return esc.into(),
                 }
-                reg_mod.remove_from_file(ini_dir)?;
-                new_io_error!(
-                    ErrorKind::ConnectionAborted,
-                    format!(
-                        "Files registered with: {}, are still installed at: '{}'",
-                        DisplayName(&reg_mod.name),
-                        install_dir.display()
-                    )
-                )
             }
-            Message::Esc => esc_result,
+            reg_mod.remove_from_file(ini_dir)?;
+            new_io_error!(
+                ErrorKind::ConnectionAborted,
+                format!(
+                    "Files registered with: {}, are still installed at: '{}'",
+                    DisplayName(&reg_mod.name),
+                    install_dir.display()
+                )
+            )
         }
+        esc @ Message::Esc => esc.into(),
     };
 
     ui.display_confirm(
@@ -2029,7 +2035,7 @@ async fn confirm_scan_mods(
     game_dir: &Path,
     ini: Option<&Cfg>,
     order_map: Option<&OrderMap>,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     let ui = ui_handle.unwrap();
 
     ui.display_confirm(
