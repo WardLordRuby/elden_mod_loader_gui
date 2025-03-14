@@ -849,6 +849,28 @@ impl Combine for CollectedMaps<'_> {
 }
 
 impl Cfg {
+    fn collect_data_unchecked(&self) -> Vec<RegMod> {
+        let mod_state_data = self
+            .data()
+            .section(INI_SECTIONS[2])
+            .expect("Validated by Ini::is_setup on startup");
+        let file_data = self
+            .data()
+            .section(INI_SECTIONS[3])
+            .expect("Validated by Ini::is_setup on startup");
+        PropertyArray(file_data)
+            .into_iter()
+            .map(|(name, files)| {
+                let state = mod_state_data.get(name).expect("key exists");
+                RegMod::new(
+                    name,
+                    parse_bool(state).unwrap_or(true),
+                    files.iter().map(PathBuf::from).collect(),
+                )
+            })
+            .collect()
+    }
+
     /// returns only valid mod data, if data was found to be invalid a message  
     /// is given to inform the user of why a mod was not included  
     ///
@@ -865,34 +887,8 @@ impl Cfg {
         skip_validation: bool,
     ) -> CollectedMods {
         if skip_validation {
-            let collect_data_unchecked = || -> Vec<(&str, &str, Vec<&str>)> {
-                let mod_state_data = self
-                    .data()
-                    .section(INI_SECTIONS[2])
-                    .expect("Validated by Ini::is_setup on startup");
-                let file_data = self
-                    .data()
-                    .section(INI_SECTIONS[3])
-                    .expect("Validated by Ini::is_setup on startup");
-                PropertyArray(file_data)
-                    .into_iter()
-                    .map(|(k, v)| {
-                        let s = mod_state_data.get(k).expect("key exists");
-                        (k, s, v)
-                    })
-                    .collect()
-            };
             return CollectedMods {
-                mods: collect_data_unchecked()
-                    .iter()
-                    .map(|(n, s, f)| {
-                        RegMod::new(
-                            n,
-                            parse_bool(s).unwrap_or(true),
-                            f.iter().map(PathBuf::from).collect(),
-                        )
-                    })
-                    .collect(),
+                mods: self.collect_data_unchecked(),
                 warnings: None,
             };
         }
@@ -1075,36 +1071,38 @@ impl Cfg {
     ) -> (DllSet, usize, bool) {
         let mut counter = 0_usize;
         let mut order_removed = false;
-        (
-            PropertyArray(self.data().section(INI_SECTIONS[3]).expect("valided on startup"))
-                .into_iter()
-                .flat_map(|(name, v)| {
-                    let mut order_found = false;
-                    v.iter()
-                        .filter(|f| FileData::from(f).extension == ".dll")
-                        .map(|f_path| {
-                            let f_name = omit_off_state(file_name_from_str(f_path));
-                            if loader_section.contains_key(f_name) {
-                                if !order_found {
-                                    order_found = true;
-                                    counter += 1;
-                                } else {
-                                    order_removed = true;
-                                    loader_section.remove(f_name);
-                                    warn!(
-                                        "Load order found set for more than one file associated with mod: {}, removed order for file: {f_name}",
-                                         DisplayName(name)
-                                    );
-                                }
-                            }
-                            f_name
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect::<DllSet>(),
-            counter,
-            order_removed,
+        let dll_set = PropertyArray(
+            self.data()
+                .section(INI_SECTIONS[3])
+                .expect("valided on startup"),
         )
+        .into_iter()
+        .flat_map(|(name, v)| {
+            let mut order_found = false;
+            v.iter()
+                .filter(|f| FileData::from(f).extension == ".dll")
+                .map(|f_path| {
+                    let f_name = omit_off_state(file_name_from_str(f_path));
+                    if loader_section.contains_key(f_name) {
+                        if !order_found {
+                            order_found = true;
+                            counter += 1;
+                        } else {
+                            order_removed = true;
+                            loader_section.remove(f_name);
+                            warn!(
+                                "Load order found set for more than one file associated with mod: {}, removed order for file: {f_name}",
+                                 DisplayName(name)
+                            );
+                        }
+                    }
+                    f_name
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+        (dll_set, counter, order_removed)
     }
 }
 
