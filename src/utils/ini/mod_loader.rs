@@ -317,7 +317,7 @@ impl ModLoaderCfg {
             .collect::<OrderMap>()
     }
 
-    /// updates the load order values in `Some("loadorder")` so there are no gaps in values  
+    /// updates the load order values in `Some("load_order")` so there are no gaps in values  
     /// if you want a key's value to remain the unedited you can supply `Some(stable_key)`  
     /// this also calculates the correct max_order val (same logic appears in `[RegMod].max_order()`)  
     /// && stores any missing values in range `1..high_order`

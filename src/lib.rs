@@ -98,7 +98,7 @@ impl PathErrors<'_> {
 
 /// returns `Ok(Vec<Path>)` if the remove path is a valid prefix of all input paths  
 /// if not returns `Err(PathErrors)` that contains:
-/// - `PathErrors.ok_paths_short` - sucessful strip_prefix() calls  
+/// - `PathErrors.ok_paths_short` - successful strip_prefix() calls  
 /// - `PathErrors.err_paths_long` - paths that remove path was not valid prefix  
 #[instrument(level = "trace", skip_all)]
 pub fn shorten_paths<'a, P: AsRef<Path>>(
@@ -120,11 +120,11 @@ pub fn shorten_paths<'a, P: AsRef<Path>>(
         );
         return Err(results);
     }
-    trace!("successfuly shortened all paths");
+    trace!("successfully shortened all paths");
     Ok(results.ok_paths_short)
 }
 
-/// finds the current state of the input Path and returns an owned Pathbuf in the opposite state
+/// finds the current state of the input Path and returns an owned PathBuf in the opposite state
 pub fn toggle_path_state(path: &Path) -> PathBuf {
     let mut path_str = path.to_string_lossy().to_string();
     let path_data = FileData::from(&path_str);
@@ -383,7 +383,7 @@ impl FileData<'_> {
     }
 
     /// index is only used in the _disabled_ state to locate where `OFF_STATE` begins  
-    /// saftey check to make sure `OFF_STATE` is found at the end of a `&str`
+    /// safety check to make sure `OFF_STATE` is found at the end of a `&str`
     #[instrument(level = "trace")]
     pub fn state_data(path: &str) -> (bool, usize) {
         if let Some(index) = path.find(OFF_STATE) {
@@ -426,13 +426,13 @@ pub fn omit_off_state(name: &str) -> &str {
     if file_state { name } else { &name[..index] }
 }
 
-/// convience function to map Option None to an io Error
+/// convenience function to map Option None to an io Error
 #[inline]
 pub fn parent_or_err(path: &Path) -> io::Result<&Path> {
     path.parent()
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "Could not get parent_dir"))
 }
-/// convience function to map Option None to an io Error
+/// convenience function to map Option None to an io Error
 #[inline]
 pub fn file_name_or_err(path: &Path) -> io::Result<&std::ffi::OsStr> {
     path.file_name()

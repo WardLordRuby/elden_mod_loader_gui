@@ -49,8 +49,8 @@ app you will have to move the config file as well. It is not recommended to edit
 * On game dir verified you can Register mods to the app  
 * Easily add more files to a registered mod. eg. config files  
 * Easily toggle each registered mod on and off  
-* View registed mods details, State, Files, User provided Name  
-* If registred mod contains an ini file you are able to open config files from within the app  
+* View registered mods details, State, Files, User provided Name  
+* If registered mod contains an ini file you are able to open config files from within the app  
 * Swap between Dark and Light themes for the app  
 * On de-registration of a mod app will make sure it is set to enabled  
 * Writes logs to file "EML_gui_log.txt"  

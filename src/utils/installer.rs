@@ -10,7 +10,7 @@ use crate::{
     utils::ini::{parser::RegMod, writer::remove_order_entry},
 };
 
-/// returns the deepest occurance of a directory that contains at least 1 file  
+/// returns the deepest occurrence of a directory that contains at least 1 file  
 /// use `parent_or_err` | `.parent` for a direct binding to what is one level up
 fn get_parent_dir(input: &Path) -> io::Result<PathBuf> {
     match input.metadata() {
@@ -20,7 +20,7 @@ fn get_parent_dir(input: &Path) -> io::Result<PathBuf> {
             } else if data.is_file() {
                 Ok(check_dir_contains_files(parent_or_err(input)?)?)
             } else {
-                new_io_error!(ErrorKind::InvalidData, "Unsuported file type")
+                new_io_error!(ErrorKind::InvalidData, "Unsupported file type")
             }
         }
         Err(_) => {
@@ -29,7 +29,7 @@ fn get_parent_dir(input: &Path) -> io::Result<PathBuf> {
     }
 }
 
-/// returns the deepest occurance of a directory that contains at least 1 file  
+/// returns the deepest occurrence of a directory that contains at least 1 file  
 /// use `parent_or_err` | `.parent` for a direct binding to what is one level up
 fn check_dir_contains_files(path: &Path) -> io::Result<PathBuf> {
     let num_of_dirs = items_in_directory(path, FileType::Dir)?;
@@ -58,7 +58,7 @@ fn check_dir_contains_files(path: &Path) -> io::Result<PathBuf> {
         }
         return Ok(PathBuf::from(path));
     }
-    new_io_error!(ErrorKind::InvalidData, "Unsuported file type")
+    new_io_error!(ErrorKind::InvalidData, "Unsupported file type")
 }
 
 enum FileType {
@@ -103,7 +103,7 @@ fn files_in_directory_tree(directory: &Path) -> io::Result<usize> {
             let entry = entry?;
             let metadata = entry.metadata()?;
             if metadata.is_symlink() {
-                return new_io_error!(ErrorKind::InvalidData, "Unsuported file type");
+                return new_io_error!(ErrorKind::InvalidData, "Unsupported file type");
             } else if metadata.is_file() {
                 *count += 1;
             } else if metadata.is_dir() {
@@ -126,7 +126,7 @@ fn directory_tree_is_empty(directory: &Path) -> io::Result<bool> {
             let entry = entry?;
             let metadata = entry.metadata()?;
             if metadata.is_symlink() {
-                return new_io_error!(ErrorKind::InvalidData, "Unsuported file type");
+                return new_io_error!(ErrorKind::InvalidData, "Unsupported file type");
             } else if metadata.is_file() || (metadata.is_dir() && !lookup_loop(&entry.path())?) {
                 return Ok(false);
             }
@@ -149,7 +149,7 @@ fn next_dir(path: &Path) -> io::Result<PathBuf> {
     new_io_error!(ErrorKind::InvalidData, "No dir in the selected directory")
 }
 
-/// returns the parent of input path with the _least_ ammount of ancestors  
+/// returns the parent of input path with the _least_ amount of ancestors  
 fn parent_dir_from_vec<P: AsRef<Path>>(in_files: &[P]) -> io::Result<PathBuf> {
     match in_files
         .iter()
@@ -278,7 +278,7 @@ impl InstallData {
         Ok(data)
     }
 
-    /// resets `to_paths`, `from_paths` and `display_paths` to default, sets `parent_dir` to `new_dirctory` on `self`  
+    /// resets `to_paths`, `from_paths` and `display_paths` to default, sets `parent_dir` to `new_directory` on `self`  
     /// and returns the original data
     fn reconstruct(&mut self, new_directory: &Path) -> InstallData {
         std::mem::replace(
@@ -292,7 +292,7 @@ impl InstallData {
         )
     }
 
-    /// strips `self.parent_dir` from `self.from_paths` if valid prefix and joins to a new line seperated string  
+    /// strips `self.parent_dir` from `self.from_paths` if valid prefix and joins to a new line separated string  
     #[instrument(level = "trace", skip_all)]
     fn init_display_paths(&mut self) {
         self.display_paths = self
@@ -348,7 +348,7 @@ impl InstallData {
     }
 
     /// use `update_fields_with_new_dir` when installing a mod from outside the game_dir  
-    /// this function is for internal use only and contians no saftey checks
+    /// this function is for internal use only and contains no safety checks
     #[instrument(level = "trace", skip(self, directory), fields(valid_dir = %directory.display()))]
     fn import_files_from_dir(&mut self, directory: &Path, cutoff: DisplayItems) -> io::Result<()> {
         let file_count = files_in_directory_tree(directory)?;
@@ -418,7 +418,7 @@ impl InstallData {
     }
 
     /// adds a directories contents to a `InstallData::new()`  
-    /// **Note:** subsequent runs of this funciton is not tested and not expected to work
+    /// **Note:** subsequent runs of this function is not tested and not expected to work
     #[instrument(level = "trace", skip_all, fields(in_dir = %new_directory.display()))]
     pub async fn update_fields_with_new_dir(
         &mut self,
@@ -474,7 +474,7 @@ impl InstallData {
 }
 
 /// removes mod files safely by avoiding any call to `remove_dir_all()`  
-/// will remove all associated fiales with a `RegMod` then clean up any empty directories
+/// will remove all associated files with a `RegMod` then clean up any empty directories
 #[instrument(level = "trace", skip_all, fields(reg_mod = reg_mod.name))]
 pub fn remove_mod_files(game_dir: &Path, loader_dir: &Path, reg_mod: &RegMod) -> io::Result<()> {
     let mut remove_files = reg_mod.files.full_paths(game_dir);
@@ -505,15 +505,15 @@ pub fn remove_mod_files(game_dir: &Path, loader_dir: &Path, reg_mod: &RegMod) ->
         .collect::<HashSet<_>>();
 
     for directory in parent_dirs.clone() {
-        for partical_path in directory.ancestors().skip(1) {
-            if partical_path == game_dir {
+        for partial_path in directory.ancestors().skip(1) {
+            if partial_path == game_dir {
                 break;
             }
-            if partical_path.ends_with("mods") {
+            if partial_path.ends_with("mods") {
                 continue;
             }
-            if !parent_dirs.contains(partical_path) {
-                parent_dirs.insert(partical_path);
+            if !parent_dirs.contains(partial_path) {
+                parent_dirs.insert(partial_path);
             }
         }
     }
@@ -537,7 +537,7 @@ pub fn remove_mod_files(game_dir: &Path, loader_dir: &Path, reg_mod: &RegMod) ->
     Ok(())
 }
 
-/// scans the "mods" folder for ".dll"s | if the ".dll" has the same name as a directory the contentents  
+/// scans the "mods" folder for ".dll"s | if the ".dll" has the same name as a directory the contents  
 /// of that directory are included in that mod
 #[instrument(level = "trace", skip_all)]
 pub fn scan_for_mods(game_dir: &Path, ini_dir: &Path) -> io::Result<usize> {

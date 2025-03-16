@@ -292,7 +292,7 @@ fn main() {
             }
         }
         // we need to wait for slint event loop to start `ui.run()` before making calls to `ui.display_msg()`
-        // otherwise calculations for the positon of display_msg_popup are not correct
+        // otherwise calculations for the position of display_msg_popup are not correct
         let ui_handle = ui.as_weak();
         let span_clone = span.clone();
         slint::invoke_from_event_loop(move || {
@@ -419,7 +419,7 @@ fn main() {
                             Ok(installed_files) => {
                                 file_paths = installed_files;
                                 match shorten_paths(&file_paths, &game_dir) {
-                                    Ok(installed_and_shortend) => installed_and_shortend,
+                                    Ok(installed_and_shortened) => installed_and_shortened,
                                     Err(err) => {
                                         let err_string = format!("New mod installed but ran into StripPrefixError on {}", DisplayVec(&err.err_paths_long));
                                         error!("{err_string}");
@@ -725,7 +725,7 @@ fn main() {
                             Ok(installed_files) => {
                                 file_paths = installed_files;
                                 match shorten_paths(&file_paths, &game_dir) {
-                                    Ok(installed_and_shortend) => installed_and_shortend,
+                                    Ok(installed_and_shortened) => installed_and_shortened,
                                     Err(err) => {
                                         let err_string = format!("Files installed but ran into StripPrefixError on {}", DisplayVec(&err.err_paths_long));
                                         error!("{err_string}");
@@ -1790,7 +1790,7 @@ fn deserialize_mod(mod_data: &RegMod) -> DisplayMod {
     let name = mod_data.name.replace('_', " ");
     DisplayMod {
         // MARK: Workaround
-        // Fix this manual elide once slint deals with elding text properly via a max width
+        // Fix this manual elide once slint deals with eliding text properly via a max width
         displayname: SharedString::from(if mod_data.name.chars().count() > ELIDE_LEN {
             name.chars()
                 .take(ELIDE_LEN - 3)
@@ -2019,7 +2019,7 @@ async fn confirm_remove_mod(
     match_user_msg().await?;
 
     ui.display_confirm(
-        "This is a distructive action. Are you sure you want to continue?",
+        "This is a destructive action. Are you sure you want to continue?",
         Buttons::OkCancel,
     );
     match_user_msg().await?;

@@ -25,7 +25,7 @@ pub trait Config {
     where
         Self: Sized;
 
-    /// returns a reference to where the read file is loacated  
+    /// returns a reference to where the read file is located  
     fn path(&self) -> &Path;
 
     /// returns a reference to the read in memory data  
@@ -58,7 +58,7 @@ pub trait Config {
     /// writes the in-memory `self.data()` to the directory stored in `self.path()`
     fn write_to_file(&self) -> io::Result<()>;
 
-    /// saves the computed default value (from key) to to file and appends an error message apon failure  
+    /// saves the computed default value (from key) to to file and appends an error message upon failure  
     fn save_default_val(&self, section: Option<&str>, key: &str, in_err: io::Error) -> io::Error;
 }
 
@@ -391,7 +391,7 @@ impl ModLoaderCfg {
         }
     }
 
-    /// retuns mutable reference to key value pairs stored in "loadorder"  
+    /// returns mutable reference to key value pairs stored in "loadorder"  
     #[inline]
     pub fn mut_section(&mut self) -> &mut ini::Properties {
         self.data
@@ -399,7 +399,7 @@ impl ModLoaderCfg {
             .expect("ModLoader installed and verified")
     }
 
-    /// retuns immutable reference to key value pairs stored in "loadorder"  
+    /// returns immutable reference to key value pairs stored in "loadorder"  
     #[inline]
     pub fn section(&self) -> &ini::Properties {
         self.data

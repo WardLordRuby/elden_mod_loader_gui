@@ -145,39 +145,39 @@ impl Parsable for Vec<PathBuf> {
     }
 }
 
-trait Valitidity {
+trait Validity {
     /// _full_paths_ are assumed to Point to directories, where as  
     /// _partial_paths_ are assumed to point to files and share a _path_prefix_   
     /// if you want to validate a _partial_path_ you must supply the _path_prefix_
     fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> io::Result<()>;
 }
 
-impl<T: AsRef<Path>> Valitidity for T {
+impl<T: AsRef<Path>> Validity for T {
     fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> io::Result<()> {
         if let Some(prefix) = partial_path {
             validate_file(&prefix.as_ref().join(self))?;
             Ok(())
         } else {
-            validate_existance(self.as_ref())?;
+            validate_existence(self.as_ref())?;
             Ok(())
         }
     }
 }
 
-struct ValitidityError {
+struct ValidityError {
     error_paths: Vec<PathBuf>,
     errors: Vec<io::Error>,
 }
 
-trait ValitidityMany {
+trait ValidateMany {
     /// _full_paths_ are assumed to point to directories, where as  
     /// _partial_paths_ are assumed to point to files and share a _path_prefix_   
     /// if you want to validate a _partial_path_ you must supply the _path_prefix_
-    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> Result<(), ValitidityError>;
+    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> Result<(), ValidityError>;
 }
 
-impl<T: AsRef<Path>> ValitidityMany for [T] {
-    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> Result<(), ValitidityError> {
+impl<T: AsRef<Path>> ValidateMany for [T] {
+    fn validate<P: AsRef<Path>>(&self, partial_path: Option<P>) -> Result<(), ValidityError> {
         let mut errors = Vec::new();
         let mut error_paths = Vec::new();
         self.iter().for_each(|f| {
@@ -187,7 +187,7 @@ impl<T: AsRef<Path>> ValitidityMany for [T] {
             }
         });
         if !errors.is_empty() {
-            return Err(ValitidityError {
+            return Err(ValidityError {
                 errors,
                 error_paths,
             });
@@ -203,17 +203,17 @@ fn validate_file(path: &Path) -> io::Result<()> {
         return new_io_error!(
             ErrorKind::InvalidInput,
             format!(
-                "\"{}\" does not have an extention",
+                "\"{}\" does not have an extension",
                 file_name_from_str(&input_file)
             )
         );
     }
     trace!(file = ?path.file_name().unwrap(), "has extension");
-    validate_existance(path)
+    validate_existence(path)
 }
 
 #[instrument(level = "trace", skip_all)]
-fn validate_existance(path: &Path) -> io::Result<()> {
+fn validate_existence(path: &Path) -> io::Result<()> {
     match path.try_exists() {
         Ok(true) => {
             trace!(file = ?path.file_name().expect("valid directory"), "exists on disk");
@@ -231,7 +231,7 @@ fn validate_existance(path: &Path) -> io::Result<()> {
         Err(_) => new_io_error!(
             ErrorKind::PermissionDenied,
             format!(
-                "Path \"{}\"'s existance can neither be confirmed nor denied",
+                "Path \"{}\"'s existence can neither be confirmed nor denied",
                 path.display()
             )
         ),
@@ -255,7 +255,7 @@ impl<T: AsRef<Path>> Setup for T {
         if file_data.extension != ".ini" {
             panic!("expected .ini found: {}", file_data.extension);
         }
-        validate_existance(self.as_ref())?;
+        validate_existence(self.as_ref())?;
         let ini = get_cfg(self.as_ref())?;
         let not_found = sections
             .iter()
@@ -309,7 +309,7 @@ impl IniProperty<u32> {
     }
 }
 impl IniProperty<PathBuf> {
-    /// reads, parses and optionally validates a `Pathbuf` from a given Ini  
+    /// reads, parses and optionally validates a `PathBuf` from a given Ini  
     /// **Important:**
     /// - When reading a full length path, e.g. from Section: "paths", you _must not_ give a `path_prefix`  
     /// - When reading a partial path, e.g. from Section: "mod-files", you _must_ give a `path_prefix`  
@@ -428,7 +428,7 @@ pub struct LoadOrder {
     pub set: bool,
 
     /// the index of the selected `mod_file` within `SplitFiles.dll`  
-    /// derialization will set this to -1 if `set` is false and `SplitFiles.dll` is not len 1
+    /// deserialization will set this to -1 if `set` is false and `SplitFiles.dll` is not len 1
     pub i: usize,
 
     /// current set value of `load_order`  
@@ -620,13 +620,13 @@ impl RegMod {
     }
 
     /// verifies that files exist and recovers from the case where the file paths are saved in the  
-    /// incorect state compaired to the name of the files currently saved on disk  
+    /// incorrect state compared to the name of the files currently saved on disk  
     ///
     /// then verifies that the saved state matches the state of the files  
     /// if not correct, runs toggle files to put them in the correct state  
     #[instrument(level = "trace", skip_all)]
     pub fn verify_state(&mut self, game_dir: &Path, ini_dir: &Path) -> io::Result<()> {
-        let count_try_verify_ouput = || -> (usize, Vec<usize>, usize) {
+        let count_try_verify_output = || -> (usize, Vec<usize>, usize) {
             let (mut exists, mut errors) = (0_usize, 0_usize);
             let mut not_found_indices = Vec::new();
             self.files.dll.iter().enumerate().for_each(|(i, p)| {
@@ -638,7 +638,7 @@ impl RegMod {
             });
             (exists, not_found_indices, errors)
         };
-        let (_, not_found_indices, errors) = count_try_verify_ouput();
+        let (_, not_found_indices, errors) = count_try_verify_output();
         if !not_found_indices.is_empty() && errors == 0 {
             let not_found = not_found_indices
                 .into_iter()
@@ -670,7 +670,7 @@ impl RegMod {
             return new_io_error!(
                 ErrorKind::PermissionDenied,
                 format!(
-                    "One or more of: {}, existance can neither be confirmed nor denied",
+                    "One or more of: {}, existence can neither be confirmed nor denied",
                     DisplayVec(&self.files.dll)
                 )
             );
@@ -874,7 +874,7 @@ impl Cfg {
     /// returns only valid mod data, if data was found to be invalid a message  
     /// is given to inform the user of why a mod was not included  
     ///
-    /// validateds data in the following ways:
+    /// validates data in the following ways:
     /// - ensures data has both files and state associated with the same name  
     /// - `self.files.dll` are valid to exist on disk check `self.verify_state()` for how it can recover  
     /// - `self.files.other_file_refs()` are valid to exist on disk  
@@ -1040,13 +1040,13 @@ impl Cfg {
                 .collect::<HashSet<_>>()
         };
         self.update()
-            .expect("already exists in an accessable directory");
+            .expect("already exists in an accessible directory");
         registered_mods
     }
 
     /// returns all the registered file (as _short_paths_) in a `HashSet`
-    // we _need_ to compare short_paths for the intened functionality to be correct
-    // this is because mods typically have the same file names but in seprate directories
+    // we _need_ to compare short_paths for the intended functionality to be correct
+    // this is because mods typically have the same file names but in separate directories
     pub fn files(&self) -> HashSet<&str> {
         let mod_files = self
             .data()
@@ -1074,7 +1074,7 @@ impl Cfg {
         let dll_set = PropertyArray(
             self.data()
                 .section(INI_SECTIONS[3])
-                .expect("valided on startup"),
+                .expect("validated on startup"),
         )
         .into_iter()
         .flat_map(|(name, v)| {

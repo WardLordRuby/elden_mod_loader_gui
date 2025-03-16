@@ -181,7 +181,7 @@ mod tests {
         // this tests to make sure the two without an order set are marked as order.set = false
         assert_eq!(order_count, (test_values.len() - test_unknown_keys.len()));
 
-        // this tests that the order is set correclty for the mods that have a order entry
+        // this tests that the order is set correctly for the mods that have a order entry
         loader.iter().enumerate().for_each(|(i, (k, v))| {
             assert_eq!(k, sorted_order[i].0);
             assert_eq!(v, sorted_order[i].1)
