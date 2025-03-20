@@ -5,11 +5,19 @@
     <img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML-icon.png" width="20%" height="20%">
 </div>
 
-# Elden Mod Loader GUI   
-[![GitHub Downloads](https://img.shields.io/github/downloads/WardLordRuby/elden_mod_loader_gui/total?label=Github%20Downloads&labelColor=%2323282e&color=%230e8726)][Download-Link]
-[![Nexus Downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgist.githubusercontent.com%2FWardLordRuby%2Fd6ef5e71d937c2310cc8058638ca17fe%2Fraw%2F&query=%24.18610093298393.mod_downloads&label=Nexus%20Downloads&labelColor=%2323282e)][Nexus-link]
-[![GitHub License](https://img.shields.io/github/license/WardLordRuby/elden_mod_loader_gui?label=License&labelColor=%2323282e)](LICENSE)
-
+# Elden Mod Loader GUI
+[<picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/github/downloads/WardLordRuby/elden_mod_loader_gui/total?label=Github%20Downloads&labelColor=%2323282e&color=%230e8726">
+    <img src="https://img.shields.io/github/downloads/WardLordRuby/elden_mod_loader_gui/total?label=Github%20Downloads&labelColor=%23F8F8FF&color=%230e8726" alt="GitHub Downloads">
+</picture>][Download-Link]
+[<picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgist.githubusercontent.com%2FWardLordRuby%2Fd6ef5e71d937c2310cc8058638ca17fe%2Fraw%2F&query=%24.18610093298393.mod_downloads&label=Nexus%20Downloads&labelColor=%2323282e">
+    <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgist.githubusercontent.com%2FWardLordRuby%2Fd6ef5e71d937c2310cc8058638ca17fe%2Fraw%2F&query=%24.18610093298393.mod_downloads&label=Nexus%20Downloads&labelColor=%23F8F8FF" alt="Nexus Downloads">
+</picture>][Nexus-link]
+[<picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/github/license/WardLordRuby/elden_mod_loader_gui?label=License&labelColor=%2323282e">
+    <img src="https://img.shields.io/github/license/WardLordRuby/elden_mod_loader_gui?label=License&labelColor=%23F8F8FF" alt="GitHub License">
+</picture>](LICENSE)
 
 A simple Mod Manager for Elden Mod Loader  
 This is a GUI tool that wraps [Elden Mod Loader][TechieW-Loader-Link] by: TechieW  
@@ -21,7 +29,7 @@ Make sure to have EAC disabled before launching Elden Ring with mods installed
 ## Compatibility
 Supported on Windows 10 and later.
 
-## Installation  
+## Installation
 
 1. Download [Elden Mod Loader][TechieW-Loader-Link] and extract files to "[your_game_directory]/ELDEN RING/Game/"
 2. Download [elden_mod_loader_gui.exe][Download-Link] and run from anywhere  
@@ -29,14 +37,14 @@ Supported on Windows 10 and later.
    * As you normally would
    * Using *elden_mod_loader_gui* to import files into your /mods/ directory  
 
-##### Notes:  
+##### Notes:
 
 The app will generate its own config file and attempt to locate the install directory of Elden Ring. If it succeeds and finds that *Elden Mod Loader* is
 installed, the app is immediately ready to use! Otherwise it will prompt you to select the install directory for your copy of Elden Ring. If you move the
 app you will have to move the config file as well. It is not recommended to edit this apps ini file manually. If you want to disable logging you can set
 'save_log' to 'false' in "EML_gui_config.ini"  
 
-## Features  
+## Features
 
 * Set the load order of each mod  
 * Edit a text file by selecting it from the list of registered files  
@@ -56,7 +64,7 @@ app you will have to move the config file as well. It is not recommended to edit
 * Writes logs to file "EML_gui_log.txt"  
 * Logs panic messages to file
 
-## Screenshots  
+## Screenshots
 
 <div id="image-screenshots">
     <img src="https://i.imgur.com/qJC5Tyy.png" width="26%" height="26%">
