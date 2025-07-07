@@ -2,7 +2,7 @@
 [Download-Link]: https://github.com/WardLordRuby/elden_mod_loader_gui/releases/latest/download/elden_mod_loader_gui.exe  
 [Nexus-Link]: https://www.nexusmods.com/eldenring/mods/4825
 <div align="center">
-    <img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML-icon.png" width="20%" height="20%">
+    <img src="https://raw.githubusercontent.com/WardLordRuby/elden_mod_loader_gui/main/ui/assets/EML-icon.png" width="20%">
 </div>
 
 # Elden Mod Loader GUI
@@ -67,8 +67,8 @@ app you will have to move the config file as well. It is not recommended to edit
 ## Screenshots
 
 <div id="image-screenshots">
-    <img src="https://i.imgur.com/qJC5Tyy.png" width="26%" height="26%">
-    <img src="https://i.imgur.com/vuMAqmt.png" width="26%" height="26%">
-    <img src="https://i.imgur.com/xd0XlBC.png" width="26%" height="26%">
-    <img src="https://i.imgur.com/xRe7Ig4.png" width="26%" height="26%">
+    <img src="https://i.imgur.com/qJC5Tyy.png" width="26%">
+    <img src="https://i.imgur.com/vuMAqmt.png" width="26%">
+    <img src="https://i.imgur.com/xd0XlBC.png" width="26%">
+    <img src="https://i.imgur.com/xRe7Ig4.png" width="26%">
 </div>
