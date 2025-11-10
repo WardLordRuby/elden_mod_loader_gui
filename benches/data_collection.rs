@@ -1,4 +1,4 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 use elden_mod_loader_gui::{
     INI_NAME, INI_SECTIONS,
@@ -55,7 +55,7 @@ fn data_collection_benchmark(c: &mut Criterion) {
     populate_non_valid_ini(NUM_ENTRIES, &test_file);
 
     c.bench_function("data_collection", |b| {
-        b.iter(|| black_box(ini.collect_mods(Path::new(""), None, true)));
+        b.iter(|| std::hint::black_box(ini.collect_mods(Path::new(""), None, true)));
     });
     remove_file(test_file).unwrap();
 }
