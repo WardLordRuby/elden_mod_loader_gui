@@ -409,7 +409,7 @@ impl ModLoaderCfg {
 
     /// get an iterator of the key value pairs stored in "loadorder"  
     #[inline]
-    pub fn iter(&self) -> ini::PropertyIter {
+    pub fn iter(&self) -> ini::PropertyIter<'_> {
         self.section().iter()
     }
 }

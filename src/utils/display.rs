@@ -251,10 +251,7 @@ impl ModError for io::Error {
     #[inline]
     fn add_msg(&mut self, msg: &str, add_new_line: bool) {
         let formatter = if add_new_line { "\n" } else { ", " };
-        std::mem::swap(
-            self,
-            &mut io::Error::new(self.kind(), format!("{self}{formatter}{msg}")),
-        )
+        *self = io::Error::new(self.kind(), format!("{self}{formatter}{msg}"))
     }
 }
 

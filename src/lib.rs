@@ -358,7 +358,7 @@ impl FileData<'_> {
     /// To get an accurate `FileData.name` function input needs `file_name()` called before hand  
     /// `FileData.extension` && `FileData.enabled` are accurate with any &Path str as input
     #[instrument(level = "trace", name = "file_data_from", skip_all)]
-    pub fn from(name: &str) -> FileData {
+    pub fn from(name: &str) -> FileData<'_> {
         match FileData::state_data(name) {
             (false, index) => {
                 let first_split = name.split_at(name[..index].rfind('.').expect("is file"));

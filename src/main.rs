@@ -238,7 +238,7 @@ fn main() {
         if let Some(meta_data) = ord_meta_data {
             ui.global::<MainLogic>()
                 .set_max_order(MaxOrder::from(meta_data.max_order));
-            if let Some(ref vals) = meta_data.missing_vals {
+            if let Some(vals) = meta_data.missing_vals.as_deref() {
                 let msg = DisplayMissingOrd(vals).to_string();
                 info!("{msg}");
                 dsp_msgs.push(msg);
@@ -350,14 +350,13 @@ fn main() {
                         let _ = receive_msg().await;
                     }
                     if (game_verified && mod_loader.installed()) && (first_startup || ini.mods_is_empty()) {
-                        if let Err(err) = confirm_scan_mods(
+                        confirm_scan_mods(
                             ui.as_weak(),
                             game_dir.as_ref().expect("game_verified"),
                             Some(&ini),
                             order_data.as_ref()
-                        ).await {
-                            ui.display_and_log_err(err);
-                        };
+                        ).await
+                        .unwrap_or_else(|err| ui.display_and_log_err(err));
                     }
                 }).unwrap();
             });
@@ -587,13 +586,12 @@ fn main() {
                         {TUTORIAL_MSG}"
                     ));
                     let _ = receive_msg().await;
-                    if ini.mods_is_empty() {
-                        if let Err(err) =
+                    if ini.mods_is_empty()
+                        && let Err(err) =
                             confirm_scan_mods(ui.as_weak(), &try_path, Some(&ini), None).await
-                        {
-                            error!("{err}");
-                            ui.display_msg(&err.to_string());
-                        };
+                    {
+                        error!("{err}");
+                        ui.display_msg(&err.to_string());
                     }
                 } else {
                     ui.display_msg(&format!(
@@ -879,13 +877,11 @@ fn main() {
                         return;
                     }
                 };
-                if found_mod.files.dll.iter().any(FileData::is_disabled) {
-                    if let Err(err) = toggle_files(&game_dir, true, &mut found_mod, None) {
-                        let error = format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}");
-                        error!("{error}");
-                        ui.display_msg(&error);
-                        return;
-                    }
+                if found_mod.files.dll.iter().any(FileData::is_disabled) && let Err(err) = toggle_files(&game_dir, true, &mut found_mod, None) {
+                    let error = format!("Failed to set mod to enabled state on removal\naborted before removal\n\n{err}");
+                    error!("{error}");
+                    ui.display_msg(&error);
+                    return;
                 }
                 match confirm_remove_mod(ui.as_weak(), &game_dir, loader.path(), &found_mod, ini_dir).await {
                     Ok(_) => {
@@ -917,11 +913,9 @@ fn main() {
                     reset_app_state_hook(err, ini);
                     return;
                 };
-                if found_mod.order.set {
-                    if let Err(err) = loader.update() {
-                        reset_app_state_hook(err, ini);
-                        return;
-                    }
+                if found_mod.order.set && let Err(err) = loader.update() {
+                    reset_app_state_hook(err, ini);
+                    return;
                 }
                 let (dlls, order_count, _) = ini.dll_set_order_count(loader.mut_section());
                 let model = ui.global::<MainLogic>().get_current_mods();
@@ -957,7 +951,7 @@ fn main() {
                     let ord_meta_data = ord_meta_data.expect("is_some");
                     ui.global::<MainLogic>().set_max_order(MaxOrder::from(ord_meta_data.max_order));
                     model.update_order(None, &order_map, &unknown_orders, ui.as_weak());
-                    if let Some(ref vals) = ord_meta_data.missing_vals {
+                    if let Some(vals) = ord_meta_data.missing_vals.as_deref() {
                         let msg = DisplayMissingOrd(vals).to_string();
                         info!("{msg}");
                         messages.push(msg);
@@ -1211,7 +1205,7 @@ fn main() {
             model.set_row_data(row as usize, selected_mod);
             model.update_order(Some(row), &new_orders, &unknown_orders, ui.as_weak());
 
-            if let Some(ref vals) = ord_meta_data.missing_vals {
+            if let Some(vals) = ord_meta_data.missing_vals.as_deref() {
                 let msg = DisplayMissingOrd(vals).to_string();
                 ui.display_msg(&msg);
                 info!("{msg}");
@@ -1290,7 +1284,7 @@ fn main() {
             model.set_row_data(row as usize, selected_mod);
             model.update_order(Some(row), &new_orders, &unknown_orders, ui.as_weak());
 
-            if let Some(ref vals) = ord_meta_data.missing_vals {
+            if let Some(vals) = ord_meta_data.missing_vals.as_deref() {
                 let msg = DisplayMissingOrd(vals).to_string();
                 ui.display_msg(&msg);
                 info!("{msg}");
@@ -1399,10 +1393,11 @@ impl Sortable for ModelRc<DisplayMod> {
                     .iter()
                     .position(|&x| x == unsorted_i)
                 {
-                    if let Some(ref key) = selected_key {
-                        if curr_row.name == key {
-                            selected_i = unsorted_i;
-                        }
+                    if selected_key
+                        .as_ref()
+                        .is_some_and(|key| curr_row.name == key)
+                    {
+                        selected_i = unsorted_i;
                     }
                     if curr_row.order.at != new_order {
                         curr_row.order.at = new_order;
@@ -1424,7 +1419,7 @@ impl Sortable for ModelRc<DisplayMod> {
                 let swap_row = self
                     .row_data(swap_i)
                     .expect("placement rows contains valid rows");
-                if let Some(ref key) = selected_key {
+                if let Some(key) = &selected_key {
                     if swap_row.name == key {
                         selected_i = unsorted_i;
                     } else if curr_row.name == key {
@@ -1443,10 +1438,11 @@ impl Sortable for ModelRc<DisplayMod> {
                 unsorted_idx.swap_remove(found_i);
                 continue;
             }
-            if let Some(ref key) = selected_key {
-                if curr_row.name == key {
-                    selected_i = unsorted_i;
-                }
+            if selected_key
+                .as_ref()
+                .is_some_and(|key| curr_row.name == key)
+            {
+                selected_i = unsorted_i;
             }
             if !seen_names.contains(&curr_row.name) {
                 seen_names.insert(curr_row.name.clone());
@@ -1511,11 +1507,7 @@ impl From<(usize, bool)> for MaxOrder {
 impl From<&RegMod> for LoadOrder {
     fn from(value: &RegMod) -> Self {
         LoadOrder {
-            at: if !value.order.set {
-                0
-            } else {
-                value.order.at as i32
-            },
+            at: if !value.order.set { 0 } else { value.order.at as i32 },
             i: if !value.order.set && value.files.dll.len() != 1 {
                 -1
             } else {
@@ -1811,7 +1803,7 @@ fn deserialize_mod(mod_data: &RegMod) -> DisplayMod {
 #[instrument(level = "trace", skip_all)]
 fn deserialize_collected_mods(data: &CollectedMods, ui_handle: slint::Weak<App>) {
     let ui = ui_handle.unwrap();
-    if let Some(ref warning) = data.warnings {
+    if let Some(warning) = &data.warnings {
         ui.display_msg(&warning.to_string());
     }
 

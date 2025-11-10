@@ -953,7 +953,7 @@ impl Cfg {
     /// ensures that _all_ keys have matching keys in Sections: "registered-mods" and "mod-files"  
     /// returns CollectedMaps - `(state_map, mod_file_map)`
     #[instrument(level = "trace", skip_all)]
-    fn sync_keys(&self) -> CollectedMaps {
+    fn sync_keys(&self) -> CollectedMaps<'_> {
         let mut state_data = self
             .data()
             .section(INI_SECTIONS[2])
@@ -1068,7 +1068,7 @@ impl Cfg {
     pub fn dll_set_order_count(
         &self,
         loader_section: &mut ini::Properties,
-    ) -> (DllSet, usize, bool) {
+    ) -> (DllSet<'_>, usize, bool) {
         let mut counter = 0_usize;
         let mut order_removed = false;
         let dll_set = PropertyArray(

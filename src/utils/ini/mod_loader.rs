@@ -352,11 +352,11 @@ impl ModLoaderCfg {
                 }
             });
             input_vals.insert(curr_v);
-            if let Some(input_k) = stable {
-                if k == input_k {
-                    (stable_k, stable_v) = (k, curr_v);
-                    continue;
-                }
+            if let Some(input_k) = stable
+                && input_k == k
+            {
+                (stable_k, stable_v) = (k, curr_v);
+                continue;
             }
             k_v.push((k, curr_v));
         }
